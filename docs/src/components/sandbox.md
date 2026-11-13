@@ -233,7 +233,7 @@ only the `srt` in `~/.local/bin`, never one found on the `PATH`. So it starts no
 
 Each run makes one new directory with `mktemp -d "${TMPDIR:-/tmp}/agentbox.XXXXXX"`, below
 `$TMPDIR`, or below `/tmp` where `TMPDIR` is unset or empty, with the subdirectories `npm`, `uv`,
-`texmf-var` and `glab`. The sandbox denies the caches of these tools in the home directory, so
+`texmf-var`, `glab` and `gh`. The sandbox denies the caches of these tools in the home directory, so
 `agentbox` sets and exports a cache variable for each, where the caller's variable is unset or
 empty:
 
@@ -312,25 +312,32 @@ fails at the forge. The helper answers only `get`: a plain `store --file` erases
 on a `reject`, for example after a token expires.
 
 The install exits with status 2 and writes nothing, with one line that names the path, on a store
-file that the group or others can read (the line names its mode), on a `<name>` outside
-`[A-Za-z0-9-]+` or starting with `-`, on a store file whose text is not the one line
-`https://<user>:<token>@<host>` with `<host>` its directory's name, and on a host directory whose
-name is no host name. No message names a token. Where `~/.gitconfig` holds no `include.path` of
-the rendered file, the install prints one notice line and goes on.
+or host directory that it cannot list, on a store file, after symbolic links, that is no regular
+file or that the group or others can read (the line names its mode), on a `<name>` outside
+`[A-Za-z0-9-]+` or starting with `-`, on a store file whose bytes are not the one line
+`https://<user>:<token>@<host>` with `<host>` its directory's name (a CR before the line feed
+too), and on a host directory whose name is no host name in lower case. No message names a token.
+Where `~/.gitconfig` holds no `include.path` of the rendered file, the install prints one notice
+line and goes on.
+
+The store and the rendered file are also a deny of the frontends' own read tools: the template's
+`permissions.deny` holds `Read(/{home}/.config/research-harness/forge/**)`, and OpenCode's path
+list `guard-paths.json`, which oh-my-pi and Antigravity also render, holds its path.
 
 **The gh wrapper** `~/.local/bin/gh` ([`gh-token.py`](scripts.md#gh-token-py)) finds the
 repository's owner, reads the owner's store file, else `default.store`, and runs the real gh with
-`GH_TOKEN` set and `GITHUB_TOKEN` removed. With no token it removes both and sets `GH_CONFIG_DIR`
-to an empty directory, so gh reads no stored login.
+`GH_TOKEN` set and `GITHUB_TOKEN` removed. With no token, or for a host other than `github.com`,
+it removes both and sets `GH_CONFIG_DIR` to an empty directory, so gh reads no stored login.
 
-**glab under `agentbox`.** The launcher exports `GIT_TERMINAL_PROMPT=0` and `GLAB_CONFIG_DIR`, the
-empty directory `glab` of the run directory, in place of the caller's: glab then reads no stored
-login, and does not fail on its configuration file, which srt denies. It removes the caller's
-`GITLAB_ACCESS_TOKEN` and `OAUTH_TOKEN`. Where the store holds exactly one host directory other
-than `github.com/`, with exactly one store file, it exports `GITLAB_HOST` as the directory's name
-and `GITLAB_TOKEN` as the password of the file's line; glab sends that token only to that host.
-Otherwise it removes the caller's `GITLAB_TOKEN`, prints one line on stderr that names the store,
-and starts the frontend.
+**glab and gh under `agentbox`.** The launcher exports `GIT_TERMINAL_PROMPT=0`, and
+`GLAB_CONFIG_DIR` and `GH_CONFIG_DIR`, the empty directories `glab` and `gh` of the run directory,
+in place of the caller's: glab and gh then read no stored login, and do not fail on their
+configuration files, which srt denies. It removes the caller's `GITLAB_ACCESS_TOKEN` and
+`OAUTH_TOKEN`. Where the store holds exactly one host directory other than `github.com/`, with
+exactly one store file whose first line is `https://<user>:<token>@<host>`, `<host>` the
+directory's name and no `%` or space in the user and the token, it exports `GITLAB_HOST` as the directory's name and
+`GITLAB_TOKEN` as the token; glab sends that token only to that host. Otherwise it removes the
+caller's `GITLAB_TOKEN`, prints one line on stderr that names the store, and starts the frontend.
 
 **Your steps**, after the merge and before `harness install --apply`:
 

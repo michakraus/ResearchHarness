@@ -383,6 +383,7 @@
       "Read(/{home}/.config/api-keys/**)",
       "Read(/{home}/.config/chezmoi/**)",
       "Read(/{home}/.config/gh/hosts.yml)",
+      "Read(/{home}/.config/research-harness/forge/**)",
       "Read(/{home}/.config/glab-cli/config.yml)",
       "Read(/{home}/Library/Application Support/glab-cli/config.yml)",
       "Read(/{home}/.claude/.credentials.json)",

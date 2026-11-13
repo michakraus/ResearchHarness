@@ -32,10 +32,12 @@ runs them.
   frontend probe's word on a line of its own of stdout or stderr, and the detail of a failed
   frontend probe from its error line.
 - scripts/gh-token.py in a scratch home with a stub gh that records its token variables and its
-  arguments: the owner from `-R`, `--repo`, GH_REPO, the endpoint of `gh api` and the remote
-  `origin`, compared without case, else the default; no token, and an empty GH_CONFIG_DIR, where
-  no file serves or `-R` or GH_REPO names another host; and the real gh, never the wrapper
-  itself, first on the PATH as a copy or a link.
+  arguments: the owner from the command's own argument, `-R` and `--repo` in each form, GH_REPO,
+  and the remote `origin`, compared without case, else the default; no token, and an empty
+  GH_CONFIG_DIR that is gone after the run, where no file serves or `--hostname`, GH_HOST, the
+  command's argument, `-R` or GH_REPO names another host; and the real gh, never the wrapper,
+  with the wrapper first on the PATH as a copy or a link, a second copy of it, or a gh that is not
+  executable.
 """
 
 import importlib.util
@@ -75,24 +77,31 @@ GH_PY_RUNS = 3
 GH_STUB_EXIT = 3
 GH_INTERRUPTED = 130
 # The stub of the real gh in the gh_token cases: it appends GH_TOKEN, GITHUB_TOKEN and
-# GH_CONFIG_DIR, each `<unset>` where unset, then each argument on a line of its own, then END, to
-# $GH_STUB_LOG. With GH_STUB_INTERRUPT set, it then sends SIGINT to its process group, as a Ctrl-C
-# in a terminal does; it exits with $GH_STUB_STATUS, else 0.
-GH_STUB = """\
+# GH_CONFIG_DIR, each `<unset>` where unset, whether GH_CONFIG_DIR is an empty directory, then each
+# argument on a line of its own, then END, to $GH_STUB_LOG. With GH_STUB_INTERRUPT set, it then
+# sends SIGINT to its process group, as a Ctrl-C in a terminal does, from a Python process that
+# takes SIGINT's default action back: /bin/sh cannot, where its caller ignored SIGINT. It exits with
+# $GH_STUB_STATUS, else 0.
+GH_STUB = f"""\
 #!/bin/sh
-{
-    printf 'GH_TOKEN=%s\\n' "${GH_TOKEN-<unset>}"
-    printf 'GITHUB_TOKEN=%s\\n' "${GITHUB_TOKEN-<unset>}"
-    printf 'GH_CONFIG_DIR=%s\\n' "${GH_CONFIG_DIR-<unset>}"
+{{
+    printf 'GH_TOKEN=%s\\n' "${{GH_TOKEN-<unset>}}"
+    printf 'GITHUB_TOKEN=%s\\n' "${{GITHUB_TOKEN-<unset>}}"
+    printf 'GH_CONFIG_DIR=%s\\n' "${{GH_CONFIG_DIR-<unset>}}"
+    if [ -d "${{GH_CONFIG_DIR-}}" ] && [ -z "$(ls -A "$GH_CONFIG_DIR")" ]; then
+        echo GH_CONFIG_EMPTY=yes
+    fi
     for a in "$@"; do printf 'ARG=%s\\n' "$a"; done
     echo END
-} >> "$GH_STUB_LOG"
-if [ -n "${GH_STUB_INTERRUPT-}" ]; then
-    sleep 1
-    kill -INT 0
-    sleep 5
+}} >> "$GH_STUB_LOG"
+if [ -n "${{GH_STUB_INTERRUPT-}}" ]; then
+    exec {shlex.quote(sys.executable)} -c 'import os, signal, time
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+time.sleep(1)
+os.kill(0, signal.SIGINT)
+time.sleep(5)'
 fi
-exit "${GH_STUB_STATUS:-0}"
+exit "${{GH_STUB_STATUS:-0}}"
 """
 
 # The stub of every program that probe-agentbox.py starts. Each copy appends the time, its working
@@ -1500,12 +1509,13 @@ def probe_words(check: Callable[[object, str], None], tmp: pathlib.Path) -> None
 @dataclass(frozen=True)
 class GhSeen:
     """What the stub gh of the gh_token cases saw: GH_TOKEN, GITHUB_TOKEN and GH_CONFIG_DIR, each
-    None where unset, its arguments, and the number of its runs; with the wrapper's exit status and
-    stderr."""
+    None where unset, whether GH_CONFIG_DIR was an empty directory while it ran, its arguments, and
+    the number of its runs; with the wrapper's exit status and stderr."""
 
     token: str | None
     github_token: str | None
     config_dir: str | None
+    config_empty: bool
     args: list[str]
     runs: int
     status: int | None
@@ -1542,6 +1552,7 @@ class GhHome:
             path.write_text(text)
             path.chmod(0o755)
         (root / "nowhere").mkdir()
+        (root / "tmp").mkdir()
         return cls(root)
 
     def repository(self, name: str, url: str) -> pathlib.Path:
@@ -1560,10 +1571,12 @@ class GhHome:
         return path
 
     def env(self, **extra: str) -> dict[str, str]:
-        """The environment of a run: the scratch HOME, py/ and stubs/ first on the PATH, git that
-        reads none of the user's configuration and no directory above the root, and `extra`."""
+        """The environment of a run: the scratch HOME, py/ and stubs/ first on the PATH, TMPDIR the
+        directory tmp/, git that reads none of the user's configuration and no directory above the
+        root, and `extra`."""
         return {
             "HOME": str(self.root / "home"),
+            "TMPDIR": str(self.root / "tmp"),
             "PATH": f"{self.root / 'py'}:{self.root / 'stubs'}:/usr/bin:/bin",
             "GH_STUB_LOG": str(self.root / "gh.log"),
             "GH_PY_LOG": str(self.root / "py.log"),
@@ -1615,6 +1628,7 @@ class GhHome:
             token=value("GH_TOKEN"),
             github_token=value("GITHUB_TOKEN"),
             config_dir=value("GH_CONFIG_DIR"),
+            config_empty=seen.get("GH_CONFIG_EMPTY") == "yes",
             args=[line[len("ARG=") :] for line in lines if line.startswith("ARG=")],
             runs=lines.count("END"),
             status=status,
@@ -1623,9 +1637,11 @@ class GhHome:
 
 
 def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
-    """The owner of scripts/gh-token.py: `-R` and `--repo` in each form, GH_REPO, the endpoint of
-    `gh api`, the remote `origin`, each compared without case, and the default outside a
-    repository; every argument reaches the stub unchanged, and GITHUB_TOKEN never."""
+    """The owner of scripts/gh-token.py: the endpoint of `gh api`, a placeholder there naming none,
+    the argument of `gh repo …` and a URL as a command's argument, each before `-R` and GH_REPO;
+    `-R` and `--repo` in each form, the last one counting; GH_REPO; the remote `origin`; each
+    compared without case, and the default outside a repository; every argument reaches the stub
+    unchanged, and GITHUB_TOKEN never."""
     tokens = {name: f"T-{name}-{secrets.token_hex(4)}" for name in ("example-b", "Example-C", "default")}
     home = GhHome.fresh(tmp / "owners", tokens)
     repo = home.repository("https", "https://github.com/Example-C/repo.git")
@@ -1649,6 +1665,74 @@ def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path
         (["api", "repos/example-b/repo/issues/1/comments"], {}, repo, b, "gh api repos/OWNER/..."),
         (["api", "/orgs/example-b/repos"], {}, repo, b, "gh api /orgs/OWNER/..."),
         (["api", "-X", "GET", "users/Example-B"], {}, repo, b, "gh api with a flag first, users/OWNER"),
+        (["api", "repos/{owner}/{repo}/pulls"], {}, repo, c, "gh api repos/{owner}/...: origin's owner"),
+        (["api", "/repos/:owner/:repo/pulls"], {}, repo, c, "gh api /repos/:owner/...: origin's owner"),
+        (["api", "repos/Example-B/r"], {"GH_REPO": "Example-C/r"}, None, b, "the endpoint before GH_REPO"),
+        (["api", "--hostname", "github.com", "repos/Example-B/r"], {}, repo, b, "--hostname github.com"),
+        (["repo", "view", "Example-B/repo"], {}, repo, b, "gh repo view OWNER/REPO"),
+        (["repo", "view", "github.com/Example-B/repo"], {}, repo, b, "gh repo view HOST/OWNER/REPO"),
+        (
+            ["repo", "view", "Example-B/repo", "-R", "Example-C/r"],
+            {},
+            None,
+            b,
+            "gh repo's argument before -R",
+        ),
+        (
+            ["pr", "view", "https://github.com/Example-B/repo/pull/1"],
+            {},
+            repo,
+            b,
+            "gh pr view URL",
+        ),
+        (
+            ["issue", "comment", "https://github.com/Example-B/repo/issues/1", "-b", "x"],
+            {},
+            repo,
+            b,
+            "gh issue comment URL",
+        ),
+        (["pr", "view", "Example-B/x"], {}, repo, c, "gh pr view OWNER/x, a branch: origin's owner"),
+        (["pr", "view", "-w", "Example-B/repo"], {}, repo, c, "a flag at the argument's place: origin's"),
+        (
+            ["repo", "view", "-RExample-B/repo"],
+            {},
+            repo,
+            b,
+            "gh repo with -ROWNER/REPO at the argument's place",
+        ),
+        (["pr", "view", "1", "-R=Example-B/repo"], {}, repo, b, "-R=OWNER/REPO"),
+        (["pr", "view", "1", "-nR", "Example-B/repo"], {}, repo, b, "-nR OWNER/REPO, a cluster"),
+        (["pr", "view", "1", "-nRExample-B/repo"], {}, repo, b, "-nROWNER/REPO, a cluster"),
+        (
+            ["pr", "create", "-b", "-Rfoo/bar", "-R", "Example-B/repo"],
+            {},
+            repo,
+            b,
+            "a flag's value that starts with -R, then -R: the last",
+        ),
+        (["pr", "view", "1", "-R", "Example-C/r", "-R", "Example-B/repo"], {}, None, b, "two -R: the last"),
+        (
+            ["pr", "view", "1", "-R", "-RExample-B/repo"],
+            {},
+            None,
+            default,
+            "-R whose value starts with -R: the value, no owner's file",
+        ),
+        (
+            ["pr", "create", "-R", "Example-B/repo", "-t", "-2Rfoo/bar"],
+            {},
+            None,
+            b,
+            "a value -2R… after -R, no cluster of flags",
+        ),
+        (
+            ["pr", "view", "1", "-ROWNER/x", "--repo", "Example-B/repo"],
+            {},
+            None,
+            b,
+            "-R, then --repo: the last",
+        ),
         (["pr", "view", "1", "-RExample-B/repo"], {}, repo, b, "-ROWNER/REPO"),
         (["pr", "view", "1", "-R", "https://github.com/Example-B/repo"], {}, repo, b, "-R a URL"),
         (["pr", "view", "1", "-R", "GitHub.com/Example-B/repo"], {}, repo, b, "-R HOST/OWNER/REPO, capitals"),
@@ -1682,8 +1766,9 @@ def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path
 
 def gh_token_no_token_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """scripts/gh-token.py with no token: no file of the owner and no default.store, and a host
-    other than github.com in `-R` or GH_REPO, where the owner has a file and default.store
-    exists."""
+    other than github.com in `-R`, GH_REPO, the command's argument, `--hostname` or GH_HOST, where
+    the owner has a file and default.store exists; the empty GH_CONFIG_DIR is gone after the run.
+    With GH_HOST github.com, the default's token and the caller's GH_CONFIG_DIR."""
     caller = tmp / "caller-config"
     caller.mkdir()
     (caller / "hosts.yml").write_text("caller\n")
@@ -1695,29 +1780,48 @@ def gh_token_no_token_cases(check: Callable[[object, str], None], tmp: pathlib.P
         (home, ["api", "user"], {}, "no owner's file and no default.store"),
         (other, ["repo", "view", "-R", "ghe.example.org/example-a/repo"], {}, "-R of another host"),
         (other, ["repo", "view"], {"GH_REPO": "ghe.example.org/example-a/repo"}, "GH_REPO of another host"),
+        (other, ["repo", "view", "ghe.example.org/example-a/repo"], {}, "gh repo view of another host"),
+        (
+            other,
+            ["pr", "view", "https://ghe.example.org/example-a/repo/pull/1"],
+            {},
+            "gh pr view with a URL of another host",
+        ),
+        (other, ["api", "--hostname", "x.ghe.com", "repos/example-a/r"], {}, "--hostname of another host"),
+        (other, ["api", "--hostname=X.GHE.com", "user"], {}, "--hostname= of another host"),
+        (other, ["api", "user"], {"GH_HOST": "x.ghe.com"}, "GH_HOST of another host"),
     ]:
         given = {"GITHUB_TOKEN": token, "GH_TOKEN": token, "GH_CONFIG_DIR": str(caller), **extra}
         seen = at.run(*args, variables=given)
-        empty = seen.config_dir is not None and pathlib.Path(seen.config_dir).is_dir()
-        empty = empty and not any(pathlib.Path(cast("str", seen.config_dir)).iterdir())
+        left = list((at.root / "tmp").iterdir())
         check(
             seen.status == 0
             and seen.runs == 1
             and seen.token is None
             and seen.github_token is None
-            and empty
+            and seen.config_empty
+            and seen.config_dir != str(caller)
+            and not left
             and seen.args == args,
             f"gh-token.py, {label}: the stub sees no GH_TOKEN, no GITHUB_TOKEN and a GH_CONFIG_DIR that is "
-            f"an empty directory: {seen.status}, {seen.token is None}, {seen.github_token is None}, "
-            f"{seen.config_dir}, {seen.stderr.strip()!r}",
+            f"an empty directory, which is gone after the run: {seen.status}, {seen.token is None}, "
+            f"{seen.github_token is None}, {seen.config_dir}, {seen.config_empty}, {left}, "
+            f"{seen.stderr.strip()!r}",
         )
+    seen = other.run("api", "user", variables={"GH_HOST": "GitHub.com", "GH_CONFIG_DIR": str(caller)})
+    check(
+        seen.status == 0 and seen.token == tokens["default"] and seen.config_dir == str(caller),
+        f"gh-token.py with GH_HOST github.com: the default's token, and the caller's GH_CONFIG_DIR: "
+        f"{seen.status}, {seen.token == tokens['default']}, {seen.config_dir}",
+    )
 
 
 def gh_token_path_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """scripts/gh-token.py runs the real gh, never itself: a copy of the wrapper named gh runs, with
     its own directory, or a directory with a symbolic link named gh to it, first on the PATH; the
     stub runs once and the counting `python3` starts once, so the wrapper starts no second run of
-    itself. With no gh on the PATH but the wrapper, it exits 2 with one line."""
+    itself; the same with a second copy of the wrapper, or a gh that is not executable, between
+    the copy and the stub. With no gh on the PATH but the wrapper, it exits 2 with one line."""
     token = f"T-d-{secrets.token_hex(4)}"
     home = GhHome.fresh(tmp / "path", {"default": token})
     copy = home.root / "copy" / "gh"
@@ -1737,6 +1841,32 @@ def gh_token_path_cases(check: Callable[[object, str], None], tmp: pathlib.Path)
             seen.status == 0 and seen.runs == 1 and seen.token == token and starts == 1,
             f"gh-token.py as gh, with {label} first on the PATH, runs the stub once and itself once: "
             f"{seen.status}, {seen.runs}, {starts}, {seen.stderr.strip()[-200:]!r}",
+        )
+    second = home.root / "second" / "gh"
+    second.parent.mkdir()
+    second.write_bytes(GH_TOKEN.read_bytes())
+    second.chmod(0o755)
+    plain = home.root / "plain" / "gh"
+    plain.parent.mkdir()
+    plain.write_text("#!/bin/sh\nexit 97\n")
+    plain.chmod(0o644)
+    for label, entries in [
+        ("a second copy of the wrapper", [copy.parent, second.parent]),
+        ("a gh that is not executable", [copy.parent, plain.parent]),
+    ]:
+        (home.root / "py.log").unlink(missing_ok=True)
+        seen = home.run(
+            "api",
+            "user",
+            program=[str(copy)],
+            variables={"PATH": ":".join(str(e) for e in [*entries, home.env()["PATH"]])},
+        )
+        py = home.root / "py.log"
+        starts = len(py.read_text().splitlines()) if py.exists() else 0
+        check(
+            seen.status == 0 and seen.runs == 1 and seen.token == token and starts == 1,
+            f"gh-token.py as gh, with {label} before the real gh on the PATH, runs the stub once and "
+            f"itself once: {seen.status}, {seen.runs}, {starts}, {seen.stderr.strip()[-200:]!r}",
         )
     lonely = GhHome.fresh(tmp / "lonely", {})
     seen = lonely.run(

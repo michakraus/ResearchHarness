@@ -646,22 +646,35 @@ the API. No skill or agent calls it. For the context at the start, use `startup-
 real gh on the `PATH`, the command `gh` runs the wrapper. It takes gh's own arguments
 ([The forge tokens](sandbox.md#the-forge-tokens)).
 
-It finds the owner, in this order: the value of `-R` or `--repo` (`OWNER/REPO`,
-`HOST/OWNER/REPO` or a URL, also as `--repo=…`); `GH_REPO`; for `gh api`, the segment after
-`repos/`, `orgs/` or `users/` of the first argument that starts with one of them, with or without
-a leading `/`; the owner of the remote `origin`. It reads
-`~/.config/research-harness/forge/github.com/<owner>.store`, the name compared without case, as
-GitHub compares it, else `default.store`, sets `GH_TOKEN` to the password of the file's line and
-removes `GITHUB_TOKEN`. Then it runs the first `gh` on the `PATH` whose resolved file is not the
-wrapper itself, with the same arguments, and exits with its status. A host other than
-`github.com` in `-R` or `GH_REPO` gets no token, and an `origin` of another host names no owner.
-With no token it removes `GH_TOKEN` and `GITHUB_TOKEN` and sets `GH_CONFIG_DIR` to a new empty
-directory, so gh reads no stored login either.
+It finds the owner, in this order:
+
+1. The command's own argument. For `gh api`, the segment after `repos/`, `orgs/` or `users/` of
+   the first argument that starts with one of them, with or without a leading `/`, where that
+   segment is an owner's name; a placeholder such as `{owner}` or `:owner` names none. For any
+   other command, the argument after the group and the command, as in `gh pr view <argument>`,
+   where it does not start with `-`: a URL names its host and its first path segment, and for
+   `gh repo …` only, `OWNER/REPO` and `HOST/OWNER/REPO` name an owner too. Elsewhere `OWNER/x`
+   can be a branch.
+2. The value of the last `-R` or `--repo` before a `--` (`OWNER/REPO`, `HOST/OWNER/REPO` or a
+   URL, also as `--repo=…`, `-R…`, `-R=…`, or at the end of a cluster of short flags such as
+   `-nR`).
+3. `GH_REPO`.
+4. The owner of the remote `origin`.
+
+It reads `~/.config/research-harness/forge/github.com/<owner>.store`, the name compared without
+case, as GitHub compares it, else `default.store`, sets `GH_TOKEN` to the password of the file's
+line and removes `GITHUB_TOKEN`. Then it runs the first `gh` on the `PATH` that is an executable
+file, whose resolved file is not the wrapper, and whose bytes are not the wrapper's, with the same
+arguments, and exits with its status. A host other than `github.com` gets no token: in
+`--hostname` before a `--`, in a non-empty `GH_HOST`, in the command's own argument, in `-R` or
+in `GH_REPO`; an `origin` of another host names no owner. With no token it removes `GH_TOKEN` and
+`GITHUB_TOKEN` and sets `GH_CONFIG_DIR` to a new empty directory, so gh reads no stored login
+either, and removes the directory when gh ends. With a token, the caller's `GH_CONFIG_DIR` stays.
 
 It exits with status 2 and one line on stderr, and runs nothing, on a store file that it cannot
 read or whose line holds no password, and when the `PATH` holds no gh but the wrapper. It uses
-the standard library only. The `gh_token` cases of `lib/harness/script_cases.py` run it with a
-stub gh in scratch homes.
+the standard library only, and runs on Python 3.9 or later, the `python3` of macOS. The
+`gh_token` cases of `lib/harness/script_cases.py` run it with a stub gh in scratch homes.
 
 ## The audit scripts
 

@@ -22,34 +22,35 @@
 # AGENTBOX=1 in its environment.
 #
 # Each run makes one new directory, mktemp -d "${TMPDIR:-/tmp}/agentbox.XXXXXX", with the
-# subdirectories npm, uv, texmf-var and glab, and exports npm_config_cache, UV_CACHE_DIR and
+# subdirectories npm, uv, texmf-var, glab and gh, and exports npm_config_cache, UV_CACHE_DIR and
 # TEXMFVAR as the first three, each where the caller's variable is unset or empty: srt denies the
 # tools' caches in the home directory, and an empty value stops uv and sends npm back to ~/.npm. A
-# caller's non-empty value stays. It exports GLAB_CONFIG_DIR as the empty glab, whatever the
-# caller set, so that glab reads no stored login and does not fail on its configuration file,
-# which srt denies. The directory stays after the run, since the script ends in exec; the
-# system's cleaning of temporary directories removes it.
+# caller's non-empty value stays. It exports GLAB_CONFIG_DIR as the empty glab and GH_CONFIG_DIR
+# as the empty gh, whatever the caller set, so that glab and gh read no stored login and do not
+# fail on their configuration files, which srt denies. The directory stays after the run, since
+# the script ends in exec; the system's cleaning of temporary directories removes it.
 #
 # The forges: the script exports GIT_TERMINAL_PROMPT=0, so that git fails at once where no
 # credential helper answers, and removes the caller's GITLAB_ACCESS_TOKEN and OAUTH_TOKEN, which
 # glab would read as a token. When the token store ~/.config/research-harness/forge holds exactly
-# one host directory other than github.com, holding exactly one store file, it exports GITLAB_HOST
-# as that directory's name and GITLAB_TOKEN as the password of the file's line
-# https://<user>:<token>@<host>; glab sends that token only to that host. Otherwise it removes
-# the caller's GITLAB_TOKEN, writes one line on stderr that names the store, and starts the
-# program all the same.
+# one host directory other than github.com, holding exactly one store file, whose first line is
+# https://<user>:<token>@<host>, <host> the directory's name and <user> and <token> free of % and
+# spaces, it exports GITLAB_HOST as <host> and GITLAB_TOKEN as <token>; glab sends that token only
+# to that host.
+# Otherwise it removes the caller's GITLAB_TOKEN, writes one line on stderr that names the store,
+# and starts the program all the same.
 #
 # Outside a subshell, the script assigns no shell variable other than AGENTBOX, the three cache
-# variables, GLAB_CONFIG_DIR, GIT_TERMINAL_PROMPT, GITLAB_HOST and GITLAB_TOKEN, so that every
-# other variable of the caller but GITLAB_ACCESS_TOKEN and OAUTH_TOKEN, which it removes, reaches
-# the program unchanged; each value is a positional parameter. It exits 2 with one line on stderr, and starts nothing, when no
-# frontend or an unknown one is named, when AGENTBOX is set, when srt or a settings file is
-# missing, when the program is not on the PATH without the cmux shims, when what `command -v`
-# gives does not start with / (a function that /bin/sh imports, or, where /bin/sh is dash, a
-# program in a relative PATH entry), when mktemp cannot make the run directory, and when claude
-# gets a --settings of the caller's: Claude Code keeps only the last --settings, so the caller's
-# would turn its own sandbox on again. A refused run makes no directory. Otherwise srt's exit
-# status is the script's.
+# variables, GLAB_CONFIG_DIR, GH_CONFIG_DIR, GIT_TERMINAL_PROMPT, GITLAB_HOST and GITLAB_TOKEN, so
+# that every other variable of the caller but GITLAB_ACCESS_TOKEN and OAUTH_TOKEN, which it
+# removes, reaches the program unchanged; each value is a positional parameter. It exits 2 with
+# one line on stderr, and starts nothing, when no frontend or an unknown one is named, when
+# AGENTBOX is set, when srt or a settings file is missing, when the program is not on the PATH
+# without the cmux shims, when what `command -v` gives does not start with / (a function that
+# /bin/sh imports, or, where /bin/sh is dash, a program in a relative PATH entry), when mktemp
+# cannot make the run directory, and when claude gets a --settings of the caller's: Claude Code
+# keeps only the last --settings, so the caller's would turn its own sandbox on again. A refused
+# run makes no directory. Otherwise srt's exit status is the script's.
 
 usage() {
     cat <<'EOF'
@@ -122,17 +123,18 @@ check() {
     fi
 }
 
-# caches: make the run directory and its subdirectories npm, uv, texmf-var and glab, export each
-# cache variable that the caller left unset or empty as its subdirectory, and GLAB_CONFIG_DIR as
-# glab.
+# caches: make the run directory and its subdirectories npm, uv, texmf-var, glab and gh, export
+# each cache variable that the caller left unset or empty as its subdirectory, GLAB_CONFIG_DIR as
+# glab and GH_CONFIG_DIR as gh.
 caches() {
     set -- "$(mktemp -d "${TMPDIR:-/tmp}/agentbox.XXXXXX" 2>/dev/null)"
     if [ -z "$1" ]; then
         refuse "mktemp cannot make a directory below ${TMPDIR:-/tmp}"
     fi
-    mkdir "$1/npm" "$1/uv" "$1/texmf-var" "$1/glab"
+    mkdir "$1/npm" "$1/uv" "$1/texmf-var" "$1/glab" "$1/gh"
     GLAB_CONFIG_DIR=$1/glab
-    export GLAB_CONFIG_DIR
+    GH_CONFIG_DIR=$1/gh
+    export GLAB_CONFIG_DIR GH_CONFIG_DIR
     if [ -z "${npm_config_cache-}" ]; then
         npm_config_cache=$1/npm
         export npm_config_cache
@@ -147,10 +149,13 @@ caches() {
     fi
 }
 
-# gitlab: print the path of the one store file in the token store's one host directory other than
-# github.com, or nothing where there is no such directory, more than one, or such a directory holds
-# no store file or more than one. Run it in a command substitution: it assigns its own variables,
-# which then stay in the subshell.
+# gitlab: print "<host> <token>" of the one store file in the token store's one host directory
+# other than github.com, or nothing where there is no such directory, more than one, such a
+# directory holds no store file or more than one, or the file's first line is not
+# https://<user>:<token>@<host> with <host> the directory's name and <user> and <token> free of %
+# and spaces: git would decode a %, and glab would not. sed's own error on a file that it cannot
+# read goes nowhere, so that stderr holds the one line of forge. Run it in a command substitution:
+# it assigns its own variables, which then stay in the subshell.
 gitlab() {
     found=
     for dir in "$HOME/.config/research-harness/forge"/*/; do
@@ -168,29 +173,31 @@ gitlab() {
         [ -z "$file" ] || return 0
         file=$entry
     done
-    [ -z "$file" ] || printf '%s\n' "$file"
+    [ -n "$file" ] || return 0
+    host=${found%/}
+    host=${host##*/}
+    line=$(sed -n '1s|^https://[^:/@% ]*:\([^:/@% ][^:/@% ]*\)@\([^/@ ]*\)$|\2 \1|p' "$file" 2>/dev/null)
+    case $line in
+    "$host "?*) printf '%s\n' "$line" ;;
+    esac
 }
 
 # forge: export GIT_TERMINAL_PROMPT=0, remove GITLAB_ACCESS_TOKEN and OAUTH_TOKEN, and export
-# GITLAB_HOST and GITLAB_TOKEN of the store file that gitlab prints; with none, remove
-# GITLAB_TOKEN and write one line on stderr.
+# GITLAB_HOST and GITLAB_TOKEN as gitlab prints them; with nothing printed, remove GITLAB_TOKEN
+# and write one line on stderr.
 forge() {
     GIT_TERMINAL_PROMPT=0
     export GIT_TERMINAL_PROMPT
     unset GITLAB_ACCESS_TOKEN OAUTH_TOKEN
     set -- "$(gitlab)"
-    if [ -n "$1" ]; then
-        set -- "$1" "$(sed -n '1s|^https://[^:/@]*:\([^:/@]*\)@[^/@]*$|\1|p' "$1")"
-    fi
-    if [ -z "${2-}" ]; then
+    if [ -z "$1" ]; then
         unset GITLAB_TOKEN
-        printf 'agentbox: glab gets no token: %s holds no single host directory besides github.com with a single store file\n' \
-            "$HOME/.config/research-harness/forge" >&2
+        printf 'agentbox: glab gets no token: %s holds no single host directory besides %s\n' \
+            "$HOME/.config/research-harness/forge" "github.com with a single store file of that host" >&2
         return 0
     fi
-    set -- "$2" "${1%/*}"
-    GITLAB_HOST=${2##*/}
-    GITLAB_TOKEN=$1
+    GITLAB_HOST=${1%% *}
+    GITLAB_TOKEN=${1#* }
     export GITLAB_HOST GITLAB_TOKEN
 }
 

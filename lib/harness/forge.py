@@ -18,11 +18,12 @@ token and every other owner of the host the default's, or none. The get-only hel
 the file and never writes it: a plain `store --file` erases the file's line on a `reject`, as
 after a token that expired.
 
-`render` exits 2, with one line that names the path, on a host directory whose name is no host
-name, a `<name>` outside `[A-Za-z0-9-]+` or starting with `-`, a store file, after symbolic links,
-that the group or others can read (the line names its mode), a store file that it cannot read,
-and a store file whose text is not the one line `https://<user>:<token>@<host>` with `<host>` its
-directory's name. It names no token.
+`render` exits 2, with one line that names the path, on a store or host directory that it cannot
+list, a host directory whose name is no host name in lower case, a `<name>` outside
+`[A-Za-z0-9-]+` or starting with `-`, a store file, after symbolic links, that is no regular file
+or that the group or others can read (the line names its mode), a store file that it cannot read,
+and a store file whose bytes are not the one line `https://<user>:<token>@<host>` with `<host>`
+its directory's name, a CR before the line feed included. It names no token.
 
 `plan_files(home)` plans the rendered file at `~/.config/research-harness/forge.gitconfig`, mode
 600, beside the store and not inside it: git exits fatal on an `include` that it cannot read, and
@@ -57,8 +58,9 @@ GITHUB = "github.com"
 GIST = "gist.github.com"
 # An owner's name: letters, digits and `-`, not starting with `-`.
 OWNER = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
-# A host name: labels of letters, digits and `-`, joined by dots.
-HOST = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*)*")
+# A host name in lower case, as the gh wrapper and sandbox/agentbox look it up: labels of
+# letters, digits and `-`, joined by dots.
+HOST = re.compile(r"[a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)*")
 # The one line of a store file; the host is compared with the directory's name.
 LINE = re.compile(r"https://[^:/@\s]+:[^:/@\s]+@([^/@\s]+)\n?")
 # The bits of a store file's mode that let the group or others read it.
@@ -73,11 +75,15 @@ def render(store: pathlib.Path) -> str:
         "# The credential helpers of the forge token store, rendered by `harness install`. Include",
         "# this file after the credential lines of ~/.gitconfig.",
     ]
-    hosts = sorted(p for p in store.iterdir() if p.is_dir())
+    hosts = [p for p in listed(store) if p.is_dir()]
     for directory in hosts:
         if not HOST.fullmatch(directory.name):
-            raise HarnessError(f"{directory} is a directory of the token store whose name is no host name")
-        files = {p.name.removesuffix(SUFFIX): checked(p) for p in sorted(directory.glob(f"*{SUFFIX}"))}
+            raise HarnessError(
+                f"{directory} is a directory of the token store whose name is no host name in lower case"
+            )
+        files = {
+            p.name.removesuffix(SUFFIX): checked(p) for p in listed(directory) if p.name.endswith(SUFFIX)
+        }
         lines += section(f"https://{directory.name}", files.get(DEFAULT))
         lines += [
             line
@@ -90,24 +96,38 @@ def render(store: pathlib.Path) -> str:
     return "".join(f"{line}\n" for line in lines)
 
 
+def listed(directory: pathlib.Path) -> list[pathlib.Path]:
+    """The entries of `directory`, sorted by name; exits 2, naming it, where it cannot be listed."""
+    try:
+        return sorted(directory.iterdir())
+    except OSError as e:
+        raise HarnessError(f"{directory} cannot be listed: {e.strerror}") from None
+
+
 def checked(path: pathlib.Path) -> pathlib.Path:
-    """`path`, a store file whose name, mode and line `render` accepts; exits 2 otherwise, with one
-    line that names the file, and its mode where that is the cause."""
+    """`path`, a store file whose name, kind, mode and line `render` accepts; exits 2 otherwise,
+    with one line that names the file, and its mode where that is the cause."""
     name = path.name.removesuffix(SUFFIX)
     if not OWNER.fullmatch(name):
         raise HarnessError(
             f"{path}: {name!r} is no owner's name, which holds letters, digits and -, and starts with no -"
         )
     try:
-        mode = stat.S_IMODE(path.stat().st_mode)
+        st = path.stat()
     except OSError as e:
         raise HarnessError(f"{path} cannot be read: {e.strerror}") from None
+    # A FIFO would block the read for ever.
+    if not stat.S_ISREG(st.st_mode):
+        raise HarnessError(f"{path} is no regular file")
+    mode = stat.S_IMODE(st.st_mode)
     if mode & READABLE:
         raise HarnessError(
             f"{path} has mode {mode:03o}: the group or others can read its token; chmod 600 it"
         )
     try:
-        text = path.read_text()
+        # Bytes, decoded with no newline translation: git keeps a CR, so a CR LF line gives git no
+        # password, and the check refuses it.
+        text = path.read_bytes().decode()
     except (OSError, UnicodeDecodeError) as e:
         raise HarnessError(f"{path} cannot be read: {e.__class__.__name__}") from None
     found = LINE.fullmatch(text)
@@ -230,7 +250,8 @@ class Git:
 
 
 def fill_cases(check: Check, root: pathlib.Path) -> None:
-    """`render` on a store with an owner, a default and a GitLab group, with `GENERIC_HELPER`
+    """`render` on a store with an owner, a default, a GitLab group and a file that is no store
+    file, with `GENERIC_HELPER`
     before it: each URL's password, a `reject` that keeps the owner's file, and a store without a
     default; a store path that holds a space, quotes and a backslash; and a store without
     `github.com`, which gets no section of gist."""
@@ -240,6 +261,8 @@ def fill_cases(check: Check, root: pathlib.Path) -> None:
     owner = store_file(store, GITHUB, "Example-A", tokens["Example-A"])
     store_file(store, GITHUB, DEFAULT, tokens[DEFAULT])
     store_file(store, "gitlab.example.org", "group-a", tokens["group-a"])
+    # A file that is no store file, which `render` leaves alone.
+    (store / GITHUB / "notes.txt").write_text("notes\n")
     git = Git(root / "full", store)
     for url, want, label in [
         (
@@ -318,14 +341,54 @@ class Install:
 
 
 def install_refusal_cases(check: Check, root: pathlib.Path) -> None:
-    """`harness install --apply` with a store file that others or the group can read, one named
-    `-x.store`, one whose line names another host, one with a second line, one in a host
-    directory whose name is no host name, and a directory at the rendered file: each exits 2,
-    names the path and writes nothing. With a valid store and a
-    `~/.gitconfig` without the include, the notice and the rendered file; with the include, no
-    notice."""
+    """`harness install --apply` with a store file that others or the group can read, also through
+    a symbolic link, one named `-x.store`, one whose line names another host, one with a second
+    line, one whose line ends in CR LF or a lone CR, a FIFO, a host directory whose name is no host
+    name or holds a capital, a directory at the rendered file, and, where the user is not root, a
+    store or host directory that cannot be listed: each exits 2, names the path and writes nothing.
+    With a valid store and a `~/.gitconfig` without the include, or with an include of another
+    file only, the notice and the rendered file; with the include, no notice; a `default.store`
+    that is a symbolic link to a file of mode 600 renders."""
     installs = Install(check, root)
     token = fake_token("a")
+    for label, make, words in refusals(token):
+        base, store = installs.fresh()
+        named = make(store)
+        try:
+            code, out = installs.apply(base)
+        finally:
+            unlock(store)
+        written = [
+            p
+            for p in (base / "home" / RENDERED, base / "home" / ".claude" / "settings.json")
+            if p.exists() and p != named
+        ]
+        check(
+            code == REFUSED
+            and "Traceback" not in out
+            and str(named) in out
+            and all(w in out for w in words)
+            and token not in out
+            and not written,
+            f"{label}: the install exits 2, names the file{' and its mode' if words else ''}, names no "
+            f"token and writes nothing: {code}, {out.strip().splitlines()[-1:]}, {written}",
+        )
+    notice_cases(check, installs, token)
+
+
+def unlock(store: pathlib.Path) -> None:
+    """Give the directories of `store` back the mode that lets the scratch directory go."""
+    if store.is_dir() and not store.is_symlink():
+        store.chmod(0o700)
+        for p in store.iterdir():
+            if p.is_dir() and not p.is_symlink():
+                p.chmod(0o700)
+
+
+def refusals(token: str) -> list[tuple[str, Callable[[pathlib.Path], pathlib.Path], list[str]]]:
+    """[(label, make, words)] of the stores that the install refuses: `make(store)` writes one
+    below the store directory `store`, which does not exist yet, with `token`, and gives the path
+    that the refusal names; `words` are the other words of its line."""
 
     def readable(store: pathlib.Path) -> pathlib.Path:
         return store_file(store, GITHUB, "Example-A", token, 0o644)
@@ -358,34 +421,70 @@ def install_refusal_cases(check: Check, root: pathlib.Path) -> None:
         (store / "bad host").mkdir(parents=True)
         return store / "bad host"
 
-    for label, make, words in [
+    def capital_host(store: pathlib.Path) -> pathlib.Path:
+        store_file(store, "GitHub.com", DEFAULT, token)
+        return store / "GitHub.com"
+
+    def crlf(store: pathlib.Path) -> pathlib.Path:
+        path = store_file(store, GITHUB, "Example-A", token)
+        fsutil.write_private(path, f"https://x-access-token:{token}@github.com\r\n".encode())
+        return path
+
+    def lone_cr(store: pathlib.Path) -> pathlib.Path:
+        path = store_file(store, GITHUB, "Example-A", token)
+        fsutil.write_private(path, f"https://x-access-token:{token}@github.com\r".encode())
+        return path
+
+    def fifo(store: pathlib.Path) -> pathlib.Path:
+        path = store / GITHUB / f"Example-A{SUFFIX}"
+        path.parent.mkdir(parents=True)
+        os.mkfifo(path, 0o600)
+        return path
+
+    def linked_readable(store: pathlib.Path) -> pathlib.Path:
+        # The link's own mode is not the file's: the file it names is readable by others.
+        target = store_file(store.parent / "elsewhere", GITHUB, "account", token, 0o644)
+        link = store / GITHUB / f"{DEFAULT}{SUFFIX}"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(target)
+        return link
+
+    def unlistable_store(store: pathlib.Path) -> pathlib.Path:
+        store_file(store, GITHUB, DEFAULT, token)
+        store.chmod(0o300)
+        return store
+
+    def unlistable_host(store: pathlib.Path) -> pathlib.Path:
+        store_file(store, GITHUB, DEFAULT, token)
+        (store / GITHUB).chmod(0o300)
+        return store / GITHUB
+
+    made: list[tuple[str, Callable[[pathlib.Path], pathlib.Path], list[str]]] = [
         ("a store file of mode 644", readable, ["644"]),
         ("a store file of mode 640", group_readable, ["640"]),
         ("a store file named -x.store", dashed, []),
         ("a store file whose line names another host", other_host, []),
         ("a store file with a second line", two_lines, []),
+        ("a store file whose line ends in CR LF", crlf, []),
+        ("a store file whose line ends in a lone CR", lone_cr, []),
+        ("a store file that is a FIFO", fifo, []),
+        ("default.store, a symbolic link to a file of mode 644", linked_readable, ["644"]),
         ("a host directory whose name is no host name", bad_host, []),
+        ("a host directory whose name holds a capital", capital_host, []),
         ("a directory at the rendered file", rendered_directory, []),
-    ]:
-        base, store = installs.fresh()
-        named = make(store)
-        code, out = installs.apply(base)
-        written = [
-            p
-            for p in (base / "home" / RENDERED, base / "home" / ".claude" / "settings.json")
-            if p.exists() and p != named
+    ]
+    # Root lists a directory of mode 300, so these two refuse nothing there.
+    if os.geteuid() != 0:
+        made += [
+            ("a store directory that cannot be listed", unlistable_store, []),
+            ("a host directory that cannot be listed", unlistable_host, []),
         ]
-        check(
-            code == REFUSED
-            and "Traceback" not in out
-            and str(named) in out
-            and all(w in out for w in words)
-            and token not in out
-            and not written,
-            f"{label}: the install exits 2, names the file{' and its mode' if words else ''}, names no "
-            f"token and writes nothing: {code}, {out.strip().splitlines()[-1:]}, {written}",
-        )
+    return made
 
+
+def notice_cases(check: Check, installs: Install, token: str) -> None:
+    """The notice of `harness install --apply` with a valid store, a symbolic link as
+    `default.store`, and no store, as `install_refusal_cases` describes them."""
     base, store = installs.fresh()
     store_file(store, GITHUB, DEFAULT, token)
     code, out = installs.apply(base)
@@ -400,6 +499,12 @@ def install_refusal_cases(check: Check, root: pathlib.Path) -> None:
         f"a valid store and a ~/.gitconfig without the include: exit 0, one notice line, and the "
         f"rendered file of mode 600: {code}, {lines}, {rendered.is_file()}",
     )
+    (base / "home" / ".gitconfig").write_text("[include]\n\tpath = ~/.config/other.gitconfig\n")
+    code, out = installs.apply(base)
+    check(
+        code == 0 and out.count("does not include") == 1,
+        f"with an include of another file only in ~/.gitconfig, the notice: {code}",
+    )
     (base / "home" / ".gitconfig").write_text(
         "[include]\n\tpath = ~/.config/research-harness/forge.gitconfig\n"
     )
@@ -413,6 +518,17 @@ def install_refusal_cases(check: Check, root: pathlib.Path) -> None:
     check(
         code == 0 and "does not include" not in out and not (base / "home" / RENDERED).exists(),
         f"without the store directory, no rendered file and no notice: {code}",
+    )
+    base, store = installs.fresh()
+    target = store_file(base / "elsewhere", GITHUB, "account", token)
+    (store / GITHUB).mkdir(parents=True)
+    (store / GITHUB / f"{DEFAULT}{SUFFIX}").symlink_to(target)
+    code, out = installs.apply(base)
+    rendered = base / "home" / RENDERED
+    check(
+        code == 0 and rendered.is_file() and rendered.read_text() == render(store),
+        f"default.store, a symbolic link to a file of mode 600: the install renders it: {code}, "
+        f"{out.strip().splitlines()[-1:]}",
     )
 
 

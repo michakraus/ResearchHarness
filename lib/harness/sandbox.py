@@ -563,7 +563,8 @@ def fixture_sandbox() -> dict[str, Any]:
 
 def selftest() -> tuple[int, int]:
     """The shipped policy, each refusal of `load_policy`, each rule of `srt_settings` on a fixture
-    and on the settings template, the gh wrapper in `plan_files`, and sandbox/agentbox on scratch
+    and on the settings template, the forge token store in the frontends' guard lists
+    (`forge_guard_cases`), the gh wrapper in `plan_files`, and sandbox/agentbox on scratch
     homes (`agentbox_cases`):
     (cases, wrong). The cases of `harness install` on scratch HOMEs, `install_file_cases`, run in
     the selftest of install.py."""
@@ -580,6 +581,7 @@ def selftest() -> tuple[int, int]:
         policy_cases(check, root)
         settings_cases(check, root)
         template_cases(check)
+        forge_guard_cases(check)
         mach_lookup_cases(check, root)
         plan_network_cases(check, root / "plan")
         plan_wrapper_cases(check, root / "wrapper")
@@ -1365,6 +1367,26 @@ def forge_template_cases(
         )
 
 
+def forge_guard_cases(check: Check) -> None:
+    """The forge token store in the frontends' own read denies: the settings template's
+    `permissions.deny` holds its `Read` rule, and the guard list of OpenCode, oh-my-pi and
+    Antigravity, rendered with the dummy profile, its path below the dummy home."""
+    template = cast("dict[str, Any]", jsonio.load(REPO / "settings" / "settings.proposal.json"))
+    rule = "Read(/{home}/.config/research-harness/forge/**)"
+    check(rule in template["permissions"]["deny"], f"the template's permissions.deny holds {rule}")
+    profile = profile_module.load(profile_module.DUMMY, home=profile_module.DUMMY_HOME)
+    path = f"{profile_module.DUMMY_HOME}/.config/research-harness/forge/**"
+    opencode = REPO / "adapters" / "opencode" / "plugins" / "guard-paths.json"
+    lists = {
+        "opencode": profile_module.render_file(opencode, profile),
+        "omp": frontends.adapter("omp").guard_paths(profile),
+        "antigravity": frontends.adapter("antigravity").guard_paths(profile),
+    }
+    for name, text in lists.items():
+        deny = cast("dict[str, list[str]]", jsonio.loads(text, where=name))["deny"]
+        check(path in deny, f"{name}: the rendered guard list denies {path}")
+
+
 def template_cases(check: Check) -> None:
     """`srt_settings` of each frontend on the settings template's `sandbox` object, with a fixture
     domain list, and the shipped policy."""
@@ -1603,23 +1625,25 @@ class Box:
 
     def forge(self) -> dict[str, str]:
         """The variables of the forges that a run with the store of `fresh` exports: no prompt of
-        git, the GitLab host and token, and GLAB_CONFIG_DIR, the glab subdirectory of the one
-        directory in tmpdir/, or {} where tmpdir/ does not hold exactly one directory."""
+        git, the GitLab host and token, and GLAB_CONFIG_DIR and GH_CONFIG_DIR, the glab and gh
+        subdirectories of the one directory in tmpdir/, or {} where tmpdir/ does not hold exactly
+        one directory."""
         made = self.made()
         if len(made) != 1:
             return {}
         return {
             "GIT_TERMINAL_PROMPT": "0",
             "GLAB_CONFIG_DIR": f"{made[0]}/glab",
+            "GH_CONFIG_DIR": f"{made[0]}/gh",
             "GITLAB_HOST": BOX_GITLAB,
             "GITLAB_TOKEN": BOX_TOKEN,
         }
 
-    def glab_empty(self) -> bool:
-        """Whether the run directory's glab subdirectory is an empty directory."""
+    def configs_empty(self) -> bool:
+        """Whether the run directory's glab and gh subdirectories are empty directories."""
         made = self.made()
-        glab = made[0] / "glab" if len(made) == 1 else None
-        return glab is not None and glab.is_dir() and not any(glab.iterdir())
+        configs = [made[0] / "glab", made[0] / "gh"] if len(made) == 1 else []
+        return bool(configs) and all(d.is_dir() and not any(d.iterdir()) for d in configs)
 
     def env(self, **extra: str) -> dict[str, str]:
         """The environment of a run: HOME, a PATH with path/ first, TMPDIR the directory tmpdir/,
@@ -1731,11 +1755,13 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
         seen = box.environment() if got is not None else {}
         caches = box.caches()
         check(
-            caches and seen == {**box.env(), "AGENTBOX": "1", **caches, **box.forge()} and box.glab_empty(),
+            caches
+            and seen == {**box.env(), "AGENTBOX": "1", **caches, **box.forge()}
+            and box.configs_empty(),
             f"agentbox {name}: the environment is the caller's with AGENTBOX=1, npm_config_cache, "
             f"UV_CACHE_DIR and TEXMFVAR each naming its subdirectory of one new directory below TMPDIR, "
-            f"GIT_TERMINAL_PROMPT=0, the store's GITLAB_HOST and GITLAB_TOKEN, and GLAB_CONFIG_DIR its "
-            f"empty subdirectory glab: "
+            f"GIT_TERMINAL_PROMPT=0, the store's GITLAB_HOST and GITLAB_TOKEN, and GLAB_CONFIG_DIR and "
+            f"GH_CONFIG_DIR its empty subdirectories glab and gh: "
             f"{box.made()}, { {k: v for k, v in seen.items() if box.env().get(k) != v} }",
         )
 
@@ -1904,13 +1930,15 @@ def resolution_cases(check: Check, root: pathlib.Path) -> None:
 
 def forge_cases(check: Check, root: pathlib.Path) -> None:
     """The variables of the forges in a run: for each frontend, the store's GitLab host and token,
-    and a new GLAB_CONFIG_DIR, in place of the caller's GITLAB_TOKEN and GLAB_CONFIG_DIR, and
-    without the caller's GITLAB_ACCESS_TOKEN and OAUTH_TOKEN. With two GitLab directories, a GitLab
-    directory with two store files, only a `github.com` directory, a GitLab directory with no store
-    file, a store file whose line holds no token, or no store, neither GitLab variable, the caller's
+    and a new GLAB_CONFIG_DIR and GH_CONFIG_DIR, in place of the caller's GITLAB_TOKEN,
+    GLAB_CONFIG_DIR and GH_CONFIG_DIR, and without the caller's GITLAB_ACCESS_TOKEN and
+    OAUTH_TOKEN. With two GitLab directories, a GitLab directory with two store files, only a
+    `github.com` directory, a GitLab directory with no store file, a store file whose line holds no
+    token, names another host, holds a % in its token or ends in CR LF, a store file that cannot be
+    read where the user is not root, or no store, neither GitLab variable, the caller's
     GITLAB_TOKEN removed and one line on stderr that names the store."""
     caller = {"GLAB_CONFIG_DIR": "/caller/glab", "GITLAB_TOKEN": "caller", "OAUTH_TOKEN": "caller"}
-    caller |= {"GITLAB_ACCESS_TOKEN": "caller"}
+    caller |= {"GITLAB_ACCESS_TOKEN": "caller", "GH_CONFIG_DIR": "/caller/gh"}
     for name in ("claude", "opencode", "omp", "agy"):
         box = Box.fresh(root / "caller", name)
         p = box.run(name, variables=caller)
@@ -1918,11 +1946,12 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
         kept = {k: v for k, v in box.env(**caller).items() if k not in GITLAB_REMOVED}
         want = {**kept, "AGENTBOX": "1", **box.caches(), **box.forge()}
         check(
-            p.returncode == 0 and p.stderr == "" and box.forge() and seen == want and box.glab_empty(),
-            f"agentbox {name} with the caller's GLAB_CONFIG_DIR, GITLAB_TOKEN, GITLAB_ACCESS_TOKEN and "
-            f"OAUTH_TOKEN: the store's host and token, a new empty GLAB_CONFIG_DIR, and neither of the "
-            f"other two: {p.returncode}, {p.stderr!r}, "
-            f"{ {k: seen.get(k) for k in ('GLAB_CONFIG_DIR', 'GITLAB_HOST', *GITLAB_REMOVED)} }",
+            p.returncode == 0 and p.stderr == "" and box.forge() and seen == want and box.configs_empty(),
+            f"agentbox {name} with the caller's GLAB_CONFIG_DIR, GH_CONFIG_DIR, GITLAB_TOKEN, "
+            f"GITLAB_ACCESS_TOKEN and OAUTH_TOKEN: the store's host and token, a new empty "
+            f"GLAB_CONFIG_DIR and GH_CONFIG_DIR, and neither of the other two: {p.returncode}, "
+            f"{p.stderr!r}, {[seen.get(k) for k in ('GLAB_CONFIG_DIR', 'GH_CONFIG_DIR', 'GITLAB_HOST')]}, "
+            f"{[seen.get(k) for k in GITLAB_REMOVED]}",
         )
 
     store = FORGE_STORE
@@ -1950,14 +1979,36 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
     def no_store(h: pathlib.Path) -> None:
         shutil.rmtree(h / store)
 
-    for label, change in [
+    def line(text: str) -> Callable[[pathlib.Path], None]:
+        def change(h: pathlib.Path) -> None:
+            fsutil.write_private(h / store / BOX_GITLAB / "group-a.store", text.encode())
+
+        return change
+
+    def unreadable(h: pathlib.Path) -> None:
+        (h / store / BOX_GITLAB / "group-a.store").chmod(0)
+
+    changes: list[tuple[str, Callable[[pathlib.Path], None]]] = [
         ("two GitLab directories", second_host),
         ("a GitLab directory with two store files", second_file),
         ("only a github.com directory", github_only),
         ("a GitLab directory with no store file", no_file),
         ("a GitLab store file whose line holds no token", no_token),
         ("no token store", no_store),
-    ]:
+        (
+            "a GitLab store file whose line names another host",
+            line(f"https://oauth2:{BOX_TOKEN}@gitlab.x.org\n"),
+        ),
+        ("a GitLab store file whose token holds a %", line(f"https://oauth2:{BOX_TOKEN}%41@{BOX_GITLAB}\n")),
+        (
+            "a GitLab store file whose line ends in CR LF",
+            line(f"https://oauth2:{BOX_TOKEN}@{BOX_GITLAB}\r\n"),
+        ),
+    ]
+    # Root reads a file of mode 000.
+    if os.geteuid() != 0:
+        changes.append(("a GitLab store file that cannot be read", unreadable))
+    for label, change in changes:
         box = Box.fresh(root / "none", label.replace(" ", "-").replace(".", "-"))
         change(box.home)
         p = box.run("omp", variables={"GITLAB_TOKEN": "caller"})

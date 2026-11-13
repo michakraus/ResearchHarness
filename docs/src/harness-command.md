@@ -1673,7 +1673,8 @@ wrapper `scripts/gh-token.py` at `~/.local/bin/gh` (`plan_files`). Each frontend
 template's. The module exits with status 2 on a policy file that breaks its schema, and on a
 frontend's `network` entry that covers a `fetch` host. Its cases check the shipped policy, each
 refusal, each rendering rule on a fixture and on the settings template, the forge token store in
-the template and in each frontend's file (`forge_template_cases`), the frontend hosts of
+the template and in each frontend's file (`forge_template_cases`) and in the frontends' guard lists
+(`forge_guard_cases`), the frontend hosts of
 `plan_files` with overlays (`plan_network_cases`), the wrapper in the plan
 (`plan_wrapper_cases`), and the launcher on scratch homes with a stub `srt` (`agentbox_cases`,
 with the variables of the forges in `forge_cases`). Its `install_file_cases`, which the cases of
@@ -1688,9 +1689,10 @@ and the get-only helper of `default.store`, then a reset and the get-only helper
 store file, and a reset of `gist.github.com` where `github.com/` exists. `install` writes it at
 `~/.config/research-harness/forge.gitconfig`, mode 600, where the store exists (`plan_files`), and
 prints one notice line where `~/.gitconfig` does not include it (`notice`). The module exits with
-status 2 on a store file that the group or others can read, a file name that is no owner's name, a
-line that is not `https://<user>:<token>@<host>` of its directory, and a host directory whose name
-is no host name. Its cases run `git credential fill` and `reject` against the rendered file with
+status 2 on a store or host directory that it cannot list, a store file that is no regular file or
+that the group or others can read, a file name that is no owner's name, a line that is not
+`https://<user>:<token>@<host>` of its directory, and a host directory whose name is no host name
+in lower case. Its cases run `git credential fill` and `reject` against the rendered file with
 stub store files, and `harness install` on scratch homes. [The forge
 tokens](components/sandbox.md#the-forge-tokens) describes the store and your steps.
 
