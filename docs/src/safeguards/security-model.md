@@ -64,10 +64,11 @@ each mechanism: [Sandboxes](sandbox.md), [Permissions](permissions.md),
   Anthropic profile's `~/.config/anthropic/credentials` for `claude`; `auth.json` and
   `mcp-auth.json` in `~/.local/share/opencode` for `opencode`; `agent.db`, `agent.db-wal` and
   `.env` in `~/.omp/agent` for `omp`; and `~/.gemini/jetski-standalone-oauth-token` for
-  `antigravity`. The sandbox of the whole process cannot tell the frontend from its own shell.
-  The `claude` settings also allow writes to `~/.config/anthropic/credentials` and to the lock
-  directory `~/.config/anthropic/credentials.lock`, which Claude Code makes before a token
-  refresh.
+  `antigravity`. The settings of `opencode` and `omp` also allow reads of Kaimon's token
+  `~/.config/kaimon/auth-token`, which those of `claude` and `antigravity` deny. The sandbox of
+  the whole process cannot tell the frontend from its own shell. The `claude` settings also allow
+  writes to `~/.config/anthropic/credentials` and to the lock directory
+  `~/.config/anthropic/credentials.lock`, which Claude Code makes before a token refresh.
 - **An allowed host takes what a command sends to it.** The network allowlist names hosts, not
   methods, so a sandboxed command can send a write to any host of `allowedDomains`. The harness
   list holds no `archive.org`, because its `*.archive.org` form would cover `web.archive.org`,

@@ -5,11 +5,12 @@ settings and from sandbox/policy.toml.
 `[setup]` chooses, `~/.config/research-harness/sandbox/<frontend>.json` (`plan_files`). The
 template's `sandbox` section stays the source of the shared lists; the policy file holds only what
 `srt` adds: the read limit's `allow` list, and per frontend its `state` paths, its extra
-`deny_write` paths, its `own` paths, the template's deny entries that it reads and writes itself,
-its `read_files`, files below a read deny directory that it reads and does not write, and its
-`network`, the hosts that it reaches itself, in the grammar of `network.frontend_entries`. The
-overlay `network.toml` beside the profile adds the user's hosts to a frontend's `network` in a
-`[frontend.<name>]` table (`network.py`).
+`deny_write` paths, its `own` paths, the template's deny entries that it reads and writes itself
+or, under a write deny that keeps them read-only, reads only, its `read_files`, files below a
+read deny directory that it reads and does not write, and its `network`, the hosts that it
+reaches itself, in the grammar of `network.frontend_entries`. The overlay `network.toml` beside
+the profile adds the user's hosts to a frontend's `network` in a `[frontend.<name>]` table
+(`network.py`).
 
 `srt_settings` gives one frontend's object, as docs/src/components/sandbox.md describes:
 
@@ -434,12 +435,18 @@ network = []
 """
 # The fixture's table of omp, which the refusals of `read_files` and `network` change.
 FIXTURE_OMP = '[frontend.omp]\nstate = ["~/.omp"]\ndeny_write = []\nown = []\nread_files = []\nnetwork = []\n'
-# The credential files that each frontend reads and writes itself, and the provider tokens that
-# OpenCode reads, as the shipped policy and template render them with the home directory /h.
+# The credential files that each frontend reads itself, as the shipped policy and template render
+# them with the home directory /h. Kaimon's token is shared: OpenCode and oh-my-pi read it to reach
+# Kaimon, and the write deny ~/.config above it keeps it read-only.
+SHIPPED_KAIMON = "/h/.config/kaimon/auth-token"
 SHIPPED_OWN = {
     "claude": ("/h/.claude.json", "/h/.claude/.credentials.json", "/h/.config/anthropic/credentials"),
-    "opencode": ("/h/.local/share/opencode/auth.json", "/h/.local/share/opencode/mcp-auth.json"),
-    "omp": ("/h/.omp/agent/agent.db", "/h/.omp/agent/agent.db-wal", "/h/.omp/agent/.env"),
+    "opencode": (
+        "/h/.local/share/opencode/auth.json",
+        "/h/.local/share/opencode/mcp-auth.json",
+        SHIPPED_KAIMON,
+    ),
+    "omp": ("/h/.omp/agent/agent.db", "/h/.omp/agent/agent.db-wal", "/h/.omp/agent/.env", SHIPPED_KAIMON),
     "antigravity": ("/h/.gemini/jetski-standalone-oauth-token",),
 }
 # Claude Code's Anthropic credentials directory and the lock directory that it makes before a
@@ -1183,13 +1190,31 @@ def template_cases(check: Check) -> None:
             f"{name}: each credential path is a read deny once, as itself or as its glob, its own none: "
             f"{ {c: k for c, k in counts.items() if k != 1} }",
         )
-        others = [p for other, paths in SHIPPED_OWN.items() if other != name for p in paths]
+        # A path that two frontends own is no other frontend's path for either of them.
+        others = [
+            p
+            for other, paths in SHIPPED_OWN.items()
+            if other != name
+            for p in paths
+            if p not in SHIPPED_OWN[name]
+        ]
         check(
             all(p in fs["allowRead"] and p not in fs["denyRead"] + fs["denyWrite"] for p in SHIPPED_OWN[name])
             and all(p in fs["denyRead"] for p in others),
             f"{name}: its own credential files are read allows and in no deny list, every other frontend's "
             f"a read deny: {[p for p in SHIPPED_OWN[name] if p in fs['denyRead']]}, "
             f"{[p for p in others if p not in fs['denyRead']]}",
+        )
+        reads = name in {"opencode", "omp"}
+        wanted = "a read allow under the write deny ~/.config" if reads else "a read deny"
+        check(
+            (SHIPPED_KAIMON in fs["allowRead"]) == reads
+            and (SHIPPED_KAIMON in fs["denyRead"]) != reads
+            and (not reads or "/h/.config" in fs["denyWrite"])
+            and not below(SHIPPED_KAIMON, fs["allowWrite"]),
+            f"{name}: Kaimon's token is {wanted}, and no write allow covers it: "
+            f"read allow {SHIPPED_KAIMON in fs['allowRead']}, read deny {SHIPPED_KAIMON in fs['denyRead']}, "
+            f"write allows {fs['allowWrite']}",
         )
         check(
             {"/h/**/.env", "/h/**/.env.*", "/h/.cache/gh", "/h/.cache/kaimon/sessions.json"}
@@ -1274,11 +1299,13 @@ def template_cases(check: Check) -> None:
         f"credentials.files; opencode's file keeps them there: {filesystem['denyRead'][keys : keys + 3]}",
     )
     literal = [p for p in opencode["denyRead"] if p.startswith(SHIPPED_KEYS)]
-    # antigravity's own entry and opencode's follow ~/.config/api-keys, so both put it at one index.
+    # antigravity's own entry follows ~/.config/api-keys, so its list without opencode's own entries
+    # holds the literal at the index of opencode's glob.
     antigravity = cast("dict[str, list[str]]", rendered["antigravity"]["filesystem"])
+    unowned = [p for p in antigravity["denyRead"] if p not in SHIPPED_OWN["opencode"]]
     check(
         literal == [f"{SHIPPED_KEYS}/*"]
-        and opencode["denyRead"].index(literal[0]) == antigravity["denyRead"].index(SHIPPED_KEYS)
+        and opencode["denyRead"].index(literal[0]) == unowned.index(SHIPPED_KEYS)
         and all(t in opencode["allowRead"] for t in SHIPPED_TOKENS),
         f"opencode: ~/.config/api-keys is the read deny glob ~/.config/api-keys/* in its place, and its "
         f"three tokens are read allows: {literal}",

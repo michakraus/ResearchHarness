@@ -32,25 +32,33 @@ files from both.
 | `read.allow` | the paths that every frontend reads under the read limit |
 | `frontend.<name>.state` | the frontend's own directories and files, which it reads and writes |
 | `frontend.<name>.deny_write` | write denies that the frontend adds to the template's |
-| `frontend.<name>.own` | the template's deny entries that the frontend reads and writes itself: its own credential files, by name |
+| `frontend.<name>.own` | the template's deny entries that the frontend reads itself: its own credential files, by name, and a file that it reads only, which a write deny above it keeps read-only |
 | `frontend.<name>.read_files` | files below a read deny directory that the frontend reads and does not write |
 | `frontend.<name>.network` | hosts that the frontend itself reaches, which its file adds to the template's `allowedDomains` |
 
 The read limit denies reads of the whole home directory and allows the paths of `read.allow`
 again. A path that the template denies stays hidden inside an allowed path: in `srt` a deny inside
 an allowed path wins. Each frontend's `own` lifts its own credential files from the deny lists of
-its file alone, and every other frontend's file still denies reads of them:
+its file alone, and every frontend that does not name a file in its `own` still denies reads of
+it:
 
 | frontend | `own` |
 |:--|:--|
 | `claude` | `~/.claude.json`, `~/.claude/.credentials.json`, `~/.config/anthropic/credentials` |
-| `opencode` | `~/.local/share/opencode/auth.json`, `~/.local/share/opencode/mcp-auth.json` |
-| `omp` | `~/.omp/agent/agent.db`, `~/.omp/agent/agent.db-wal`, `~/.omp/agent/.env` |
+| `opencode` | `~/.local/share/opencode/auth.json`, `~/.local/share/opencode/mcp-auth.json`, `~/.config/kaimon/auth-token` |
+| `omp` | `~/.omp/agent/agent.db`, `~/.omp/agent/agent.db-wal`, `~/.omp/agent/.env`, `~/.config/kaimon/auth-token` |
 | `antigravity` | `~/.gemini/jetski-standalone-oauth-token` |
 
+Kaimon's token `~/.config/kaimon/auth-token` is shared: OpenCode reads it in its configuration,
+and oh-my-pi reads it in the header command of its connection to Kaimon. Neither writes it, and
+the write deny `~/.config` above it stays in both files, so the token stays read-only. The files
+of `claude` and `antigravity` deny its read: Claude Code and Antigravity keep Kaimon's bearer in
+their own configuration, `~/.claude.json` and `~/.gemini/config/mcp_config.json`.
+
 Claude Code writes `~/.claude.json` itself; a write deny of it would stop the whole process under
-`srt`. The cost is that a command that a frontend runs can also read and write the frontend's own
-files, because the sandbox of the whole process cannot tell the frontend from its own shell.
+`srt`. The cost is that a command that a frontend runs can also read the frontend's own files, and
+write those that the frontend writes, because the sandbox of the whole process cannot tell the
+frontend from its own shell.
 
 Claude Code reads its Anthropic profile in `~/.config/anthropic/`. Before a token refresh it makes
 the lock directory `~/.config/anthropic/credentials.lock`, and the refresh rewrites a file in
