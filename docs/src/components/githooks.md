@@ -288,7 +288,8 @@ file fits every repository.
 The matrix names Julia versions by alias, `min` and `1`, so the names of the checks stay the same
 in every repository without test groups. Branch protection needs those fixed names. Only the entry
 of Julia `1` on Ubuntu measures coverage and sends it to Codecov, once per test group. A repository
-that needs another job gets its own extra workflow file, not an edit of this one.
+that needs another job gets its own extra workflow file, not an edit of this one. No checkout
+keeps the token, because the build and the tests run code of the package and its dependencies.
 
 ### Test groups
 
@@ -397,7 +398,11 @@ of each repository that has a tracked `docs/make.jl`.
 It does not go into a repository that the profile key `docs_exceptions` or `docs_additions`
 names. Such a repository keeps its own file: its documentation is a pipeline of several jobs, or
 it needs an extra step. The doctests do not run here; the `doctest` job of `CI.yml` runs them. It
-runs on the same events as `CI.yml`, on Ubuntu with Julia `1`.
+runs on the same events as `CI.yml`, on Ubuntu with Julia `1`. The checkout does not keep the
+token: the deploy pushes from a new repository of its own, with `DOCUMENTER_KEY` or
+`GITHUB_TOKEN`. A private repository names `devbranch` in its `deploydocs` call: without it,
+Documenter reads the default branch with `git remote show origin`, which needs the token there,
+and falls back to `master`.
 
 ## `workflows/TagBot.yml`
 

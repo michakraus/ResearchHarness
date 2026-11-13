@@ -966,7 +966,30 @@
 - kind: defect
 - found: 2026-11-13, a CodeRabbit review of a pull request on a base package (comment 4567391241)
 
-### K160 · `spec-gate.py` reads the whole section for a `sections` cell such as `§J (J9)`, not the entry of that part.
+### K160 · The committed `opencode.jsonc` holds two `ask` rules of `bash` that `harness permissions` does not generate from the settings template.
+
+- location: `adapters/opencode/opencode.jsonc:260`
+- evidence: `python3.14 bin/harness permissions` prints `adapters/opencode/opencode.jsonc REPLACE`
+  with the two lines `-      "git push * :**": "ask",` and `-      "git -C * push * :**": "ask",`,
+  and `1 change(s) to make.`; `grep -n 'push \* :' settings/settings.proposal.json` finds nothing.
+  Either the template lacks the two asks, or the committed file keeps two rules that the template
+  dropped.
+- kind: defect
+- found: 2026-11-13, the fix round 1 of part E5c
+
+### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
+
+- location: `hooks/probe.py:1745`
+- evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
+  reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
+  calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
+  `matcher calls 471, 7.20 seconds`. The matcher calls stay at their bound, so the guard is right
+  and only its time is close to the limit. The case measures wall time while the other parts of
+  `harness test` run in parallel.
+- kind: defect
+- found: #282
+
+### K162 · `spec-gate.py` reads the whole section for a `sections` cell such as `§J (J9)`, not the entry of that part.
 
 - location: `scripts/spec-gate.py:183`
 - evidence: line 182 splits the cell at the commas, and line 183 keeps only the first word of

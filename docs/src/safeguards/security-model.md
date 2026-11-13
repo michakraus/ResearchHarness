@@ -69,6 +69,16 @@ each mechanism: [Sandboxes](sandbox.md), [Permissions](permissions.md),
   the whole process cannot tell the frontend from its own shell. The `claude` settings also allow
   writes to `~/.config/anthropic/credentials` and to the lock directory
   `~/.config/anthropic/credentials.lock`, which Claude Code makes before a token refresh.
+- **An agent can do with a forge token whatever the token allows.** The GitHub and GitLab
+  credentials are the fine-grained tokens of the token store `~/.config/research-harness/forge`,
+  one for each GitHub owner and one group access token for GitLab, so the forge limits each token
+  to its owner ([The forge tokens](../components/sandbox.md#the-forge-tokens)). Within that owner
+  the harness filters no operation: a token can push, open pull requests and issues, comment, and
+  for GitLab create projects in the group. Claude Code's sandbox denies reads of the store, but
+  `git` and `gh` run outside it and read it. Under `agentbox`, every frontend's settings allow reads
+  of the store, so any command that a frontend runs can read every token. A broad credential that
+  stays on the machine, such as a login of gh or a credential manager's entry, stays usable from a
+  session, where `git` and `gh` run outside the sandbox; removing them is your step.
 - **An allowed host takes what a command sends to it.** The network allowlist names hosts, not
   methods, so a sandboxed command can send a write to any host of `allowedDomains`. The harness
   list holds no `archive.org`, because its `*.archive.org` form would cover `web.archive.org`,

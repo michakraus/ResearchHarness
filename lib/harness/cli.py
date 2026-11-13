@@ -15,6 +15,7 @@ from . import wikilint
 from . import setup
 from . import jobsandbox
 from . import sandbox
+from . import forge
 
 # The modules of lib/harness/; the adapters of lib/harness/frontends.py follow `install`.
 MODULES = [install, update, frontmatter, githooks, repos, protection, fmt, profile]
@@ -39,6 +40,7 @@ MODULES.append(setup)
 MODULES.append(jobsandbox)
 MODULES.append(testrun)
 MODULES.append(sandbox)
+MODULES.append(forge)
 
 
 def modules():
@@ -93,6 +95,7 @@ def main(argv=None):
             jobsandbox,
             testrun,
             sandbox,
+            forge,
         ):
             module.register(sub)
     testrun.register(sub, modules)

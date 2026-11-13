@@ -116,6 +116,13 @@ Antigravity deny reads of the token: each keeps Kaimon's bearer in its own confi
 `~/.claude.json` and `~/.gemini/config/mcp_config.json`, which the frontend and its commands
 can read.
 
+**A frontend can read every forge token.** git and the gh wrapper read the token store
+`~/.config/research-harness/forge` inside the sandbox, so each frontend's settings allow its
+reads, and a command that a frontend runs can read each fine-grained token of it. `agentbox` also
+exports the one GitLab token as `GITLAB_TOKEN`. Each token reaches only its own owner's
+repositories on its forge, and the forge enforces that limit; the sandbox does not filter the
+operations ([The forge tokens](../components/sandbox.md#the-forge-tokens)).
+
 **A frontend can use every terminal of the user.** A frontend's terminal user interface puts its
 terminal, a `/dev/ttysNNN`, in raw mode, and of the terminal devices `srt` allows an ioctl only
 on `/dev/tty` by default. Each frontend's settings file therefore holds `"allowPty": true`, and
