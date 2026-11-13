@@ -95,8 +95,8 @@ rendering, the launcher and the probe in full.
 **Each frontend adds its own hosts.** A frontend's file adds the hosts of its `network` list in
 the policy file, and those of a `[frontend.<name>]` table of the overlay `network.toml`, to the
 template's `allowedDomains`; no other frontend's file gets them. Claude Code's token host
-`platform.claude.com` is in `claude`'s list, and `agy`'s login host `oauth2.googleapis.com` in
-`antigravity`'s. An entry `*.X` reaches every host below `X`,
+`platform.claude.com` is in `claude`'s list, and `agy`'s three Google hosts, for its login token,
+its model and its account, in `antigravity`'s. An entry `*.X` reaches every host below `X`,
 the hosts of other tenants of a shared domain included, so a cloud provider's `*.X` also reaches
 every other customer's endpoint below it. `srt` sets `NO_PROXY` for `localhost`, `127.0.0.1` and
 `::1`, and its macOS profile allows outbound connections to `localhost` where
@@ -130,8 +130,13 @@ services, such as the font and logging services. oh-my-pi's typo detection asks 
 `mul-xpc (Apple)_OpenStep` for each word of the prompt, so `omp`'s settings file adds that one
 service in `allowMachLookup`, from the key `mach_lookup` of the policy file. A command that
 oh-my-pi runs can reach it too: the service receives the words that it is sent and can write
-learned words to `~/Library/Spelling`, outside the sandbox. The files of the other three
-frontends add no service.
+learned words to `~/Library/Spelling`, outside the sandbox.
+
+**`agy` can reach the trust service.** `agy` is a Go program, and Go checks a TLS certificate
+through `com.apple.trustd.agent`, so `antigravity`'s settings file adds that service. `srt` names
+it a possible path for data out of the sandbox, and allows it otherwise only with
+`enableWeakerNetworkIsolation`, for every frontend; the policy gives it to `antigravity` alone. A
+command that `agy` runs can reach it too. The files of `claude` and `opencode` add no service.
 
 ## The daemon profiles
 

@@ -463,6 +463,10 @@ FIXTURE_OMP = (
 )
 # The service of oh-my-pi's typo detection, which the shipped policy allows to omp alone.
 SHIPPED_SPELL = "mul-xpc (Apple)_OpenStep"
+# The service through which agy, a Go program, checks a TLS certificate, and agy's own hosts, which
+# the shipped policy gives to antigravity alone.
+SHIPPED_TRUST = "com.apple.trustd.agent"
+AGY_HOSTS = ("oauth2.googleapis.com", "daily-cloudcode-pa.googleapis.com", "www.googleapis.com")
 # The credential files that each frontend reads itself, as the shipped policy and template render
 # them with the home directory /h. Kaimon's token is shared: OpenCode and oh-my-pi read it to reach
 # Kaimon, and the write deny ~/.config above it keeps it read-only.
@@ -604,16 +608,18 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
             "claude": ("platform.claude.com",),
             "opencode": (),
             "omp": (),
-            "antigravity": ("oauth2.googleapis.com",),
+            "antigravity": AGY_HOSTS,
         },
-        f"sandbox/policy.toml: claude's and antigravity's network is each one's token host, every other "
-        f"frontend's empty: "
+        f"sandbox/policy.toml: claude's network is its token host, antigravity's agy's three hosts, every "
+        f"other frontend's empty: "
         f"{hosts}",
     )
     services_of = {name: f.mach_lookup for name, f in policy.frontends.items()}
     check(
-        services_of == {"claude": (), "opencode": (), "omp": (SHIPPED_SPELL,), "antigravity": ()},
-        f"sandbox/policy.toml: omp looks up the spell service, no other frontend a service: {services_of}",
+        services_of
+        == {"claude": (), "opencode": (), "omp": (SHIPPED_SPELL,), "antigravity": (SHIPPED_TRUST,)},
+        f"sandbox/policy.toml: omp looks up the spell service, antigravity the trust service, no other "
+        f"frontend a service: {services_of}",
     )
 
     def refuses(change: Callable[[], object], error: type[Exception]) -> bool:
@@ -818,8 +824,10 @@ def mach_lookup_cases(check: Check, root: pathlib.Path) -> None:
         for name in frontends.FRONTENDS
     }
     check(
-        looked_up == {"claude": None, "opencode": None, "omp": [SHIPPED_SPELL], "antigravity": None},
-        f"omp's file allows the lookup of the spell service alone, no other frontend's file a service: "
+        looked_up
+        == {"claude": None, "opencode": None, "omp": [SHIPPED_SPELL], "antigravity": [SHIPPED_TRUST]},
+        f"omp's file allows the lookup of the spell service alone, antigravity's of the trust service "
+        f"alone, no other frontend's file a service: "
         f"{looked_up}",
     )
 
@@ -1158,8 +1166,8 @@ def plan_network_cases(check: Check, root: pathlib.Path) -> None:
     check(
         all(shipped[name] == template for name in ("opencode", "omp"))
         and shipped["claude"] == [*template, "platform.claude.com"]
-        and shipped["antigravity"] == [*template, "oauth2.googleapis.com"],
-        f"with no overlay, claude's file adds platform.claude.com and antigravity's oauth2.googleapis.com to "
+        and shipped["antigravity"] == [*template, *AGY_HOSTS],
+        f"with no overlay, claude's file adds platform.claude.com and antigravity's agy's three hosts to "
         f"the template's allowedDomains, every other file has the template's: "
         f"{ {name: d[len(template) :] for name, d in shipped.items()} }",
     )
@@ -1176,7 +1184,7 @@ def plan_network_cases(check: Check, root: pathlib.Path) -> None:
             "claude": [*template, "platform.claude.com"],
             "opencode": [*template, "*.example.org", "chat.example.net", "127.0.0.1:8080", "localhost:8080"],
             "omp": [*template, "*.example.org"],
-            "antigravity": [*template, "oauth2.googleapis.com"],
+            "antigravity": [*template, *AGY_HOSTS],
         },
         f"an overlay's frontend table reaches that frontend's file alone, after the policy's list, each "
         f"entry once: { {name: d[len(template) :] for name, d in tabled.items()} }",
@@ -1190,7 +1198,7 @@ def plan_network_cases(check: Check, root: pathlib.Path) -> None:
 
     after = domains('[frontend.antigravity]\nnetwork = ["a.example.org"]\n')["antigravity"]
     check(
-        after == [*template, "oauth2.googleapis.com", "a.example.org"],
+        after == [*template, *AGY_HOSTS, "a.example.org"],
         f"an overlay's entries follow the policy's in that frontend's file: {after[len(template) :]}",
     )
 
@@ -1208,7 +1216,7 @@ def plan_network_cases(check: Check, root: pathlib.Path) -> None:
     )
     check(
         denied["opencode"] == [*template, "keep.example.com", "a.example.org"]
-        and denied["antigravity"] == template,
+        and denied["antigravity"] == [*template, *AGY_HOSTS[1:]],
         f"an overlay deny without a port removes a frontend entry of the overlay and of the policy by its "
         f"host, and one with a port removes none: {denied['opencode'][len(template) :]}, "
         f"{denied['antigravity'][len(template) :]}",
