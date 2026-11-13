@@ -40,18 +40,45 @@ RETIRED lists files the template set no longer covers. Copying alone never remov
 the [compat] bumps; two bots would open each bump twice.
 """
 
+import argparse
+import difflib
 import os
 import pathlib
+import re
 import shutil
 import subprocess
+import tomllib
+from typing import cast
 
-from . import REPO, HarnessError, changing, outcome
+# `githooks_cases` imports this module too, and reads its names only when a case runs, so the
+# cycle resolves at import.
+from . import REPO, HarnessError, changing, githooks_cases, outcome
 from . import profile as profile_module
+from .fmt import Subcommands
 
 HOOKS = REPO / "githooks"
 WORKFLOWS = HOOKS / "workflows"
 WIKI_REPOSITORIES = ["Knowledge", "Environment", "Tasks", "Library"]
 RETIRED = [".github/workflows/CompatHelper.yml"]
+# The templates that `workflows` installs into each base of the profile's `dependents_bases`, and
+# removes from every other repository, with their installed paths.
+DEPENDENT_FILES = [
+    ("Dependents.yml", ".github/workflows/Dependents.yml"),
+    ("dependents.jl", ".github/dependents.jl"),
+]
+# The list of a base's dependents that `dependents` writes, and its header.
+DEPENDENTS_TOML = ".github/dependents.toml"
+DEPENDENTS_HEADER = (
+    "# Written by `harness dependents --apply` from the Project.toml files below Packages/ of the\n"
+    "# research tree; run it again rather than edit this file. Dependents.yml reads it into the\n"
+    "# matrix of its test job.\n"
+)
+# A repository name below Packages/, and a GitHub `owner/name` as `git remote get-url origin`
+# prints it over HTTPS or SSH, with or without `.git`.
+NAME = re.compile(r"[A-Za-z0-9._-]+")
+GITHUB_URL = re.compile(
+    r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([A-Za-z0-9-]+/[A-Za-z0-9._-]+?)(?:\.git)?/?"
+)
 
 
 def research_root():
@@ -165,11 +192,19 @@ def cmd_wiki_lint_hook(args):
     return install_hooks(args, targets, [(HOOKS / "pre-commit-wiki", "pre-commit", True)])
 
 
-def cmd_workflows(args):
-    for f in ("CI.yml", "dependabot.yml", "TagBot.yml", "Documenter.yml", "codecov.yml"):
+def cmd_workflows(args: argparse.Namespace) -> int:
+    for f in (
+        "CI.yml",
+        "dependabot.yml",
+        "TagBot.yml",
+        "Documenter.yml",
+        "codecov.yml",
+        *dict(DEPENDENT_FILES),
+    ):
         if not (WORKFLOWS / f).is_file():
             raise HarnessError(f"missing template: {WORKFLOWS / f}")
     profile = profile_module.load(args.profile)
+    listed = bases(profile)
     own_docs = set(profile.docs_exceptions) | set(profile.docs_additions)
     written = removed = skipped = 0
     for repo, kind in repositories(require_project=True):
@@ -189,13 +224,16 @@ def cmd_workflows(args):
         else:
             print("      skipped Documenter.yml - no tracked docs/make.jl")
             skipped += 1
+        # The dependents workflow goes into a listed base, and out of every other repository.
+        plan += [f for f in DEPENDENT_FILES if repo in listed]
+        unlisted = [rel for _, rel in DEPENDENT_FILES if repo not in listed]
         for template, rel in plan:
             if differs(WORKFLOWS / template, repo / rel):
                 if args.apply:
                     copy(WORKFLOWS / template, repo / rel)
                 print(f"      {'wrote' if args.apply else 'would write'} {rel}")
                 written += 1
-        for rel in RETIRED:
+        for rel in [*RETIRED, *unlisted]:
             if (repo / rel).is_file():
                 if args.apply:
                     (repo / rel).unlink()
@@ -210,7 +248,112 @@ def cmd_workflows(args):
     return outcome(args, written + removed)
 
 
-def register(sub):
+def bases(profile: profile_module.Profile) -> list[pathlib.Path]:
+    """The repositories that the profile's `dependents_bases` names, each below Packages/ of the
+    research root. A name that is not a git repository with a Project.toml there raises."""
+    packages = research_root() / "Packages"
+    bad = [
+        name
+        for name in profile.dependents_bases
+        if not (
+            NAME.fullmatch(name)
+            and name not in {".", ".."}
+            and (packages / name / ".git").is_dir()
+            and (packages / name / "Project.toml").is_file()
+        )
+    ]
+    if bad:
+        raise HarnessError(
+            f"dependents_bases names {', '.join(bad)}, which is no git repository with a Project.toml "
+            f"in {packages}"
+        )
+    return [packages / name for name in profile.dependents_bases]
+
+
+def project_table(path: pathlib.Path) -> dict[str, object]:
+    """The Project.toml at `path`, parsed; one that is not UTF-8 or not TOML raises, naming it."""
+    try:
+        return tomllib.loads(path.read_bytes().decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
+        raise HarnessError(f"{path} is not a TOML file: {e}") from None
+
+
+def github_repository(repo: pathlib.Path) -> str:
+    """The GitHub `owner/name` of the origin of `repo`. No origin, or one that is not on
+    github.com, raises, naming the repository: the dependents workflow checks it out from GitHub."""
+    url = git(repo, "remote", "get-url", "origin").stdout.strip()
+    m = GITHUB_URL.fullmatch(url)
+    if m is None:
+        raise HarnessError(f"{repo.name}: the origin {url or '(none)'} is no repository on github.com")
+    return m.group(1)
+
+
+def census(base: pathlib.Path) -> list[tuple[str, str]]:
+    """(name, GitHub `owner/name`) of each direct dependent of `base`, sorted by name: each other
+    repository below Packages/ whose Project.toml has the base's UUID among the values of
+    `[deps]`. `[weakdeps]`, `[extras]`, test/Project.toml and Experiments/ do not count."""
+    uuid = project_table(base / "Project.toml").get("uuid")
+    if not isinstance(uuid, str):
+        raise HarnessError(f"{base / 'Project.toml'} has no uuid, so {base.name} is no package")
+    found: list[tuple[str, str]] = []
+    for repo, kind in cast("list[tuple[pathlib.Path, str]]", repositories(require_project=True)):
+        if kind != "package" or repo == base:
+            continue
+        deps = project_table(repo / "Project.toml").get("deps")
+        if isinstance(deps, dict) and uuid in cast("dict[str, object]", deps).values():
+            if not NAME.fullmatch(repo.name):
+                raise HarnessError(f"{repo}: the name {repo.name!r} is not one that dependents.toml can hold")
+            found.append((repo.name, github_repository(repo)))
+    return sorted(found)
+
+
+def dependents_text(rows: list[tuple[str, str]]) -> str:
+    """The text of `.github/dependents.toml` for the (name, repository) `rows`: the header, then one
+    `[[dependent]]` table per row."""
+    return DEPENDENTS_HEADER + "".join(
+        f'\n[[dependent]]\nname = "{n}"\nrepository = "{r}"\n' for n, r in rows
+    )
+
+
+def cmd_dependents(args: argparse.Namespace) -> int:
+    """Write `.github/dependents.toml` into each base of `dependents_bases`, after the census of
+    every base succeeds; print the diff of each file that changes."""
+    listed = bases(profile_module.load(args.profile))
+    texts = {base: dependents_text(census(base)) for base in listed}
+    changes = 0
+    for base, text in texts.items():
+        path = base / DEPENDENTS_TOML
+        old = path.read_text() if path.is_file() else ""
+        if old == text:
+            print(f"{base.name:<28} {DEPENDENTS_TOML} is current")
+            continue
+        changes += 1
+        print(f"{base.name:<28} {'wrote' if args.apply else 'would write'} {DEPENDENTS_TOML}")
+        diff = difflib.unified_diff(old.splitlines(), text.splitlines(), "before", "after", lineterm="")
+        print("".join(f"      {line}\n" for line in diff), end="")
+        if args.apply:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+    print(f"\n{len(listed)} base(s), {changes} file(s) {'written' if args.apply else 'to write'}.")
+    if args.apply and changes:
+        print(f"Review the diff, then commit {DEPENDENTS_TOML} by name in each base.")
+    return outcome(args, changes)
+
+
+def selftest() -> tuple[int, int]:
+    """The cases of `githooks_cases`: (number of cases, number wrong)."""
+    total = wrong = 0
+
+    def check(ok: object, label: str) -> None:
+        nonlocal total, wrong
+        total, wrong = total + 1, wrong + (not ok)
+        print(f"{'ok ' if ok else 'BAD'}  githooks: {label}")
+
+    githooks_cases.cases(check)
+    return total, wrong
+
+
+def register(sub: Subcommands) -> None:
     changing(
         sub.add_parser(
             "githooks",
@@ -240,7 +383,21 @@ def register(sub):
             help="install the canonical GitHub workflows",
             description="Copy the canonical files of githooks/workflows/ into each package and "
             "experiment that has a Project.toml, and remove the retired CompatHelper.yml. "
+            "Dependents.yml and dependents.jl go into each base of the profile's "
+            "dependents_bases only, and are removed from every other repository. "
             "Without --apply it prints what would change and exits 1 when something "
             "would; --apply writes and removes the files.",
         )
     ).set_defaults(run=cmd_workflows)
+    changing(
+        sub.add_parser(
+            "dependents",
+            help="write the list of direct dependents into each base of dependents_bases",
+            description="Write .github/dependents.toml into each base that the profile's "
+            "dependents_bases names: one [[dependent]] table per repository below Packages/ "
+            "whose Project.toml has the base's UUID in [deps], with its name and its GitHub "
+            "owner/name from the origin. Without --apply it prints the diff of each file "
+            "that would change and exits 1 when one would; --apply writes the files. It "
+            "does not commit.",
+        )
+    ).set_defaults(run=cmd_dependents)

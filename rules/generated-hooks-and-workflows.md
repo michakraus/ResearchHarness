@@ -7,7 +7,9 @@ description: Hooks and CI workflows are generated; never edit an installed copy.
 
 The canonical copies live in `~/Research/Harness/githooks/` — the hooks at the top level,
 the GitHub workflows in `githooks/workflows/`. They are installed byte-identical into every
-package and experiment repository.
+package and experiment repository. `Dependents.yml` and `dependents.jl` go only into the bases
+that the profile's `dependents_bases` lists, beside a `.github/dependents.toml` that
+`harness dependents --apply` writes.
 
 **Edit the canonical copy and re-run the installer. Never edit a copy inside a repository.** The
 next install overwrites it, and until then that repository is silently the only one that differs.
