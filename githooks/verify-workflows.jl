@@ -39,6 +39,8 @@
 #      `if` there, and GROUPS runs exactly those groups for an empty ARGS, so the CI jobs together
 #      run what Pkg.test() runs. CI.yml runs one test job per group, and harness ci-protection
 #      requires a check per group, so a group file that does not match the suite splits it wrong.
+#      Each extra workflow that the file names in `workflows`, such as Metal.yml, exists in
+#      .github/workflows/; harness ci-protection requires its jobs too, and check 4 parses it.
 
 # The harness's Julia environment, which `harness install --apply` instantiates from
 # Project.toml; first in LOAD_PATH, so no caller needs `--project`.
@@ -512,6 +514,7 @@ function main()
     skips = String[]
     offbranch = OffBranch[]
     grouped = Dict{String, Vector{String}}()
+    ROOT_OF = Dict(basename(d) => d for d in all)
     for dir in all
         check_repo(dir, findings, skips, offbranch, grouped)
     end
@@ -527,6 +530,10 @@ function main()
             for c in required_checks(groups)
                 println("    ", c)
             end
+            workflows = first(Layout.ci_workflows("",
+                TOML.parsefile(joinpath(ROOT_OF[repo], "test", "ci-groups.toml"))))
+            isempty(workflows) ||
+                println("    and every job of ", join(workflows, ", "), " that is not a warning")
             println()
         end
     end

@@ -27,6 +27,10 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
   them: `const GROUPS = isempty(ARGS) ? ["core", "slow", "properties", "long"] : ARGS`, in the
   order of the file, so `Pkg.test()` still runs every group. A `metal` group appends `"metal"`
   to the Apple list of the platform line. `verify-workflows.jl` checks the file too.
+- **A group job runs its group alone, so a device group leaves the required macOS jobs.** The file
+  then names the repository's device workflow, `workflows = ["Metal.yml"]`, and
+  `harness ci-protection` requires its jobs. `run-tests.jl <repo> affected` selects from every
+  group of the file except `slow`, so a file moved out of `core` keeps its quick check.
 - **A repository with a `metal` group has the platform line, and only such a repository has it:**
   `const GROUPS = isempty(ARGS) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? ["core", "slow", "metal"] : ["core", "slow"]) : ARGS`.
   Empty `ARGS` on Apple silicon then runs `metal` too. The check compares both lines as

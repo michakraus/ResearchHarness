@@ -309,6 +309,19 @@ every group. The rule `julia-tests`, `scripts/test-layout.jl` and `verify-workfl
 this. `harness ci-protection` reads the file and requires one check per group and version and
 system.
 
+Each job runs its group alone, so a device group such as `metal` no longer runs in the required
+macOS jobs, where empty `ARGS` runs it without a group file. The file names the repository's own
+device workflow instead, and `harness ci-protection` requires every job of that workflow that is
+not a warning:
+
+```toml
+groups = ["core", "backends", "optimizers", "slow"]
+workflows = ["Metal.yml"]
+```
+
+`run-tests.jl <repository> affected` selects from every group of the file except `slow`, so a
+file that a repository moves out of `core` keeps its quick check.
+
 A pull request that adds or changes the file reports the new check names, but the ruleset still
 requires the old ones. Merge that pull request with the admin bypass, and then run
 `harness ci-protection --apply`.

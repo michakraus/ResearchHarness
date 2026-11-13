@@ -186,6 +186,12 @@ const GROUPED_DIR = fixture(Dict{String, Union{String, Nothing}}(
     @test "integration/long.jl" in rel(R.suite(entries; default = R.default_groups(GROUPED_DIR)))
     @test !("integration/long.jl" in rel(R.suite(entries)))
     @test R.default_groups(DIR) == ["core", "slow"]
+    # affected selects from every group of the file but `slow`, and from `core` without one
+    @test R.affected_groups(GROUPED_DIR) == ["core", "long"]
+    @test R.affected_groups(DIR) == ["core"]
+    sel = rel(first(R.affected(GROUPED_DIR, entries, ["test/runtests.jl"])))
+    @test "integration/long.jl" in sel
+    @test !("verification/convergence.jl" in sel)
 end
 
 @testset "affected never selects the group doctests" begin

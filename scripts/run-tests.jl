@@ -19,8 +19,8 @@
 # A `<unit>` is a group (`core`, `slow`, `doctests`, `metal`, `cuda`, `broken`, or a group of
 # `test/ci-groups.toml`), the path of a test file, or a substring of a testset label. The path is
 # relative to `test/` (`utils.jl`), to the package root (`test/utils.jl`), or absolute. A unit
-# that names no test file is an error. `affected` selects from `core` alone, so it never runs
-# `doctests`.
+# that names no test file is an error. `affected` selects from `core`, or from every group of
+# `test/ci-groups.toml` but `slow`, so it never runs `doctests`.
 #
 # A selection runs in one fresh process through `TestEnv`, which builds the test environment
 # outside the package directory, each file in its own module under a `@testset` of its label, and
@@ -121,13 +121,20 @@ function changed(pkg, base)
 end
 
 """
-The test files of `group` that a change of `paths`, relative to `pkg`, can reach, and why each
-is chosen; or `:full` where a `Project.toml` changed.
+The groups that `affected` selects from: `core`, or every group of `test/ci-groups.toml` but
+`slow`, where a repository moves fast files of `core` into groups of their own.
 """
-function affected(pkg, entries, paths; group = "core")
+affected_groups(pkg) = setdiff(default_groups(pkg), ["slow"])
+
+"""
+The test files of `groups` that a change of `paths`, relative to `pkg`, can reach, and why each
+is chosen; or `:full` where a `Project.toml` changed. `groups` is `core`, or with a
+`test/ci-groups.toml` every group of that file but `slow` (`affected_groups`).
+"""
+function affected(pkg, entries, paths; groups = affected_groups(pkg))
     any(p -> p in ("Project.toml", "test/Project.toml"), paths) && return :full
     t, src = joinpath(pkg, "test"), joinpath(pkg, "src")
-    runnable = filter(e -> e.group == group, entries)
+    runnable = filter(e -> e.group in groups, entries)
     rel(e) = relpath(e.path, t)
     top(e) = first(splitpath(rel(e)))
     pick, why = Entry[], String[]
