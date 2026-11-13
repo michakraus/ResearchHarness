@@ -1,0 +1,1 @@
+- **The build-part edges carry a class for a test cut that brings CI jobs under their time limit, judged by one testset's share.** The local share differs from the share on the slowest runner, and with the dominant testset cut the rest of the suite still fills the job, so a spec now reads the whole job's time on each runner of the last CI run before it sets its bound.
