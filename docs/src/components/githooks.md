@@ -23,6 +23,9 @@ is byte-identical to its template and is a tracked file in the repository. Edit 
 then install again; never edit a copy. The other scripts of this page run from the checkout.
 This repository has a pre-commit and a pre-push hook of its own, `.githooks/pre-commit` and
 `.githooks/pre-push`; they are not templates, and [Development](../development.md) describes them.
+Both run `basedpyright` as CI does, on the interpreter of the harness's Python environment and with
+`--baselinemode=lock`, so a commit or a push that removes baselined errors must write
+`.basedpyright/baseline.json` again.
 
 ## `pre-commit`, `pre-commit.jl` and `pre-commit-test.jl`
 
@@ -335,7 +338,8 @@ copies it to `.github/workflows/Dependents.yml` of each base that the profile ke
 `dependents_bases` names. It deletes the file from every other repository. The workflow runs on a
 pull request that changes `src/`, `ext/` or `Project.toml`, and by hand. A push to `main` does
 not run it. One concurrency group per ref cancels a run that a newer push replaces. The workflow
-can only read the repository.
+can only read the repository. No checkout keeps the token, because the tests of the dependents
+run code of other repositories.
 
 | job | what it runs |
 |:--|:--|

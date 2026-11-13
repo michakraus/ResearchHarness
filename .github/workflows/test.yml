@@ -324,7 +324,9 @@ jobs:
           gitleaks dir "${flags[@]}" "$render"
 
   # The strict profile of the Python code, with the ruff and basedpyright of the dev group of
-  # uv.lock: an environment that uv syncs with that group, whose bin/ comes first on the PATH.
+  # uv.lock: an environment that uv syncs with that group, whose bin/ comes first on the PATH. Then
+  # `harness test strict` on that environment, where the real pre-commit case runs the hook with its
+  # basedpyright and pyyaml; the step fails when the part skips that case.
   strict:
     name: ruff and basedpyright
     runs-on: ubuntu-latest
@@ -346,3 +348,14 @@ jobs:
         run: ruff check --no-cache .
       - name: basedpyright
         run: basedpyright
+      # bin/harness runs on the environment that RESEARCH_HARNESS_PYTHON names.
+      - name: harness test strict, with the real pre-commit case
+        env:
+          RESEARCH_HARNESS_PYTHON: ${{ runner.temp }}/env
+        run: |
+          set -o pipefail
+          python bin/harness test strict | tee "$RUNNER_TEMP/strict.log"
+          if grep -E '^skip  strict: the real pre-commit case' "$RUNNER_TEMP/strict.log"; then
+            echo "the real pre-commit case of harness test strict did not run"
+            exit 1
+          fi

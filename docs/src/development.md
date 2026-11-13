@@ -147,12 +147,17 @@ that enforces it, and loads on every `.py` file. This section gives the reason f
 tree: it writes the index into a temporary directory with `git checkout-index` and runs the tools
 there, so a change that is not staged neither fails nor passes a commit. The tools come from the
 `bin/` of the harness's Python environment, which `bin/harness`'s own `environment_path` and
-`interpreter` give, never from the `PATH`. All three run, and one that fails refuses the commit
-with exit 1 and a line that names it. The formatter only checks: it names each staged file that it
-would change, and the hook changes no file; run `ruff format` yourself, then stage again. An
-environment without `ruff` or `basedpyright` refuses the commit with one line: set
+`interpreter` give, never from the `PATH`. `basedpyright` runs as CI runs it, on that
+environment's interpreter (`--pythonpath`) and with `--baselinemode=lock`, so a commit that
+removes baselined errors must write `.basedpyright/baseline.json` again. All three run, and one
+that fails refuses the commit with exit 1 and a line that names it. The formatter only checks: it
+names each staged file that it would change, and the hook changes no file; run `ruff format`
+yourself, then stage again.
+An environment without `ruff` or `basedpyright` refuses the commit with one line: set
 `develop = true` in `[setup]` of the profile, then run `harness install --apply`. The cases of
-`lib/harness/strict.py` run the hook in scratch repositories with stub tools.
+`lib/harness/strict.py` run the hook in scratch repositories with stub tools, and, where the
+environment holds `basedpyright` and `pyyaml`, with its real tools on a fixed baselined error;
+elsewhere one `skip` line stands for the cases with the real tools.
 
 ## The pre-push hook
 
@@ -191,10 +196,12 @@ interpreter of the harness's Python environment. Then it runs the compile check
 `<environment>/bin/python -m compileall -q lib hooks scripts adapters` on that interpreter, at the
 path that `bin/harness` gives, then the three checks of [the strict profile](#the-strict-profile),
 `ruff format --check`, `ruff check` and `basedpyright`, with the tools of that environment's
-`bin/`, and `shellcheck -S warning` over the shell files. All three checks run, and one that fails
-refuses the push; an environment without `ruff` or `basedpyright` refuses the push with one line
-per tool that names `harness install --apply`. A push of a branch runs none of the three; CI runs
-them.
+`bin/`, and `shellcheck -S warning` over the shell files. `basedpyright` runs as in the pre-commit
+hook, on the environment's interpreter and with `--baselinemode=lock`, so a push that removes
+baselined errors must write `.basedpyright/baseline.json` again. All three checks run, and one
+that fails refuses the push; an environment without `ruff` or `basedpyright` refuses the push
+with one line per tool that names `harness install --apply`. A push of a branch runs none of the
+three; CI runs them.
 Then, when `chezmoi` is on the `PATH`, it runs the kit's tests on `python3`:
 `examples/dotfiles/tests/update-check.py`, `check-check.py`,
 `driver-check.py`, `render-check.py` and `script-check.py`. All five run, and when one fails the
@@ -234,7 +241,9 @@ set to a new empty directory, so a case that needs a file of the runner's home f
 the Astral mirror, so no required job fetches the uv release from GitHub. Its
 `strict` job runs `uv sync --locked` with the `dev` group into an environment of its own and runs
 the three checks of the strict profile, `ruff format --check`, `ruff check` and `basedpyright`,
-with that environment's tools, each as a step of its own. Its
+with that environment's tools, each as a step of its own. Then it runs `bin/harness test strict`
+with `RESEARCH_HARNESS_PYTHON` set to that environment, so the real pre-commit case runs the hook
+with its `basedpyright` and `pyyaml`. That step fails when the part skips this case. Its
 `leaks` job runs gitleaks 8.30.1, a pinned tarball checked by its SHA256, with
 `.gitleaks.toml` and `--redact`. A canary step first checks that gitleaks finds a synthetic token
 and a synthetic home path, built at run time, and that the token is not in the log. Then the job

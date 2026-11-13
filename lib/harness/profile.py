@@ -1574,8 +1574,13 @@ COMPILE = "-m compileall -q lib hooks scripts adapters"
 
 
 NO_INTERPRETER = "pre-push: bin/harness names no interpreter of the Python environment"
-# The checks of the strict profile, as the stubs of the environment's tools log them.
-STRICT = ["ruff format --check --no-cache .", "ruff check --no-cache .", "basedpyright"]
+# The checks of the strict profile, as the stubs of the environment's tools log them; {python} is
+# the environment's interpreter.
+STRICT = [
+    "ruff format --check --no-cache .",
+    "ruff check --no-cache .",
+    "basedpyright --pythonpath {python} --baselinemode=lock",
+]
 
 
 def failing_tool(tools: pathlib.Path, repo: pathlib.Path, fails: str) -> None:
@@ -1601,7 +1606,8 @@ def prepush_case(
     that URL as its `origin`, not the path of the checkout, `gitleaks stdin` runs in the checkout,
     where a `.gitleaksignore` of the working tree applies, `bin/harness test` runs once, the
     compile check runs on the interpreter that the stub's `interpreter(environment_path())`
-    names, the three checks of STRICT run in the clone from the environment's bin/, and the kit's
+    names, the three checks of STRICT, with that interpreter for {python}, run in the clone from
+    the environment's bin/, and the kit's
     tests are skipped with one line. The environment's `ruff` and `basedpyright` and a second pair
     first on the PATH are stubs that log their arguments. With `no_environment`, the stub's
     `environment_path` raises: the hook prints NO_INTERPRETER, runs no compile check and no check
@@ -1682,6 +1688,9 @@ def prepush_case(
             (environment / "bin" / "python").write_text(f"#!/bin/sh\necho \"$*\" >> '{compiled}'\n")
             (environment / "bin" / "python").chmod(0o644 if fails == "python" else 0o755)
         strict = tmp / "strict"
+        python = str(environment / "bin" / "python")
+        expected = [command.format(python=python) for command in STRICT]
+        failing = fails.format(python=python)
         for directory, prefix, names in (
             (environment / "bin", "", [t for t in ("ruff", "basedpyright") if t not in lacks]),
             (tools, "PATH ", ["ruff", "basedpyright"]),
@@ -1690,7 +1699,7 @@ def prepush_case(
                 # The command of STRICT that `fails` names exits 1.
                 (directory / name).write_text(
                     f'#!/bin/sh\nline="{prefix}{name} $*"\necho "$line | $(pwd)" >> \'{strict}\'\n'
-                    f"[ \"${{line% }}\" = '{fails}' ] && exit 1\nexit 0\n"
+                    f"[ \"${{line% }}\" = '{failing}' ] && exit 1\nexit 0\n"
                 )
                 (directory / name).chmod(0o755)
         failing_tool(tools, repo, fails)
@@ -1787,7 +1796,7 @@ def prepush_case(
         absent = [tool for tool in lacks if tool != "python"]
         ok = (
             code == 1
-            and strict_runs == ([] if absent else STRICT)
+            and strict_runs == ([] if absent else expected)
             and len(said) == len(absent)
             and all(f"pre-push: no {tool} in " in line for tool, line in zip(absent, said, strict=True))
             and all("harness install --apply" in line for line in said)
@@ -1809,7 +1818,7 @@ def prepush_case(
     if fails:
         ok = (
             code == 1
-            and strict_runs == STRICT
+            and strict_runs == expected
             and any(line.startswith("pre-push: refused;") for line in lines)
         )
         print(
@@ -1825,7 +1834,7 @@ def prepush_case(
         and tests == []
         and commands == ["leaks", "test"]
         and compile_runs == [COMPILE]
-        and strict_runs == STRICT
+        and strict_runs == expected
         and in_clone
         and in_checkout
         and not any("python3.14" in line for line in lines)

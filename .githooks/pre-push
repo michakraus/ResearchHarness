@@ -17,7 +17,9 @@ gitleaks of 8.21 or later, no profile, an empty `leak` list or a check that fail
 push with one line. Then it runs `bin/harness test` once, which runs on the interpreter of the
 harness's Python environment, the compile check on that interpreter, the strict profile
 (`ruff format --check`, `ruff check` and `basedpyright`, from the environment's bin/, where
-`develop = true` of the profile's [setup] puts them; a tool that it lacks refuses the push), then
+`develop = true` of the profile's [setup] puts them; a tool that it lacks refuses the push;
+basedpyright runs on the environment's interpreter with `--baselinemode=lock`, as CI runs it, so
+a push that removes baselined errors must write `.basedpyright/baseline.json` again), then
 shellcheck over the shell files, the kit's tests
 examples/dotfiles/tests/{update-check,check-check,driver-check,render-check,script-check}.py on
 python3, and the Julia test files that the changed paths of the pushed range select. A missing
@@ -452,7 +454,9 @@ def run_strict() -> bool:
     for args in (
         ["ruff", "format", "--check", "--no-cache", "."],
         ["ruff", "check", "--no-cache", "."],
-        ["basedpyright"],
+        # As CI runs it: imports resolve on the environment's interpreter, and a baselined error
+        # that the range fixes fails until the baseline is written again.
+        ["basedpyright", "--pythonpath", environment_python, "--baselinemode=lock"],
     ):
         say(" ".join([f"{tools}/{args[0]}", *args[1:]]))
         if status_of([f"{tools}/{args[0]}", *args[1:]]) != 0:
