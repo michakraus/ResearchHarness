@@ -809,6 +809,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   instantiates it goes red. Read the required checks and each environment's deps before the
   gate order is fixed; two packages that need each other's release form a cycle that only a
   bypass merge or a temporary `[sources]` pin breaks (W2, *Make the base package's stubs public*)
+- a test cut to bring CI jobs under their time limit, judged by one testset's share: the local
+  share differs from the share on the slowest runner, so a local bound on the whole file misses,
+  and with the dominant testset cut the rest of the suite still fills the job. Read the whole
+  job's time on each runner of the last CI run, and sum the testsets before the cut one, before
+  the spec sets its bound (P, *Revive the multisymplectic package*)
 - a floor raise that moves the CI `min` job onto a Julia where a timing check goes red, such as
   Aqua's 30 s persistent-tasks limit while a Makie extension precompiles on 1.11: run the quality
   tests on the new floor itself, not only on the newest Julia (W3, *Make the base package's stubs
