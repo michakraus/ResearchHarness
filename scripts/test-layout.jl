@@ -173,7 +173,8 @@ function ci_groups(repo)
     for g in unique(gs)
         occursin(CI_GROUP_NAME, g) ||
             push!(problems, "group \"$g\" of test/ci-groups.toml is not lower-case letters and digits")
-        count(==(g), gs) > 1 && push!(problems, "group \"$g\" is in test/ci-groups.toml more than once")
+        count(==(g), gs) > 1 &&
+            push!(problems, "group \"$g\" is in test/ci-groups.toml more than once")
         g in OWN_JOB_GROUPS &&
             push!(problems, "group \"$g\" is in test/ci-groups.toml, and it runs outside the CI test jobs")
     end
@@ -190,13 +191,19 @@ default_groups(repo) = something(first(ci_groups(repo)), DEFAULT_GROUPS)
 group_names(repo) = union(GROUP_NAMES, default_groups(repo))
 
 "The groups that the top-level statements of `runtests` gate with an `if`, in order."
-group_ifs(runtests) = [group_of(s.args[1]) for s in runtests.args
-                       if s isa Expr && s.head === :if && group_of(s.args[1]) !== nothing]
+function group_ifs(runtests)
+    [group_of(s.args[1])
+     for s in runtests.args
+     if s isa Expr && s.head === :if && group_of(s.args[1]) !== nothing]
+end
 
 "The definitions of `GROUPS` among the statements of `runtests`, without line numbers."
-groups_defs(runtests) = [Base.remove_linenums!(deepcopy(s)) for s in runtests.args
-                         if s isa Expr && s.head === :const && s.args[1] isa Expr &&
-                            s.args[1].head === :(=) && s.args[1].args[1] === :GROUPS]
+function groups_defs(runtests)
+    [Base.remove_linenums!(deepcopy(s))
+     for s in runtests.args
+     if s isa Expr && s.head === :const && s.args[1] isa Expr &&
+            s.args[1].head === :(=) && s.args[1].args[1] === :GROUPS]
+end
 
 """
     groups_violations(repo, runtests) -> Vector{Tuple{String, String}}
@@ -216,17 +223,21 @@ function groups_violations(repo, runtests)
     plain = :(const GROUPS = isempty(ARGS) ? $(Expr(:vect, default...)) : ARGS)
     platform = :(const GROUPS = isempty(ARGS) ?
                                 (Sys.isapple() && Sys.ARCH === :aarch64 ?
-                                 $(Expr(:vect, default..., "metal")) : $(Expr(:vect, default...))) :
+                                 $(Expr(:vect, default..., "metal")) :
+                                 $(Expr(:vect, default...))) :
                                 ARGS)
     for def in groups_defs(runtests)
         if "metal" in ifs
-            def == platform || push!(out, ("D5",
-                "GROUPS is not the platform form, `isempty(ARGS) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? $(repr([default; "metal"])) : $(repr(default))) : ARGS`, which a repository with a `metal` group has"))
+            def == platform || push!(out,
+                ("D5",
+                    "GROUPS is not the platform form, `isempty(ARGS) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? $(repr([default; "metal"])) : $(repr(default))) : ARGS`, which a repository with a `metal` group has"))
         elseif def == platform
-            push!(out, ("D5", "GROUPS has the platform form, and the repository has no `metal` group"))
+            push!(out, ("D5",
+                "GROUPS has the platform form, and the repository has no `metal` group"))
         else
             def == plain ||
-                push!(out, ("D5", "GROUPS is not `isempty(ARGS) ? $(repr(default)) : ARGS`"))
+                push!(out, (
+                    "D5", "GROUPS is not `isempty(ARGS) ? $(repr(default)) : ARGS`"))
         end
     end
     names = union(GROUP_NAMES, default)
@@ -234,7 +245,8 @@ function groups_violations(repo, runtests)
         g in names || push!(out, ("D5", "group \"$g\" is not one of $(join(names, ", "))"))
     end
     for g in something(groups, String[])
-        g in ifs || push!(out, ("ci-groups", "group \"$g\" of test/ci-groups.toml has no `if` in runtests.jl"))
+        g in ifs || push!(out, ("ci-groups",
+            "group \"$g\" of test/ci-groups.toml has no `if` in runtests.jl"))
     end
     return out
 end
