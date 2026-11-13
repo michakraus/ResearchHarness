@@ -240,7 +240,9 @@ set to a new empty directory, so a case that needs a file of the runner's home f
 the Astral mirror, so no required job fetches the uv release from GitHub. Its
 `strict` job runs `uv sync --locked` with the `dev` group into an environment of its own and runs
 the three checks of the strict profile, `ruff format --check`, `ruff check` and `basedpyright`,
-with that environment's tools, each as a step of its own. Its
+with that environment's tools, each as a step of its own. Then it runs `bin/harness test strict`
+with `RESEARCH_HARNESS_PYTHON` set to that environment, so the real pre-commit case runs the hook
+with its `basedpyright` and `pyyaml`. That step fails when the part skips this case. Its
 `leaks` job runs gitleaks 8.30.1, a pinned tarball checked by its SHA256, with
 `.gitleaks.toml` and `--redact`. A canary step first checks that gitleaks finds a synthetic token
 and a synthetic home path, built at run time, and that the token is not in the log. Then the job
