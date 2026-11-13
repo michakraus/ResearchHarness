@@ -152,8 +152,8 @@ environment's interpreter (`--pythonpath`) and with `--baselinemode=lock`, so a 
 removes baselined errors must write `.basedpyright/baseline.json` again. All three run, and one
 that fails refuses the commit with exit 1 and a line that names it. The formatter only checks: it
 names each staged file that it would change, and the hook changes no file; run `ruff format`
-yourself, then stage again. An
-environment without `ruff` or `basedpyright` refuses the commit with one line: set
+yourself, then stage again.
+An environment without `ruff` or `basedpyright` refuses the commit with one line: set
 `develop = true` in `[setup]` of the profile, then run `harness install --apply`. The cases of
 `lib/harness/strict.py` run the hook in scratch repositories with stub tools, and, where the
 environment holds `basedpyright` and `pyyaml`, with its real tools on a fixed baselined error;
