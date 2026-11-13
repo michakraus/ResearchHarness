@@ -85,6 +85,27 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
   it finds, so a dismissed counterexample hides every other failure of the same check. After you
   judge a counterexample a false alarm, filter its class out of the generator, or out of the
   property, and run the check again; only a clean rerun clears the property.
+- **Every branch, keyword value, component and stated property has a test** that fails when that
+  path breaks. Assert each component of a result, not one component and a length. Run every
+  combination of a keyword grid with `Iterators.product`, not a list picked by hand. A mutant of
+  each branch fails a test; a guarded branch that no test reaches is a finding.
+- **A tolerance comes from the error source of the computed value.** Derive it from the rounding
+  and the truncation error, in the metric of the evidence, such as `rtol = 10 * (δ + eps(T) / δ)`
+  for a difference with the step `δ`. It sits below what a mutant gives: test one input inside the
+  bound and one outside, and give a "must fail" threshold the pass bound of the same `T`. A bound
+  tuned until the test passes checks nothing.
+- **A fixture gives each factor a value other than 1** and each component a value of its own.
+  Equal weights, a symmetric, separable, linear or time-independent case, and a start at the exact
+  answer hide a wrong term. Test each factor at two values, such as `ω in (0.7, 3.0)`, on a
+  non-linear, time-dependent case, and run the mutant that drops the factor or the component.
+- **`@test_throws` matches a phrase that only the guard writes**, with an anchored pattern:
+  `@test_throws r"^ArgumentError: <the guard's phrase>" f(x)`. A library error or another guard of
+  the same type then does not pass it. Take the exception and the message from one call. Remove the
+  guard once: the test must fail, not error.
+- **A reference value comes from a method that can be right where the code is wrong**: an
+  independent or a more accurate method, in wider precision, from a converged run only. Record
+  with it the flags and the versions that made it, such as `Base.JLOptions().check_bounds` and
+  `VERSION`. The reference's own error is far below the smallest error that it measures.
 - **Reproduce a 1.12 `min` failure with `julia +1.12`**: run `julia +1.12 --startup-file=no
   run-tests.jl <worktree> <test file>` or `julia +1.12 --project=. <test file>`.
 

@@ -67,9 +67,10 @@ script in any interpreter writes a file.
 2. **Write the tests first**: at least one per clause that code can check, and one for each mutant
    that *Tests catch* names. Run each new test on the base where you can, and record whether it
    fails there.
-3. **Write the code**: the minimum that makes the tests pass. A comment or docstring says what
-   the code does and why, in the present tense. It tells no history and names no part, clause or
-   round of the plan; the history goes in `CHANGELOG.md`.
+3. **Write the code**: the minimum that makes the tests pass. Before you write Julia code under
+   `src/`, read the section of `~/.claude/skills/build-part/defensive-julia.md` for the code you
+   write. A comment or docstring says what the code does and why, in the present tense. It tells
+   no history and names no part, clause or round of the plan; the history goes in `CHANGELOG.md`.
 4. **Verify each clause**: run its test, and break each named mutant by hand once to see its test
    fail. Restore the code and run the test again.
 5. **Run your own mutants**: one per guard, branch, comparison and decided edge that your change
