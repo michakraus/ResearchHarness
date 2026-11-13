@@ -28,7 +28,7 @@ deleted, so that the instructions do not grow and nothing says the same thing tw
 | NFC | a source that is not in Unicode normal form C | pre-commit, on the staged files | yes |
 | package load | a package that does not load | pre-commit, `using` in a fresh process | yes |
 | `fatou lint` | lint findings of the Fatou language server | pre-commit | no: advisory, with a time limit of 60 s |
-| [dispatch delta](#what-a-change-adds-to-the-method-table) | new ambiguities, piracies and abstract fields | `gate.jl` step `dispatch`; `julia-branch-verifier` on every branch | yes |
+| [dispatch delta](#what-a-change-adds-to-the-method-table) | new ambiguities, piracies, abstract fields and stale explicit imports | `gate.jl` step `dispatch`; `julia-branch-verifier` on every branch | yes |
 | [concrete fields](#concrete-field-types) | a struct field whose type is not concrete | `concrete-fields.jl`, and inside the dispatch delta | yes, through the dispatch delta |
 | [public API diff](#the-public-api-before-a-release) | a public name or method that goes away | the `julia-release` skill, before a release | yes: the skill stops and asks you |
 | Aqua | piracy, ambiguities, stale dependencies and other package defects | the package's quality tests, `test/quality/aqua.jl` | yes, in the tests |
@@ -52,9 +52,9 @@ compares what each defines. It prints a verdict:
 
 | verdict | when |
 |:--|:--|
-| `FAIL`, exit 1 | a new ambiguity among the package's own methods, or between its own and another package's; a new piracy; a new abstract field; a head that does not load |
-| `UNKNOWN`, exit 3 | the base does not load, a side does not resolve, or a side times out |
-| `INFO` | a method added to an existing function, with that function's other methods; a new or a gone JET report; a finding that went away; a dependency version that differs |
+| `FAIL`, exit 1 | a new ambiguity among the package's own methods, or between its own and another package's; a new piracy; a new abstract field; a new stale explicit import that no caller in `test/`, `docs/`, `scripts/` or `ext/` reaches; a head that does not load |
+| `UNKNOWN`, exit 3 | the base does not load, a side does not resolve, a side times out, or ExplicitImports does not load |
+| `INFO` | a method added to an existing function, with that function's other methods; a new or a gone JET report; a new stale import that such a caller reaches; a finding that went away; a dependency version that differs |
 | `PASS`, exit 0 | none of the above |
 
 The verifier runs it on every branch, against the merge base. So the rule "look at the methods
