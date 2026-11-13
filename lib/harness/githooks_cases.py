@@ -616,11 +616,22 @@ def yaml_cases(check: Check) -> None:
         for s in steps
         if "repository" in cast("dict[str, object]", s.get("with") or {})
     ]
+    fresh = next(
+        (
+            i
+            for i, s in enumerate(steps)
+            if cast("dict[str, object]", s.get("with") or {}).get("path") == "dependent-main"
+        ),
+        len(steps),
+    )
+    main = next((i for i, s in enumerate(steps) if s.get("id") == "main"), -1)
     check(
         projects == [["--project=dependent"], ["--project=dependent-main"]]
-        and paths == ["dependent", "dependent-main"],
-        f"the run against the default branch tests a second checkout of the dependent, not the one that "
-        f"the run against the head resolved -> projects {projects}, checkouts {paths}",
+        and paths == ["dependent", "dependent-main"]
+        and fresh < main,
+        f"the run against the default branch tests a second checkout of the dependent, made before it, "
+        f"not the one that the run against the head resolved -> projects {projects}, checkouts {paths}, "
+        f"steps {fresh} and {main}",
     )
     actionlint = shutil.which("actionlint")
     if actionlint is None:
