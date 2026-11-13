@@ -61,7 +61,7 @@ of the harness; [Typical use](../daily-use.md#the-leak-check-before-a-push) show
 |:--|:--|:--|
 | the pre-push hook of the harness | a push to `main` | gitleaks over the commits of the push, gitleaks over their messages on standard input, gitleaks over the tree at the pushed commit, then `harness leaks --commits` over the tree and the commits |
 | the pre-push hook of the harness | a push of another branch | `harness leaks --commits` only |
-| CI, the job `leaks` | every push and every pull request | a canary first, a synthetic token and home path that gitleaks must find and redact; then gitleaks over the pushed range and its messages, over the checkout, and over the templates rendered with the example profile |
+| CI, the job `leaks` | a push to `main`, every pull request and a manual dispatch | a canary first, a synthetic token and home path that gitleaks must find and redact; then gitleaks over the pushed range and its messages, over the checkout, and over the templates rendered with the example profile |
 | you | before a commit | `harness leaks` |
 
 **The hook fails closed.** No gitleaks of 8.21 or later, no profile, an empty `leak` list, or a

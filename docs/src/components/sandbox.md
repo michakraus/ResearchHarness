@@ -179,14 +179,15 @@ frontend would reach the host; a `fetch` host that a `deny` entry without a port
 conflict. The message names the frontend's key, the entry and the host.
 
 With at least one frontend chosen, the install also copies the launcher `sandbox/agentbox` to
-`~/.local/bin/agentbox` with mode 755, a directory that a session cannot write. With `claude`
-chosen it writes Claude Code's override beside the settings files:
+`~/.local/bin/agentbox` and the gh wrapper `scripts/gh-token.py` to `~/.local/bin/gh`, each with
+mode 755, a directory that a session cannot write ([The forge tokens](#the-forge-tokens)). With
+`claude` chosen it writes Claude Code's override beside the settings files:
 
 ```text
 ~/.config/research-harness/sandbox/claude-inner-off.json   {"sandbox": {"enabled": false}}
 ```
 
-A launcher whose mode differs from 755 is a change, as a file whose bytes differ is.
+A launcher or a wrapper whose mode differs from 755 is a change, as a file whose bytes differ is.
 
 The install writes nothing through a symlink. So where `~/.local/bin` is a symlink and a frontend
 is chosen, `harness install --apply` exits with status 2, writes nothing, and names the path and
@@ -224,14 +225,15 @@ otherwise reads a `--settings` of the frontend as its own.
 | `omp` | `--approval-mode yolo` | oh-my-pi runs its tools without a prompt; the sandbox of `srt` is the boundary |
 | `agy` | nothing | |
 
-The frontend gets `AGENTBOX=1` and the three cache variables below in its environment; every
-other variable stays the caller's. `agentbox` runs only the `srt` in `~/.local/bin`, never one
-found on the `PATH`. So it starts nothing before `harness setup` has installed `srt` in
-`~/.local/bin`.
+The frontend gets `AGENTBOX=1`, the three cache variables below and the variables of the forges
+([The forge tokens](#the-forge-tokens)) in its environment; every other variable stays the
+caller's, but `GITLAB_ACCESS_TOKEN` and `OAUTH_TOKEN`, which `agentbox` removes. `agentbox` runs
+only the `srt` in `~/.local/bin`, never one found on the `PATH`. So it starts nothing before
+`harness setup` has installed `srt` in `~/.local/bin`.
 
 Each run makes one new directory with `mktemp -d "${TMPDIR:-/tmp}/agentbox.XXXXXX"`, below
-`$TMPDIR`, or below `/tmp` where `TMPDIR` is unset or empty, with the subdirectories `npm`, `uv`
-and `texmf-var`. The sandbox denies the caches of these tools in the home directory, so
+`$TMPDIR`, or below `/tmp` where `TMPDIR` is unset or empty, with the subdirectories `npm`, `uv`,
+`texmf-var`, `glab` and `gh`. The sandbox denies the caches of these tools in the home directory, so
 `agentbox` sets and exports a cache variable for each, where the caller's variable is unset or
 empty:
 
@@ -268,6 +270,99 @@ it.
 A refused run makes no run directory.
 
 `agentbox -h` and `agentbox --help` print the usage and exit 0.
+
+## The forge tokens
+
+An agent's GitHub and GitLab operations use fine-grained tokens that you make, one for each
+GitHub owner and one group access token for the GitLab group. The forge then limits each token
+to its owner. The harness passes the tokens and does not filter the operations. git routes them
+with its own owner-scoped credential sections and its `credential-store`, glab gets one token from
+the environment, and only gh needs a wrapper, because gh reads one token for each host.
+
+**The token store** is `~/.config/research-harness/forge/<host>/<name>.store`, one file for each
+token, mode 600, in the format of git's `credential-store`: one line
+`https://<user>:<token>@<host>`. `<name>` is an owner of the host, or `default` for every other
+owner. The settings template denies reads of the store to Claude Code's sandbox (`denyRead` and
+`credentials.files`), and each frontend's `own` in the policy file names it, so every frontend's
+srt file allows its reads. git and gh run outside Claude Code's sandbox, and inside the sandbox of
+`agentbox`.
+
+**The rendered configuration.** Where the store exists, `harness install` writes
+`~/.config/research-harness/forge.gitconfig`, mode 600, beside the store and not inside it: git
+exits fatal on an `include` that it cannot read, and the store is a read deny of Claude Code's
+sandbox. For each host directory, in the order of the names, it holds:
+
+```ini
+[credential "https://<host>"]
+	helper =
+	helper = "!f() { test \"$1\" = get && exec git credential-store --file <host>/default.store get; }; f"
+[credential "https://<host>/<name>"]
+	helper =
+	helper = "!f() { test \"$1\" = get && exec git credential-store --file <host>/<name>.store get; }; f"
+```
+
+with the full path of each file, the host section's second `helper` only where `default.store`
+exists, and one section of the second kind for each other store file. Where `github.com/` exists,
+a last section `[credential "https://gist.github.com"]` holds only the empty `helper`, so no token
+reaches a gist. git applies the helpers of every section whose URL matches, in the order of the
+configuration, and an empty `helper` clears those before it. git matches the path by whole
+components and with case. So each owner gets its own token, and every other owner of the host the
+default's. A remote that spells the owner with another case gets the default, so a write to it
+fails at the forge. The helper answers only `get`: a plain `store --file` erases the file's line
+on a `reject`, for example after a token expires.
+
+The install exits with status 2 and writes nothing, with one line that names the path, on a store
+or host directory that it cannot list, on a store file, after symbolic links, that is no regular
+file or that the group or others can read (the line names its mode), on a `<name>` outside
+`[A-Za-z0-9-]+` or starting with `-`, on a store file whose bytes are not the one line
+`https://<user>:<token>@<host>` with `<host>` its directory's name (a CR before the line feed
+too), and on a host directory whose name is no host name in lower case. No message names a token.
+Where `~/.gitconfig` holds no `include.path` of the rendered file, the install prints one notice
+line and goes on.
+
+The store and the rendered file are also a deny of the frontends' own read tools: the template's
+`permissions.deny` holds `Read(/{home}/.config/research-harness/forge/**)`, and OpenCode's path
+list `guard-paths.json`, which oh-my-pi and Antigravity also render, holds its path.
+
+**The gh wrapper** `~/.local/bin/gh` ([`gh-token.py`](scripts.md#gh-token-py)) finds the
+repository's owner, reads the owner's store file, else `default.store`, and runs the real gh with
+`GH_TOKEN` set and `GITHUB_TOKEN` removed. With no token, or for a host other than `github.com`,
+it removes both and sets `GH_CONFIG_DIR` to an empty directory, so gh reads no stored login. It
+refuses a command, and runs nothing, where an argument that gh may read as `-R`, but that the
+wrapper cannot read as `-R` with certainty, names another owner or host.
+
+**glab and gh under `agentbox`.** The launcher exports `GIT_TERMINAL_PROMPT=0`, and
+`GLAB_CONFIG_DIR` and `GH_CONFIG_DIR`, the empty directories `glab` and `gh` of the run directory,
+in place of the caller's: glab and gh then read no stored login, and do not fail on their
+configuration files, which srt denies. It removes the caller's `GITLAB_ACCESS_TOKEN` and
+`OAUTH_TOKEN`. Where the store holds exactly one host directory other than `github.com/`, with
+exactly one store file whose first line is `https://<user>:<token>@<host>`, `<host>` the
+directory's name, and the user and the token not empty and free of `%` and white space, it exports
+`GITLAB_HOST` as the directory's name and `GITLAB_TOKEN` as the token; glab sends that token only
+to that host. Otherwise it removes the
+caller's `GITLAB_TOKEN`, prints one line on stderr that names the store, and starts the frontend.
+
+**Your steps**, after the merge and before `harness install --apply`:
+
+1. On GitHub, make one fine-grained token for each owner, each organisation and your account:
+   resource owner that owner, all repositories, with the permissions Contents, Pull requests,
+   Issues and Workflows read and write, and Actions, Checks, Commit statuses and Metadata read; no
+   Gists permission. An organisation may have to approve a token.
+2. On the GitLab instance, make one group access token of the group, with the scopes `api`,
+   `read_repository` and `write_repository`, and a role that may create projects in the group. By
+   GitLab's default that is Maintainer; the group's setting *Roles allowed to create projects*
+   decides it.
+3. Put each token into `~/.config/research-harness/forge/<host>/<owner>.store` as the one line
+   `https://x-access-token:<token>@github.com` or `https://oauth2:<token>@<gitlab host>`, mode
+   600, the directories mode 700. Make `github.com/default.store` a copy of, or a symbolic link
+   to, your account's file.
+4. Run `harness install --apply`.
+5. Remove the broad credentials and route your terminal the same way: `gh auth logout`, replace
+   glab's stored token by the group token (`glab auth login --hostname <gitlab host>`), erase the
+   credential manager's GitHub and GitLab entries, and, in your dotfiles, remove the credential
+   manager and `gh auth git-credential` helpers from `~/.gitconfig` and end its credential lines
+   with `[include] path = ~/.config/research-harness/forge.gitconfig`. A Claude Code session runs
+   git and gh outside its sandbox, so a broad credential that stays there stays usable.
 
 ## The pinned srt
 

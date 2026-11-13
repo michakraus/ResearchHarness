@@ -2,9 +2,11 @@ name: julia
 
 on:
   push:
+    branches: [main]
     paths: ['**.jl', 'Project.toml', 'githooks/pre-commit', 'githooks/pre-push', 'ast-grep/**', '.github/workflows/julia.yml']
   pull_request:
     paths: ['**.jl', 'Project.toml', 'githooks/pre-commit', 'githooks/pre-push', 'ast-grep/**', '.github/workflows/julia.yml']
+  workflow_dispatch:
 
 permissions:
   contents: read

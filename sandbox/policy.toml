@@ -33,7 +33,8 @@ allow = [
 #   own         the template's deny entries that the frontend itself reads and writes, its own
 #               credential files by name; its file leaves them out of `denyWrite` and `denyRead`
 #               and adds them to `allowRead`. An entry can also be a file that the frontend reads
-#               only, such as Kaimon's token, which a write deny above it keeps read-only
+#               only, such as Kaimon's token, which a write deny above it keeps read-only, or the
+#               forge token store, which git and the gh wrapper read in every frontend
 #   read_files  files below a read deny directory that the frontend reads and does not write; its
 #               file adds them to `allowRead` and writes the directory as the glob `<directory>/*`,
 #               which a file allow pierces in srt
@@ -56,7 +57,12 @@ state = [
     "~/.config/anthropic/credentials.lock",
 ]
 deny_write = []
-own = ["~/.claude.json", "~/.claude/.credentials.json", "~/.config/anthropic/credentials"]
+own = [
+    "~/.claude.json",
+    "~/.claude/.credentials.json",
+    "~/.config/anthropic/credentials",
+    "~/.config/research-harness/forge",
+]
 read_files = []
 # Claude Code refreshes its sign-in token here (`/v1/oauth/token`).
 network = ["platform.claude.com"]
@@ -69,6 +75,7 @@ own = [
     "~/.local/share/opencode/auth.json",
     "~/.local/share/opencode/mcp-auth.json",
     "~/.config/kaimon/auth-token",
+    "~/.config/research-harness/forge",
 ]
 read_files = [
     "~/.config/api-keys/gwdg-token",
@@ -86,6 +93,7 @@ own = [
     "~/.omp/agent/agent.db-wal",
     "~/.omp/agent/.env",
     "~/.config/kaimon/auth-token",
+    "~/.config/research-harness/forge",
 ]
 read_files = []
 network = []
@@ -96,7 +104,7 @@ mach_lookup = ["mul-xpc (Apple)_OpenStep"]
 [frontend.antigravity]
 state = ["~/.gemini"]
 deny_write = []
-own = ["~/.gemini/jetski-standalone-oauth-token"]
+own = ["~/.gemini/jetski-standalone-oauth-token", "~/.config/research-harness/forge"]
 read_files = []
 # agy refreshes its login token at the first host, checks its eligibility and calls its model at the
 # second, and reads the account at the third.
