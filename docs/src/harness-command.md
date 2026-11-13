@@ -1287,11 +1287,13 @@ The cases run these commands:
   it where `actionlint` is on the `PATH`.
 - `dependents.jl`, where `julia` is on the `PATH`: `excluded` on fixture `Project.toml` pairs,
   `row` on the four rows, `list`, and their refusals.
+- The format of `dependents.jl`: JuliaFormatter's SciML style, which the pre-commit hook of a base
+  checks on the installed copy.
 - `verify-workflows.jl`, where `julia` is on the `PATH`: a clean fixture, each of its four
   dependents findings, and a profile without `docs_exceptions` and `docs_additions`.
 
 Without `julia`, a group that needs it prints one `skip` line and does not run.
-`verify-workflows.jl` also needs the Julia environment of the harness.
+The format case and `verify-workflows.jl` also need the Julia environment of the harness.
 
 ### `repos.py`
 
