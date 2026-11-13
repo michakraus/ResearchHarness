@@ -148,6 +148,29 @@ account or a key with them. A search for the user's own papers by author name is
 identity. A service that asks an agent for contact details or a key gets none: report the limit
 and use another source.
 
+## Check every reference against its record before you cite it
+
+**A reference from memory is a guess, not a citation.** This holds wherever a reference is
+written: code, a docstring, a comment, a note, documentation, a BibTeX entry, a manuscript, a task
+file, a PR or issue text, and a reply to the user.
+
+Before you write a reference, look up its record and compare the authors, the title, the year and
+the venue with it. Copy the metadata from the record, and write the identifier with the reference.
+
+- **A DOI**: its Crossref record, `api.crossref.org/works/<doi>`. A DOI that Crossref does not know
+  goes to `doi.org/<doi>`.
+- **An arXiv identifier**: its abstract page, `export.arxiv.org/abs/<id>`.
+- **A book**: its record by ISBN, or zbMATH or MathSciNet.
+- **No identifier**: search Crossref, arXiv, zbMATH or ADS by title and author. A match on every
+  field gives the identifier; anything less is no match.
+- **An entry of an existing `.bib` file or reference library**: read the entry. If it has no DOI or
+  arXiv identifier, check it as a reference with no identifier.
+
+A record that disagrees with the reference wins, and the reference changes. A reference that has
+no record is not cited: leave it out, or write it as unverified, and name it in your report. A
+sub-agent's reference is checked the same way before you use it. The lookups are web requests, so
+they go out anonymously, as above.
+
 ## Reporting
 
 Report what happened, not what was supposed to happen. If tests fail, say so and quote the output.
