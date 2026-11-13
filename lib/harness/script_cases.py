@@ -1767,6 +1767,23 @@ def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path
             b,
             "-R, then --repo: the last",
         ),
+        (
+            ["issue", "create", "-b", "-Rhttps://[x/y", "-R", "Example-C/r"],
+            {},
+            repo,
+            c,
+            "a flag's value -R… that urllib cannot split, then -R",
+        ),
+        (
+            ["issue", "create", "-R", "Example-C/r", "-bRhttps://[x/y"],
+            {},
+            repo,
+            c,
+            "-R, then a cluster -bR… that urllib cannot split",
+        ),
+        (["issue", "list", "--", "-Rhttps://[x/y"], {}, repo, c, "-R… after -- that urllib cannot split"),
+        (["pr", "view", "1", "-R", "https://[x/y"], {}, repo, c, "-R a value that urllib cannot split"),
+        (["pr", "view", "https://[x/pull/1"], {}, repo, c, "gh pr view with a URL that urllib cannot split"),
         (["pr", "view", "1", "-RExample-B/repo"], {}, repo, b, "-ROWNER/REPO"),
         (["pr", "view", "1", "-R", "https://github.com/Example-B/repo"], {}, repo, b, "-R a URL"),
         (["pr", "view", "1", "-R", "GitHub.com/Example-B/repo"], {}, repo, b, "-R HOST/OWNER/REPO, capitals"),
@@ -1789,9 +1806,10 @@ def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path
             and seen.runs == 1
             and seen.token == want
             and seen.github_token is None
-            and seen.args == args,
+            and seen.args == args
+            and "Traceback" not in seen.stderr,
             f"gh-token.py, {label}: the stub runs once with the owner's token, no GITHUB_TOKEN and the "
-            f"arguments unchanged: {seen.status}, {seen.runs}, "
+            f"arguments unchanged, with no traceback: {seen.status}, {seen.runs}, "
             f"{[k for k, v in tokens.items() if v == seen.token]}, {seen.github_token}, {seen.args}, "
             f"{seen.stderr.strip()!r}",
         )
@@ -1870,6 +1888,7 @@ def gh_token_no_token_cases(check: Callable[[object, str], None], tmp: pathlib.P
         (other, ["api", "--hostname=X.GHE.com", "user"], {}, "--hostname= of another host"),
         (other, ["api", "user"], {"GH_HOST": "x.ghe.com"}, "GH_HOST of another host"),
         (other, ["issue", "create", "-b", "--", "--hostname", "x.ghe.com"], {}, "--hostname after --"),
+        (other, ["issue", "create", "-b", "--", "--hostname=x.ghe.com"], {}, "--hostname= after --"),
     ]:
         given = {"GITHUB_TOKEN": token, "GH_TOKEN": token, "GH_CONFIG_DIR": str(caller), **extra}
         seen = at.run(*args, variables=given)
@@ -1961,7 +1980,8 @@ def gh_token_path_cases(check: Callable[[object, str], None], tmp: pathlib.Path)
 
 def gh_token_status_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """The exit status of scripts/gh-token.py: gh's status, 130 where a Ctrl-C ends gh, with no
-    traceback of the wrapper, and 2 with one line, and no gh, for a store file with no token."""
+    traceback of the wrapper, and 2 with one line, and no gh, for a store file with no token and
+    for one whose line urllib cannot split."""
     home = GhHome.fresh(tmp / "status", {"default": f"T-d-{secrets.token_hex(4)}"})
     seen = home.run("api", "user", variables={"GH_STUB_STATUS": str(GH_STUB_EXIT)})
     check(
@@ -1983,6 +2003,23 @@ def gh_token_status_cases(check: Callable[[object, str], None], tmp: pathlib.Pat
         and "default.store" in seen.stderr,
         f"gh-token.py with a default.store whose line holds no token exits 2 with one line, and runs no "
         f"gh: {seen.status}, {seen.runs}, {seen.stderr!r}",
+    )
+    bracket = GhHome.fresh(
+        tmp / "bracket", {name: f"T-{name}-{secrets.token_hex(4)}" for name in ("example-b", "default")}
+    )
+    fsutil.write_private(
+        bracket.root / "home" / GH_STORE / "example-c.store",
+        f"https://x-access-token:T-c-{secrets.token_hex(4)}[x@github.com\n".encode(),
+    )
+    seen = bracket.run("api", "user", cwd=bracket.repository("c", "https://github.com/Example-C/repo.git"))
+    check(
+        seen.status == GH_REFUSED
+        and seen.runs == 0
+        and seen.stderr.count("\n") == 1
+        and "example-c.store" in seen.stderr
+        and "Traceback" not in seen.stderr,
+        f"gh-token.py with an owner's store line that urllib cannot split exits 2 with one line that "
+        f"names the file, and runs no gh: {seen.status}, {seen.runs}, {seen.stderr!r}",
     )
 
 

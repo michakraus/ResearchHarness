@@ -136,17 +136,25 @@ def readings(args: list[str]) -> list[Reading]:
 
 
 def url_location(value: str) -> tuple[str, str] | None:
-    """The host, in lower case, and the first path segment of the URL `value`, or None."""
-    url = urllib.parse.urlsplit(value)
+    """The host, in lower case, and the first path segment of the URL `value`, or None, also where
+    `value` is no URL that urllib can split, as `https://[x/y`."""
+    try:
+        url = urllib.parse.urlsplit(value)
+    except ValueError:
+        return None
     first = url.path.strip("/").split("/")[0]
     return (url.hostname, first) if url.hostname and first else None
 
 
 def location(value: str) -> tuple[str, str] | None:
     """The host and owner of a repository written as `OWNER/REPO`, `HOST/OWNER/REPO`, an `https`
-    or `ssh` URL, or `git@HOST:OWNER/REPO`; None for another form."""
+    or `ssh` URL, or `git@HOST:OWNER/REPO`; None for another form, and for a URL that urllib cannot
+    split, as `https://[x/y`."""
     if "://" in value:
-        url = urllib.parse.urlsplit(value)
+        try:
+            url = urllib.parse.urlsplit(value)
+        except ValueError:
+            return None
         host, path = url.hostname or "", url.path.strip("/")
         parts = path.split("/")
         return (host, parts[0]) if host and len(parts) >= OWNER_REPO and parts[0] else None
@@ -252,9 +260,13 @@ def token(home: pathlib.Path, found: tuple[str, str] | None) -> str | None:
         line = chosen.read_text().strip()
     except (OSError, UnicodeDecodeError) as e:
         raise RefusedError(f"{chosen} cannot be read: {e.__class__.__name__}") from None
-    password = urllib.parse.urlsplit(line).password
+    refused = RefusedError(f"{chosen} holds no line https://<user>:<token>@github.com with a token")
+    try:
+        password = urllib.parse.urlsplit(line).password
+    except ValueError:
+        raise refused from None
     if not password:
-        raise RefusedError(f"{chosen} holds no line https://<user>:<token>@github.com with a token")
+        raise refused
     return urllib.parse.unquote(password)
 
 
