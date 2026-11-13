@@ -28,7 +28,8 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   refused. Without `dependents_bases`, the subcommand writes only the files of the other templates
   and names neither file.
 - githooks/workflows/Dependents.yml: its trigger, concurrency group, permissions, jobs and matrix,
-  and the actions of its `uses:` lines; `actionlint` passes on it, where it is on the PATH.
+  the actions of its `uses:` lines, and a second checkout of the dependent for the run against the
+  default branch; `actionlint` passes on it, where it is on the PATH.
 - githooks/workflows/dependents.jl, where `julia` is on the PATH: `excluded` on a head inside the
   dependent's `[compat]` entry, outside it, against an entry with two specifiers, and with no
   entry; `excluded` refuses a base or a dependent Project.toml that is not TOML, a base version
@@ -607,6 +608,30 @@ def yaml_cases(check: Check) -> None:
         and "dependents.jl row" in runs,
         f"the test job checks the compat, develops the base, runs `core` on Julia 1 and writes the row "
         f"-> {sorted(uses)}, {versions}",
+    )
+    by_id = {str(s.get("id")): s for s in steps if "id" in s}
+    projects = [str(by_id.get(name, {}).get("run", "")).split()[2:3] for name in ("head", "main")]
+    paths = [
+        str(cast("dict[str, object]", s.get("with") or {}).get("path"))
+        for s in steps
+        if "repository" in cast("dict[str, object]", s.get("with") or {})
+    ]
+    fresh = next(
+        (
+            i
+            for i, s in enumerate(steps)
+            if cast("dict[str, object]", s.get("with") or {}).get("path") == "dependent-main"
+        ),
+        len(steps),
+    )
+    main = next((i for i, s in enumerate(steps) if s.get("id") == "main"), -1)
+    check(
+        projects == [["--project=dependent"], ["--project=dependent-main"]]
+        and paths == ["dependent", "dependent-main"]
+        and fresh < main,
+        f"the run against the default branch tests a second checkout of the dependent, made before it, "
+        f"not the one that the run against the head resolved -> projects {projects}, checkouts {paths}, "
+        f"steps {fresh} and {main}",
     )
     actionlint = shutil.which("actionlint")
     if actionlint is None:
