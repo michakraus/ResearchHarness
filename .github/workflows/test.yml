@@ -52,13 +52,29 @@ jobs:
           "$environment/bin/python" --version
       - name: harness test
         run: python bin/harness test
-      # The cases of dependents.jl need julia on the PATH. Julia comes after the full suite, so the
-      # other parts run as they do without it, and only the part githooks runs again.
+      # The cases of dependents.jl need julia on the PATH, and those of verify-workflows.jl also the
+      # harness's Julia environment. Julia comes after the full suite, so the other parts run as
+      # they do without it, and only the part githooks runs again. The step fails when the part
+      # still skips these cases, so a lost Julia setup cannot pass in silence.
       - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: '1.13'
+      # verify-workflows.jl loads YAML from RESEARCH_HARNESS_JULIA, as `harness install` sets it up.
+      - name: Instantiate Project.toml at RESEARCH_HARNESS_JULIA
+        run: |
+          env_dir="$RUNNER_TEMP/research-harness-julia"
+          echo "RESEARCH_HARNESS_JULIA=$env_dir" >> "$GITHUB_ENV"
+          mkdir -p "$env_dir"
+          cp Project.toml "$env_dir/"
+          julia --startup-file=no --project="$env_dir" -e 'using Pkg; Pkg.instantiate()'
       - name: harness test githooks, with julia
-        run: python bin/harness test githooks
+        run: |
+          set -o pipefail
+          python bin/harness test githooks | tee "$RUNNER_TEMP/githooks.log"
+          if grep -E '^skip  githooks: no (julia on the PATH|Julia environment)' "$RUNNER_TEMP/githooks.log"; then
+            echo "the cases of dependents.jl or verify-workflows.jl did not run"
+            exit 1
+          fi
       - name: compileall
         run: '"$HOME/.local/share/research-harness/python/bin/python" -m compileall -q lib hooks scripts adapters'
 

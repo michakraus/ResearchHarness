@@ -11,6 +11,7 @@
   absence elsewhere, and `dependents.toml` in each base. It reads a profile without
   `docs_exceptions` or `docs_additions` as two empty lists. New cases of `harness test` in
   `githooks_cases.py` run the two subcommands, the script and `verify-workflows.jl` on fixture
-  research roots. The CI job `python` installs Julia after the full suite, and runs the part
-  `githooks` again, so the cases of the script run in CI. The CI job `lint` runs `actionlint` on
-  `Dependents.yml` too.
+  research roots. After the full suite, the CI job `python` installs Julia and the harness's
+  Julia environment. Then it runs the part `githooks` again, so the cases of the script and of
+  `verify-workflows.jl` run in CI. That step fails when the part still skips these cases. The CI
+  job `lint` runs `actionlint` on `Dependents.yml` too.

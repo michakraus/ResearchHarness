@@ -307,12 +307,14 @@ The row is one of four:
   bump. The job does not test it, because a test needs a compat override that no user can
   install.
 - *green*: the dependent passes against the head.
-- *regression*: the dependent fails against the head and passes against the default branch.
+- *regression*: the dependent fails against the head and passes against the default branch. This
+  includes a head that the resolver cannot install beside the other dependencies of the
+  dependent. The log of the head step then names the conflict ("empty intersection …").
 - *known red*: the dependent fails against both. The pull request did not cause it.
 
-Of the four rows, only a regression fails the job. A step that fails before the row, such as the
-compat check, also fails the job. The workflow is advisory: `harness ci-protection` does not
-require it.
+Of the four rows, only a regression fails the job. A step that fails before the row also fails
+the job. Two examples are the compat check and the checkout of a dependent that the token of the
+base cannot read. The workflow is advisory: `harness ci-protection` does not require it.
 
 ## `workflows/dependents.jl`
 
