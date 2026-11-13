@@ -65,6 +65,7 @@ These options come before the subcommand.
 | [`wiki-lint`](#wiki-lint) | lints the Markdown of the prose repositories: links, paths, line citations, frontmatter | no |
 | [`wiki-lint-hook`](#wiki-lint-hook) | installs the wiki-lint hook into the prose repositories | yes |
 | [`workflows`](#workflows) | installs the canonical GitHub workflows into every package and experiment | yes |
+| [`dependents`](#dependents) | writes the list of direct dependents into each base of the profile key `dependents_bases` | yes |
 | [`ci-protection`](#ci-protection) | protects every default branch on GitHub with a ruleset | yes |
 | [`format`](#format) | runs JuliaFormatter over every tracked `.jl` file of the packages and experiments | yes |
 | [`render`](#render) | prints a template rendered with the profile | no |
@@ -623,13 +624,56 @@ harness workflows [--apply]
 Copies the canonical files of `githooks/workflows/` into each package and experiment that has a
 `Project.toml`: `CI.yml`, `dependabot.yml` and `codecov.yml` into each, `TagBot.yml` into each
 package, and `Documenter.yml` where a tracked `docs/make.jl` exists. A repository that the profile
-keys `docs_exceptions` or `docs_additions` name keeps its own documentation workflow. It deletes
-the retired `CompatHelper.yml`.
+keys `docs_exceptions` or `docs_additions` name keeps its own documentation workflow. It copies
+`Dependents.yml` to `.github/workflows/Dependents.yml` and `dependents.jl` to
+`.github/dependents.jl` of each base that the profile key `dependents_bases` names, and deletes
+both from every other repository. It deletes the retired `CompatHelper.yml`.
 
 **Exit status:** 0 when every file is current, or after `--apply`; 1 when the dry run has a
-change; 2 when a template is missing.
+change. 2 when a template is missing. 2 also when `dependents_bases` names a repository that is
+not a git repository with a `Project.toml` below `Packages/`.
 
 **Where to run it:** anywhere; it writes tracked files only. Commit each file by name.
+
+### `dependents`
+
+```text
+harness dependents [--apply]
+```
+
+Writes `.github/dependents.toml` into each base that the profile key `dependents_bases` names.
+A direct dependent of a base is a git repository below `Packages/` whose `Project.toml` has the
+base's UUID in `[deps]`. `[weakdeps]`, `[extras]`, `test/Project.toml` and `Experiments/` do not
+count, and a base is not its own dependent. The file holds one `[[dependent]]` table per
+dependent, sorted by name. Each table has two keys:
+
+- `name`: the name of the dependent's directory;
+- `repository`: the GitHub `owner/name` of the dependent's `origin`.
+
+An `origin` has one of two forms. The first is a URL
+`<scheme>://[user@]github.com[:port]/owner/name[.git][/]`, with the scheme `https`, `http`,
+`ssh`, `git+ssh` or `ssh+git`. The second is the scp form `[user@]github.com:owner/name[.git][/]`.
+Scheme and host match in any case. Every other form is refused, such as another scheme or host, a
+local path, a query or a fragment, or a name `.` or `..`. The census of every base and the read of
+every old file run before the first write, so a refusal writes no file.
+Without `--apply` it prints the diff of each file that would change. The `Dependents.yml` workflow
+of the base reads the file into its matrix.
+
+**Exit status:** 0 when every file is current, or after `--apply`; 1 when the dry run has a
+change. 2, with a message that names the repository or the file, for each of these refusals:
+
+- `dependents_bases` names a repository that is not a git repository with a `Project.toml` below
+  `Packages/`;
+- a base has no `uuid`;
+- the `Project.toml` of a base or of a package is not TOML;
+- the directory name of a dependent is not a name that `dependents.toml` can hold, such as a name
+  with a space;
+- a dependent has no `origin`, or an `origin` of neither form above;
+- the old `.github/dependents.toml` is not a regular file, or is not UTF-8, or its `.github` is a
+  symbolic link or not a directory.
+
+**Where to run it:** anywhere; it writes tracked files only and does not commit. Commit
+`.github/dependents.toml` by name in each base.
 
 ### `ci-protection`
 
@@ -638,7 +682,10 @@ harness ci-protection [--apply] [--remove-classic]
 ```
 
 Protects the default branch of each repository that has a `CI.yml` with a GitHub ruleset named
-`main`, which requires the status checks of the canonical `CI.yml`. Then it protects the Harness
+`main`, which requires the status checks of the canonical `CI.yml`. A repository with a
+`test/ci-groups.toml` requires one check per test group, version and system, as `CI.yml` names its
+jobs there, and the jobs of each workflow that the file names in `workflows`, such as
+`Metal.yml`. Then it protects the Harness
 itself, the checkout that runs the command, with the same ruleset; there the required checks are
 the jobs of `.github/workflows/test.yml` that report on every pull request and are not warnings.
 It also turns on auto-merge and the deletion of merged branches. It reads the current state first
@@ -953,7 +1000,7 @@ subcommands live in the adapters: `settings` and `trust` in `adapters/claude/ada
 | `setup` | `setup.py` |
 | `install` | `install.py` |
 | `render`, `get`, `leaks` | `profile.py` |
-| `githooks`, `wiki-lint-hook`, `workflows` | `githooks.py` |
+| `githooks`, `wiki-lint-hook`, `workflows`, `dependents` | `githooks.py` |
 | `clone`, `repos` | `repos.py` |
 | `update` | `update.py` |
 | `dotfiles-kit` | `dotfiles_kit.py` |
@@ -968,7 +1015,8 @@ subcommands live in the adapters: `settings` and `trust` in `adapters/claude/ada
 
 `frontmatter.py`, `docs.py`, `units.py`, `script_cases.py`, `network.py`, `providers.py`,
 `sources.py`, `strict.py`, `sweep.py` and `environment.py` have no subcommand. Their cases run
-only in `harness test`. `install_cases.py` holds helpers for the cases of other modules. The
+only in `harness test`. `install_cases.py` holds helpers for the cases of other modules, and
+`githooks_cases.py` the cases of `githooks.py`. The
 sections start with the entry point and the parser, then the subcommands, then the shared modules,
 then the modules of the tests.
 
@@ -1197,13 +1245,14 @@ name or a value of the wrong type, the subcommand exits with status 2.
 
 ### `githooks.py`
 
-Three subcommands that copy shared files into the repositories of the research tree. The research
+Four subcommands that write shared files into the repositories of the research tree. The research
 root is `$RESEARCH_ROOT`, or `~/Research` if it is not set.
 
 ```
 harness githooks [--apply]
 harness wiki-lint-hook [--apply]
 harness workflows [--apply]
+harness dependents [--apply]
 ```
 
 `githooks` copies `githooks/pre-commit`, `githooks/pre-commit.jl`, `githooks/pre-push`,
@@ -1211,12 +1260,43 @@ harness workflows [--apply]
 directly below `Packages/` and `Experiments/`, and sets `core.hooksPath`. `wiki-lint-hook` copies
 `githooks/pre-commit-wiki` as the pre-commit hook of the prose repositories that
 `WIKI_REPOSITORIES` names. `workflows` copies the canonical files of `githooks/workflows/` and
-deletes the retired `CompatHelper.yml`.
+deletes the retired `CompatHelper.yml`. `Dependents.yml` and `dependents.jl` go only into the
+bases of the profile key `dependents_bases` (`bases`), and out of every other repository.
+`dependents` writes `.github/dependents.toml` into each base, from the census of its direct
+dependents (`census`).
 
 A session cannot write `.git/config`. So a run that cannot set `core.hooksPath` prints the command
 for each repository, and exits with status 2. The module also gives `research_root`,
-`repositories` and `git` to other modules. It has no `selftest`; the sweep runs its dry runs and
-its `--apply`. [Git hooks and workflows](components/githooks.md) describes the copied files.
+`repositories` and `git` to other modules. Its `selftest` runs the cases of `githooks_cases.py`.
+The sweep runs the dry runs and the `--apply` of its subcommands.
+[Git hooks and workflows](components/githooks.md) describes the copied files.
+
+### `githooks_cases.py`
+
+The test cases of the dependents workflow and of `harness workflows`, which the `selftest` of
+`githooks.py` runs. It has no subcommand and no `selftest` of its own. The cases of the two
+subcommands and of `verify-workflows.jl` build fixture research roots below a temporary
+directory. Each root has git repositories under `Packages/` and `Experiments/`, and the case
+writes its own profile.
+
+The cases run these commands:
+
+- `harness dependents`: dependents through `[deps]`, beside packages with the base only in
+  `[weakdeps]` or `test/Project.toml`, and beside an experiment. The case compares the written file
+  byte for byte. Other cases give the refusals of the subcommand.
+- `harness workflows`, with and without `dependents_bases`.
+- `github_name` on the forms of an `origin` URL.
+- The settings of `Dependents.yml`, read with the YAML reader of `wikilint.py`, and `actionlint` on
+  it where `actionlint` is on the `PATH`.
+- `dependents.jl`, where `julia` is on the `PATH`: `excluded` on fixture `Project.toml` pairs,
+  `row` on the four rows, `list`, and their refusals.
+- The format of `dependents.jl`: JuliaFormatter's SciML style, which the pre-commit hook of a base
+  checks on the installed copy.
+- `verify-workflows.jl`, where `julia` is on the `PATH`: a clean fixture, each of its four
+  dependents findings, and a profile without `docs_exceptions` and `docs_additions`.
+
+Without `julia`, a group that needs it prints one `skip` line and does not run.
+The format case and `verify-workflows.jl` also need the Julia environment of the harness.
 
 ### `repos.py`
 
@@ -1418,7 +1498,8 @@ an empty fixture directory.
 
 The subcommand `harness ci-protection [--remove-classic] [--apply]`. It protects the default
 branch of each repository with a `CI.yml` with a GitHub ruleset named `main`: no deletion, no
-force push, and the required status checks of the canonical `CI.yml`, `REQUIRED_CHECKS`. Last it
+force push, and the required status checks of the canonical `CI.yml`: `REQUIRED_CHECKS`, or with a
+`test/ci-groups.toml` the list of `required_checks`, each `Julia` check once per test group. Last it
 protects the Harness itself, the checkout that runs the command, with the same ruleset and its own
 list, `HARNESS_CHECKS`: the jobs of `.github/workflows/test.yml` that report on every pull request
 and are not warnings. `julia.yml` and `docs.yml` have path filters, so a check of theirs would
@@ -1433,9 +1514,10 @@ your own terminal: in a sandboxed session, only the first `gh` call of a process
 
 Its cases check `ruleset_problem` against the ruleset as GitHub returns it, against one break
 of each check, and with the ruleset of each list judged against the other list. They list the
-repositories with a scratch research root, and run the subcommand there with `gh` replaced. A case
-reads `test.yml` with `workflow_checks` and fails when `HARNESS_CHECKS` differs from it, so a
-renamed or an added job fails `harness test`. The sweep does not run this subcommand, because it
+repositories with a scratch research root, with and without a group file, check that
+`required_checks` refuses each malformed group file, and run the subcommand there with `gh`
+replaced. A case reads `test.yml` with `workflow_checks` and fails when `HARNESS_CHECKS` differs
+from it, so a renamed or an added job fails `harness test`. The sweep does not run this subcommand, because it
 needs `gh` with a login.
 
 ### `fmt.py`
@@ -1802,8 +1884,8 @@ repository. Then:
   traceback and changes no file;
 - it removes each precondition alone, such as the profile or `~/.claude.json`, and checks that each
   subcommand that needs it exits with status 2 and one line;
-- it runs `--apply` of `githooks`, `wiki-lint-hook`, `workflows` and `trust`, and checks that the
-  dry run after it exits with status 0.
+- it runs `--apply` of `githooks`, `wiki-lint-hook`, `workflows`, `dependents` and `trust`, and
+  checks that the dry run after it exits with status 0.
 
 It does not run `format`, `ci-protection`, `skill-triggers`, `doctor`, `test` or `mutate`.
 [Development](development.md) describes the tests.

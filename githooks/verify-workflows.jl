@@ -10,7 +10,8 @@
 #
 #   1. CI.yml, dependabot.yml, TagBot.yml and codecov.yml are byte-identical to the templates in
 #      workflows/. They are installed by copy and are not parameterised, so anything other than
-#      equality is drift. This is the check that makes the required-status-check list static.
+#      equality is drift. This is the check that makes the required-status-check list static,
+#      apart from the test groups of check 6.
 #      TagBot.yml is the one asymmetric case: byte-identical under Packages/, and asserted
 #      ABSENT under Experiments/, none of which is registered in General.
 #   1b. The same set on the DEFAULT branch, but only for a repository whose working tree is
@@ -20,6 +21,10 @@
 #      obvious remedy for that report (harness workflows --apply) would overwrite the branch's
 #      files. So both questions are asked and reported apart. The default branch is the invariant
 #      harness ci-protection depends on; the working tree is what you are about to push.
+#   1c. Dependents.yml and dependents.jl are byte-identical in each base package that the profile's
+#      `dependents_bases` lists, which also has .github/dependents.toml, and ABSENT from every
+#      other repository. The content of dependents.toml is not checked here: `harness dependents`
+#      writes it from the census and reports a stale copy.
 #   2. The two canonical CI jobs parse, and their job names are exactly the strings that
 #      harness ci-protection requires. A rename here silently invalidates branch protection in every
 #      repository, so it is asserted against a literal rather than derived.
@@ -33,6 +38,13 @@
 #   5. Which repositories the doctest job will skip - those with no docs/Project.toml. The job is
 #      byte-identical everywhere and skips itself, so this is reported rather than treated as an
 #      error, but a silent skip is worse than a loud one.
+#   6. A repository's test/ci-groups.toml, where it has one, against its test/runtests.jl, with the
+#      rules of scripts/test-layout.jl: the file lists distinct group names, each group has an
+#      `if` there, and GROUPS runs exactly those groups for an empty ARGS, so the CI jobs together
+#      run what Pkg.test() runs. CI.yml runs one test job per group, and harness ci-protection
+#      requires a check per group, so a group file that does not match the suite splits it wrong.
+#      Each extra workflow that the file names in `workflows`, such as Metal.yml, exists in
+#      .github/workflows/; harness ci-protection requires its jobs too, and check 4 parses it.
 
 # The harness's Julia environment, which `harness install --apply` instantiates from
 # Project.toml; first in LOAD_PATH, so no caller needs `--project`.
@@ -42,6 +54,11 @@ end
 using TOML
 using YAML
 
+# The parser of the test layout and its rules for the test groups, for check 6.
+module Layout
+include(joinpath(@__DIR__, "..", "scripts", "test-layout.jl"))
+end
+
 const ROOT = get(ENV, "RESEARCH_ROOT", joinpath(homedir(), "Research"))
 const TEMPLATES = joinpath(@__DIR__, "workflows")
 const PROFILE = TOML.parsefile(
@@ -50,15 +67,18 @@ const PROFILE = TOML.parsefile(
 
 const QUIET = "--quiet" in ARGS
 
-# Job names. These are the required status checks, modulo the matrix expansion below.
-const TEST_JOB_NAME = "Julia \${{ matrix.version }} - \${{ matrix.os }} - \${{ matrix.arch }}"
+# Job names. These are the required status checks, modulo the matrix expansion below. The test job
+# ends its name with ` - <group>` for a group of test/ci-groups.toml, and only for one.
+const TEST_JOB_NAME = "Julia \${{ matrix.version }} - \${{ matrix.os }} - \${{ matrix.arch }}\${{ matrix.group && format(' - {0}', matrix.group) || '' }}"
 const DOCTEST_JOB_NAME = "Doctests - \${{ matrix.os }}"
 
 const VERSIONS = ["min", "1"]
 const OSES = ["ubuntu-latest", "macOS-latest", "windows-latest"]
 
-required_checks() = vcat(
-    ["Julia $v - $o - default" for v in VERSIONS for o in OSES],
+"The required checks of a repository with the test groups `groups`, or with none for `nothing`."
+required_checks(groups = nothing) = vcat(
+    ["Julia $v - $o - default$(g === nothing ? "" : " - $g")"
+     for v in VERSIONS for o in OSES for g in something(groups, [nothing])],
     ["Doctests - ubuntu-latest"],
 )
 
@@ -92,18 +112,31 @@ const FORBIDDEN =
 
 # Repositories whose documentation workflow is a multi-job pipeline rather than a single build: the
 # profile's `docs_exceptions`. The template does not describe them, so no comparison against it
-# means anything.
-const DOCS_PIPELINES = Vector{String}(PROFILE["docs_exceptions"])
+# means anything. Without the key, none.
+const DOCS_PIPELINES = Vector{String}(get(PROFILE, "docs_exceptions", String[]))
 
 # Repositories that keep the canonical documentation workflow and only *add* to it, such as the TeX
 # toolchain that docs/make.jl needs to compile TikZ figures before Documenter checks links: the
 # profile's `docs_additions`. The installer does not overwrite them, so the byte comparison never
 # sees them — but the canonical body must still survive inside each, which is what
 # `documenter_additions_intact` asserts. Without that, nothing would report a template change to it.
-const DOCS_ADDITIONS = Vector{String}(PROFILE["docs_additions"])
+# Without the key, none.
+const DOCS_ADDITIONS = Vector{String}(get(PROFILE, "docs_additions", String[]))
 
 # Every repository whose Documenter.yml the installer skips, as `harness workflows` does.
 const DOCS_EXCEPTIONS = vcat(DOCS_PIPELINES, DOCS_ADDITIONS)
+
+# The base packages of the profile's `dependents_bases`: `harness workflows` installs the
+# dependents workflow and its script into each, and into no other repository. Without the key,
+# none.
+const DEPENDENTS_BASES = Vector{String}(get(PROFILE, "dependents_bases", String[]))
+const DEPENDENT_FILES =
+    [("Dependents.yml", ".github/workflows/Dependents.yml"), ("dependents.jl", ".github/dependents.jl")]
+const DEPENDENTS_ABSENT = "is present, but this repository is not in dependents_bases"
+const DEPENDENTS_TOML_MISSING =
+    "dependents.toml is missing: run harness dependents --apply and commit .github/dependents.toml"
+
+isbase(name::String, isexperiment::Bool) = !isexperiment && name in DEPENDENTS_BASES
 
 struct Finding
     repo::String
@@ -275,6 +308,7 @@ function workflow_files(dir::String, name::String, isexperiment::Bool)
     if !(name in DOCS_EXCEPTIONS) && tracked(dir, "docs/make.jl")
         push!(files, ("Documenter.yml", ".github/workflows/Documenter.yml"))
     end
+    isbase(name, isexperiment) && append!(files, DEPENDENT_FILES)
     return files
 end
 
@@ -337,6 +371,7 @@ function check_repo(
         findings::Vector{Finding},
         skips::Vector{String},
         offbranch::Vector{OffBranch},
+        grouped::Dict{String, Vector{String}},
 )
     name = basename(dir)
     wf = joinpath(dir, ".github", "workflows")
@@ -377,6 +412,18 @@ function check_repo(
                 "Documenter.yml has drifted from the template: the canonical line " *
                 "`$(gone)` is missing from it or out of order",
             )
+        end
+    end
+
+    # 1c. the dependents workflow. A base of `dependents_bases` has the byte-identical pair of
+    # check 1 and the list of dependents that the workflow reads; any other repository has neither
+    # file, because the installer removes them there. The content of dependents.toml is the check
+    # of `harness dependents`, not of this script.
+    if isbase(name, isexperiment)
+        isfile(joinpath(dir, ".github", "dependents.toml")) || fail(DEPENDENTS_TOML_MISSING)
+    else
+        for (template, rel) in DEPENDENT_FILES
+            isfile(joinpath(dir, rel)) && fail("$template $DEPENDENTS_ABSENT")
         end
     end
 
@@ -472,6 +519,20 @@ function check_repo(
     # skips itself where there is no documentation environment, but a silent skip is worse than a
     # loud one.
     tracked(dir, "docs/Project.toml") || push!(skips, name)
+
+    # 6. the test groups, where the repository has test/ci-groups.toml
+    if isfile(joinpath(dir, "test", "ci-groups.toml"))
+        runtests = Layout.layout(dir).runtests
+        if runtests === nothing
+            fail("test/ci-groups.toml exists, and test/runtests.jl does not exist or does not parse")
+        else
+            for (rule, what) in Layout.groups_violations(dir, runtests)
+                fail("[$rule] $what")
+            end
+        end
+        groups = first(Layout.ci_groups(dir))
+        groups === nothing || (grouped[name] = groups)
+    end
     return nothing
 end
 
@@ -482,16 +543,30 @@ function main()
     findings = Finding[]
     skips = String[]
     offbranch = OffBranch[]
+    grouped = Dict{String, Vector{String}}()
+    dir_of = Dict(basename(d) => d for d in all)
     for dir in all
-        check_repo(dir, findings, skips, offbranch)
+        check_repo(dir, findings, skips, offbranch, grouped)
     end
 
     if !QUIET
-        println("Required status checks (identical in every repository):")
+        println("Required status checks (identical in every repository without test/ci-groups.toml):")
         for c in required_checks()
             println("    ", c)
         end
         println()
+        for (repo, groups) in sort!(collect(grouped); by = first)
+            println("Required status checks of $repo, from test/ci-groups.toml:")
+            for c in required_checks(groups)
+                println("    ", c)
+            end
+            dir = dir_of[repo]
+            workflows = first(Layout.ci_workflows(dir,
+                TOML.parsefile(joinpath(dir, "test", "ci-groups.toml"))))
+            isempty(workflows) ||
+                println("    and every job of ", join(workflows, ", "), " that is not a warning")
+            println()
+        end
     end
 
     if !isempty(skips)

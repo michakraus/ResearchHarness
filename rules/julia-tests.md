@@ -11,13 +11,26 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
 - **The test dependencies are in `test/Project.toml`.** `Project.toml` has no `[extras]` and no
   `[targets]`.
 - **`runtests.jl` holds no test.** It holds `using SafeTestsets`,
-  `const GROUPS = isempty(ARGS) ? ["core", "slow"] : ARGS` (or the platform line below), and one
+  `const GROUPS = isempty(ARGS) ? ["core", "slow"] : ARGS` (or a line below), and one
   `if "<group>" in GROUPS` per group. Each `if` holds only
   `@safetestset "<label>" include("<path>")` lines.
-- **The groups are `core`, `slow`, `doctests`, `metal`, `cuda` and `broken`.** Empty `ARGS` runs
-  `core` and `slow`. `doctests` holds `test/quality/doctests.jl` and no other file. The CI
-  Doctests job does not run this file: it runs the doctests itself, through `doctest`. A device
-  group runs in its own CI workflow. No test file reads `ARGS` or `ENV` to decide what runs.
+- **The groups are `core`, `slow`, `doctests`, `metal`, `cuda` and `broken`**, and the groups of
+  `test/ci-groups.toml` below. Empty `ARGS` runs `core` and `slow`, or the groups of that file.
+  `doctests` holds `test/quality/doctests.jl` and no other file. The CI Doctests job does not run
+  this file: it runs the doctests itself, through `doctest`. A device group runs in its own CI
+  workflow. No test file reads `ARGS` or `ENV` to decide what runs.
+- **A suite too long for one CI job splits into the groups of `test/ci-groups.toml`**:
+  `groups = ["core", "slow", "properties", "long"]`. CI then runs one test job per group, and the
+  required checks end in ` - <group>`. The file lists `core`, `slow` and the repository's own
+  groups, each a name of lower-case letters and digits, and none of `doctests`, `metal`, `cuda`
+  and `broken`. Each listed group has an `if` in `runtests.jl`, and empty `ARGS` runs exactly
+  them: `const GROUPS = isempty(ARGS) ? ["core", "slow", "properties", "long"] : ARGS`, in the
+  order of the file, so `Pkg.test()` still runs every group. A `metal` group appends `"metal"`
+  to the Apple list of the platform line. `verify-workflows.jl` checks the file too.
+- **A group job runs its group alone, so a device group leaves the required macOS jobs.** The file
+  then names the repository's device workflow, `workflows = ["Metal.yml"]`, and
+  `harness ci-protection` requires its jobs. `run-tests.jl <repo> affected` selects from every
+  group of the file except `slow`, so a file moved out of `core` keeps its quick check.
 - **A repository with a `metal` group has the platform line, and only such a repository has it:**
   `const GROUPS = isempty(ARGS) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? ["core", "slow", "metal"] : ["core", "slow"]) : ARGS`.
   Empty `ARGS` on Apple silicon then runs `metal` too. The check compares both lines as

@@ -223,7 +223,11 @@ the strict profile, `shellcheck` and `actionlint`. Its `python` job installs uv 
 `astral-sh/setup-uv`, pinned by its commit SHA, and runs `uv sync --locked` into the environment
 that `bin/harness` reads, on the job's Python;
 the job on the latest 3.x has `continue-on-error`, so its failure warns and does not fail the
-run. Its `empty-home` job runs `bin/harness test` once more on Python 3.14, with `HOME`
+run. After the full suite, the `python` job installs Julia with `julia-actions/setup-julia` and
+instantiates `Project.toml` at `RESEARCH_HARNESS_JULIA`. Then it runs `bin/harness test githooks`
+again, so the cases of `dependents.jl` and `verify-workflows.jl` run in CI. That step fails when
+the part still skips these cases. Its
+`empty-home` job runs `bin/harness test` once more on Python 3.14, with `HOME`
 set to a new empty directory, so a case that needs a file of the runner's home fails there;
 `bin/harness` makes its environment there with the uv of `setup-uv`. `setup-uv` fetches uv from
 the Astral mirror, so no required job fetches the uv release from GitHub. Its

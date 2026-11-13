@@ -7,19 +7,20 @@
 # parses; this script reads the layout through the same parser. A repository in another layout
 # is refused, with the violations that make it one, and only `full` runs there.
 #
-# `affected` (the default, base `origin/main`) selects the `core` test files that the diff against
+# `affected` (the default, base `origin/main`) selects the test files of its groups that the diff against
 # the base and the uncommitted changes can reach, by the mirror of the convention: `src/<path>.jl`
 # selects `test/<path>.jl`, every test file of its directory, the test files of the directories
 # above it that mirror no source file, and every file under `test/integration/` and `test/verification/`. A
 # change under `ext/` selects the last two. A changed test file selects itself, a changed helper
-# the test files that include it, and a changed `runtests.jl` the whole group. The quality files
+# the test files that include it, and a changed `runtests.jl` its whole groups. The quality files
 # run with any selection. A changed `Project.toml` or `test/Project.toml` runs `full`.
 # `select` prints what `affected` would run, and runs nothing. `full` runs `Pkg.test()`. `list`
 # prints the test files, their groups and their labels.
-# A `<unit>` is a group (`core`, `slow`, `doctests`, `metal`, `cuda`, `broken`), the path of a
-# test file, or a substring of a testset label. The path is relative to `test/` (`utils.jl`), to
-# the package root (`test/utils.jl`), or absolute. A unit that names no test file is an error.
-# `affected` selects from `core` alone, so it never runs `doctests`.
+# A `<unit>` is a group (`core`, `slow`, `doctests`, `metal`, `cuda`, `broken`, or a group of
+# `test/ci-groups.toml`), the path of a test file, or a substring of a testset label. The path is
+# relative to `test/` (`utils.jl`), to the package root (`test/utils.jl`), or absolute. A unit
+# that names no test file is an error. The groups of `affected` are `core`, or every group of
+# `test/ci-groups.toml` but `slow`, so it never runs `doctests`.
 #
 # A selection runs in one fresh process through `TestEnv`, which builds the test environment
 # outside the package directory, each file in its own module under a `@testset` of its label, and
@@ -120,13 +121,19 @@ function changed(pkg, base)
 end
 
 """
-The test files of `group` that a change of `paths`, relative to `pkg`, can reach, and why each
+The groups that `affected` selects from: `core`, or every group of `test/ci-groups.toml` but
+`slow`, where a repository moves fast files of `core` into groups of their own.
+"""
+affected_groups(pkg) = setdiff(default_groups(pkg), ["slow"])
+
+"""
+The test files of `groups` that a change of `paths`, relative to `pkg`, can reach, and why each
 is chosen; or `:full` where a `Project.toml` changed.
 """
-function affected(pkg, entries, paths; group = "core")
+function affected(pkg, entries, paths; groups = affected_groups(pkg))
     any(p -> p in ("Project.toml", "test/Project.toml"), paths) && return :full
     t, src = joinpath(pkg, "test"), joinpath(pkg, "src")
-    runnable = filter(e -> e.group == group, entries)
+    runnable = filter(e -> e.group in groups, entries)
     rel(e) = relpath(e.path, t)
     top(e) = first(splitpath(rel(e)))
     pick, why = Entry[], String[]
@@ -178,10 +185,10 @@ function unit_path(t, a)
 end
 
 "The test files that the units name: a group, a path, or part of a label."
-function named(entries, args)
+function named(entries, args; groups = GROUP_NAMES)
     filter(entries) do e
         any(args) do a
-            a in GROUP_NAMES ? e.group == a :
+            a in groups ? e.group == a :
             unit_path(dirname(e.file), a) == e.path || occursin(a, string(e.label))
         end
     end
@@ -231,11 +238,12 @@ function driver(pkg, entries, times; worker = nothing, claims = nothing)
 end
 
 """
-The test files that `Pkg.test()` runs: those of the groups of an empty `ARGS`, `core` and `slow`,
-and `metal` on Apple silicon, as D5 writes `GROUPS`.
+The test files that `Pkg.test()` runs: those of the groups of an empty `ARGS`, `default`, and
+`metal` on Apple silicon, as D5 writes `GROUPS`. `default` is `core` and `slow`, or the groups of
+`test/ci-groups.toml`.
 """
-function suite(entries)
-    groups = Sys.isapple() && Sys.ARCH === :aarch64 ? ("core", "slow", "metal") : ("core", "slow")
+function suite(entries; default = DEFAULT_GROUPS)
+    groups = Sys.isapple() && Sys.ARCH === :aarch64 ? [default; "metal"] : default
     filter(e -> e.group in groups, entries)
 end
 
@@ -339,18 +347,18 @@ function main(args)
         a = affected(pkg, entries, changed(pkg, length(rest) >= 2 ? rest[2] : "origin/main"))
         a === :full ? (:full, ["Project.toml changed"]) : a
     else
-        none = filter(a -> isempty(named(entries, [a])), rest)
+        none = filter(a -> isempty(named(entries, [a]; groups = group_names(pkg))), rest)
         if !isempty(none)
             println(stderr, "$name: no test file is the group, the path or the label of ",
                 join(none, ", "), ". A path is relative to `test/` or to the package, or absolute. ",
                 "`run-tests.jl $(args[1]) list` shows them.")
             return 2
         end
-        pick = named(entries, rest)
+        pick = named(entries, rest; groups = group_names(pkg))
         pick, ["named"]
     end
     # workers run the files of Pkg.test() through TestEnv, as they run any selection
-    sel === :full && jobs > 1 && (sel = suite(entries); why = [why; "the files of Pkg.test()"])
+    sel === :full && jobs > 1 && (sel = suite(entries; default = default_groups(pkg)); why = [why; "the files of Pkg.test()"])
     # `affected` adds files in the order of the diff's paths; the workers take them in this order
     jobs > 1 && (sel = in_order(sel, entries))
     dir = expanduser("~/Research/.scratch/tests")

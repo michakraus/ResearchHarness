@@ -90,7 +90,8 @@ loads on the paths `**/.githooks/**`, `**/.github/workflows/**` and `**/Harness/
 
 The sources are in `githooks/` of this repository. `harness githooks --apply` and
 `harness workflows --apply` install them into every package and experiment repository, and
-`githooks/verify-workflows.jl` checks them. The rule tells the agent to edit the source, never an
+`githooks/verify-workflows.jl` checks them. The dependents workflow goes only into the bases of
+the profile key `dependents_bases`. The rule tells the agent to edit the source, never an
 installed copy, and to add an entry to the harness changelog. It lists the traps: `core.hooksPath`
 does not travel with a push; a session cannot set `core.hooksPath` or `core.fsmonitor`; the
 `pre-commit` hook checks only `*.jl` files; and a repository in the profile key `docs_exceptions`
@@ -115,7 +116,8 @@ This rule gives the one layout of the tests of a Julia repository. It loads on t
 `**/test/**/*.jl`.
 
 The test dependencies are in `test/Project.toml`. `runtests.jl` holds no test: it selects the
-groups `core`, `slow`, `doctests`, `metal`, `cuda` and `broken`, and includes each file in a
+groups `core`, `slow`, `doctests`, `metal`, `cuda` and `broken`, and the groups of an optional
+`test/ci-groups.toml`, which CI runs as one job each, and includes each file in a
 `@safetestset`. A `core` file runs in 60 s or less. `test/<path>.jl` tests `src/<path>.jl`. A
 failing test is `@test_broken` with its issue on the same line, and so is a failing Aqua check.
 The rule also gives rules for compat entries, seeds, rounding and allocation assertions.

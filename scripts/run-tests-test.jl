@@ -168,6 +168,32 @@ const DOCTESTS_DIR = fixture(Dict{String, Union{String, Nothing}}(
     @test occursin("PASS", out)
 end
 
+# the fixture with a group `long` of its test/ci-groups.toml
+const GROUPED_DIR = fixture(Dict{String, Union{String, Nothing}}(
+    "test/runtests.jl" => replace(FIXTURE_RUNTESTS,
+        "[\"core\", \"slow\", \"metal\"] : [\"core\", \"slow\"]" =>
+            "[\"core\", \"slow\", \"long\", \"metal\"] : [\"core\", \"slow\", \"long\"]",
+        "if \"metal\" in GROUPS" => "if \"long\" in GROUPS\n    @safetestset \"Long\" include(\"integration/long.jl\")\nend\nif \"metal\" in GROUPS"),
+    "test/integration/long.jl" => PLAIN,
+    "test/ci-groups.toml" => "groups = [\"core\", \"slow\", \"long\"]\n"))
+
+@testset "a group of test/ci-groups.toml is a unit, and Pkg.test() runs it" begin
+    rel(es) = sort([relpath(e.path, joinpath(GROUPED_DIR, "test")) for e in es])
+    entries = R.units(GROUPED_DIR)
+    @test rel(R.named(entries, ["long"]; groups = R.group_names(GROUPED_DIR))) == ["integration/long.jl"]
+    # without the group file's names, `long` is no group, and names no path or label
+    @test isempty(R.named(entries, ["long"]))
+    @test "integration/long.jl" in rel(R.suite(entries; default = R.default_groups(GROUPED_DIR)))
+    @test !("integration/long.jl" in rel(R.suite(entries)))
+    @test R.default_groups(DIR) == ["core", "slow"]
+    # affected selects from every group of the file but `slow`, and from `core` without one
+    @test R.affected_groups(GROUPED_DIR) == ["core", "long"]
+    @test R.affected_groups(DIR) == ["core"]
+    sel = rel(first(R.affected(GROUPED_DIR, entries, ["test/runtests.jl"])))
+    @test "integration/long.jl" in sel
+    @test !("verification/convergence.jl" in sel)
+end
+
 @testset "affected never selects the group doctests" begin
     for p in ("src/Fixture.jl", "src/base/options.jl", "ext/FixtureExt.jl",
         "test/quality/doctests.jl", "test/quality/aqua.jl", "test/runtests.jl")

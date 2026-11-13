@@ -509,6 +509,106 @@ const DEVICE_CASES = [
     end
 end
 
+const GROUPED_LINE = "const GROUPS = isempty(ARGS) ? [\"core\", \"slow\", \"long\"] : ARGS\n"
+const GROUPED_TOML = "# The test groups that CI runs as separate jobs.\ngroups = [\"core\", \"slow\", \"long\"]\n"
+
+"""
+The fixture with a test/ci-groups.toml of the text `toml` (`nothing` for none), the GROUPS line
+`line`, an `if` of `slow`, and an `if` of the group `g` that holds test/integration/long.jl; with
+`metal`, a `metal` group too.
+"""
+function grouped(; toml = GROUPED_TOML, line = GROUPED_LINE, g = "long", metal = false)
+    group = "if \"slow\" in GROUPS\n    @safetestset \"Slow\" include(\"integration/slow.jl\")\nend\n" *
+            "if \"$g\" in GROUPS\n    @safetestset \"Long\" include(\"integration/long.jl\")\nend\n"
+    device = "if \"metal\" in GROUPS\n    @safetestset \"Device\" include(\"devices/metal.jl\")\nend\n"
+    merge(
+        rt(PLAIN => line, "if \"doctests\" in GROUPS" => group * "if \"doctests\" in GROUPS",
+            "if \"broken\" in GROUPS" => (metal ? device : "") * "if \"broken\" in GROUPS"),
+        Changes("test/integration/long.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n",
+            "test/integration/slow.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n",
+            "test/ci-groups.toml" => toml),
+        metal ? Changes("test/devices/metal.jl" => DEVICE_TEST) : Changes())
+end
+
+const NOT_GROUPED = "[D5] GROUPS is not `isempty(ARGS) ? [\"core\", \"slow\", \"long\"] : ARGS`"
+
+# (what, change, the texts of its violations, in order; empty for no violation)
+const CI_GROUP_CASES = [
+    ("a group file, its GROUPS line and an `if` per group", grouped(), String[]),
+    ("a group file with the platform line and a `metal` group",
+        grouped(line = replace(PLATFORM, "\"slow\"" => "\"slow\", \"long\""), metal = true),
+        String[]),
+    ("a group file and the platform line of `core` and `slow` only, with a `metal` group",
+        grouped(line = PLATFORM, metal = true),
+        ["[D5] GROUPS is not the platform form, `isempty(ARGS) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? [\"core\", \"slow\", \"long\", \"metal\"] : [\"core\", \"slow\", \"long\"]) : ARGS`"]),
+    ("a group outside the convention without a group file", grouped(toml = nothing),
+        ["[D5] GROUPS is not `isempty(ARGS) ? [\"core\", \"slow\"] : ARGS`",
+            "[D5] group \"long\" is not one of core, slow, doctests, metal, cuda, broken"]),
+    ("a group file and the plain GROUPS line", grouped(line = PLAIN), [NOT_GROUPED]),
+    ("a group file and GROUPS in another order",
+        grouped(line = "const GROUPS = isempty(ARGS) ? [\"core\", \"long\", \"slow\"] : ARGS\n"),
+        [NOT_GROUPED]),
+    ("a group of the group file without an `if`",
+        grouped(toml = "groups = [\"core\", \"slow\", \"long\", \"huge\"]\n",
+            line = "const GROUPS = isempty(ARGS) ? [\"core\", \"slow\", \"long\", \"huge\"] : ARGS\n"),
+        ["[ci-groups] group \"huge\" of test/ci-groups.toml has no `if` in runtests.jl"]),
+    ("an `if` of a group that the group file does not list", grouped(g = "huge"),
+        ["[D5] group \"huge\" is not one of core, slow, doctests, metal, cuda, broken, long",
+            "[ci-groups] group \"long\" of test/ci-groups.toml has no `if` in runtests.jl"]),
+    ("a group file without `slow`",
+        grouped(toml = "groups = [\"core\", \"long\"]\n",
+            line = "const GROUPS = isempty(ARGS) ? [\"core\", \"long\"] : ARGS\n"),
+        ["[ci-groups] test/ci-groups.toml does not list the group \"slow\""]),
+    ("a group file with a group that runs in a job of its own",
+        grouped(toml = "groups = [\"core\", \"slow\", \"long\", \"doctests\"]\n",
+            line = "const GROUPS = isempty(ARGS) ? [\"core\", \"slow\", \"long\", \"doctests\"] : ARGS\n"),
+        ["[ci-groups] group \"doctests\" is in test/ci-groups.toml, and it runs outside the CI test jobs"]),
+    ("a group file with a name that is not lower-case letters and digits",
+        grouped(toml = "groups = [\"core\", \"slow\", \"Long\"]\n",
+            line = "const GROUPS = isempty(ARGS) ? [\"core\", \"slow\", \"Long\"] : ARGS\n", g = "Long"),
+        ["[ci-groups] group \"Long\" of test/ci-groups.toml is not lower-case letters and digits"]),
+    ("a group file with a group twice",
+        grouped(toml = "groups = [\"core\", \"slow\", \"long\", \"long\"]\n",
+            line = "const GROUPS = isempty(ARGS) ? [\"core\", \"slow\", \"long\", \"long\"] : ARGS\n"),
+        ["[ci-groups] group \"long\" is in test/ci-groups.toml more than once"]),
+    ("a group file with another key", grouped(toml = GROUPED_TOML * "jobs = 3\n"),
+        ["[ci-groups] test/ci-groups.toml has the key `jobs`; it has `groups` and `workflows` only"]),
+    ("a group file whose workflows name an extra workflow file",
+        merge(grouped(toml = GROUPED_TOML * "workflows = [\"Metal.yml\"]\n"),
+            Changes(".github/workflows/Metal.yml" => "name: Metal\n")),
+        String[]),
+    ("a group file whose workflows name a file that does not exist",
+        grouped(toml = GROUPED_TOML * "workflows = [\"Metal.yml\"]\n"),
+        ["[ci-groups] workflow \"Metal.yml\" of test/ci-groups.toml is not in .github/workflows/"]),
+    ("a group file whose workflows name the installed CI.yml",
+        merge(grouped(toml = GROUPED_TOML * "workflows = [\"CI.yml\"]\n"),
+            Changes(".github/workflows/CI.yml" => "name: CI\n")),
+        ["[ci-groups] workflow \"CI.yml\" of test/ci-groups.toml is not an extra workflow file name"]),
+    ("a group file whose workflows name the installed CI.yml in lower case",
+        merge(grouped(toml = GROUPED_TOML * "workflows = [\"ci.yml\"]\n"),
+            Changes(".github/workflows/ci.yml" => "name: CI\n")),
+        ["[ci-groups] workflow \"ci.yml\" of test/ci-groups.toml is not an extra workflow file name"]),
+    ("a group file whose workflows are no list", grouped(toml = GROUPED_TOML * "workflows = \"Metal.yml\"\n"),
+        ["[ci-groups] `workflows` of test/ci-groups.toml is not a list of file names"]),
+    ("a group file whose groups are no list of names", grouped(toml = "groups = \"core\"\n"),
+        ["[ci-groups] test/ci-groups.toml has no `groups` list of names",
+            "[D5] GROUPS is not `isempty(ARGS) ? [\"core\", \"slow\"] : ARGS`",
+            "[D5] group \"long\" is not one of core, slow, doctests, metal, cuda, broken"]),
+    ("a group file that is not TOML", grouped(toml = "groups = [\n"),
+        ["[ci-groups] test/ci-groups.toml does not parse as TOML",
+            "[D5] GROUPS is not `isempty(ARGS) ? [\"core\", \"slow\"] : ARGS`",
+            "[D5] group \"long\" is not one of core, slow, doctests, metal, cuda, broken"])
+]
+
+@testset "test/ci-groups.toml" begin
+    @testset "$what" for (what, change, texts) in CI_GROUP_CASES
+        code, lines = check(fixture(change))
+        @test code == (isempty(texts) ? 0 : 1)
+        @test length(lines) == length(texts)
+        @test all(occursin.(texts, lines))
+    end
+end
+
 @testset "a nested runtests.jl is not checked for the platform line" begin
     nested(groups) = merge(
         rt("include(\"integration/solve.jl\")" => "include(\"integration/runtests.jl\")"),

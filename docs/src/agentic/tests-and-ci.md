@@ -33,7 +33,8 @@ package load and the compilation each time, so the harness gives three tiers, ch
    evaluation, so an edit is checkable in seconds. This is the default while the agent works.
 1. **The affected tests.** [`run-tests.jl <package> affected`](../components/scripts.md#run-tests-jl-and-run-tests-test-jl)
    runs the `core` files that the diff against `origin/main` can reach, and the quality files, in
-   one fresh process. A changed `Project.toml` runs the full suite.
+   one fresh process. With a `test/ci-groups.toml`, it selects from every group of that file but
+   `slow`. A changed `Project.toml` runs the full suite.
 2. **The full suite.** `Pkg.test()`, before a push. It takes seconds in a small package and up to
    100 minutes in CI in the large ones.
 
@@ -89,14 +90,17 @@ matches its template:
 
 | job or file | what it runs | required |
 |:--|:--|:--|
-| `test` | the tests on Julia `min` and `1`, on Ubuntu, macOS and Windows; `pre` and `nightly` on Ubuntu | yes, except `pre` and `nightly` |
-| `downgrade` | the tests with each direct dependency at the lower bound of its `[compat]` entry | no: information only |
+| `groups` | reads the test groups of `test/ci-groups.toml`, where the file exists | no |
+| `test` | the tests on Julia `min` and `1`, on Ubuntu, macOS and Windows, once per test group; `pre` and `nightly` on Ubuntu | yes, except `pre` and `nightly` |
+| `downgrade` | the tests with each direct dependency at the lower bound of its `[compat]` entry, once per test group | no: information only |
 | `doctest` | the doctests of the docstrings and of the manual, where `docs/Project.toml` exists | yes |
 | `Documenter.yml` | the documentation build and its deploy | no |
 | `TagBot.yml`, `codecov.yml`, `dependabot.yml` | the tag of a registered release, the coverage threshold, the weekly `[compat]` proposals | no |
 
 The matrix names Julia by the aliases `min` and `1`, so the names of the checks are the same in
-every repository. [`harness ci-protection`](../harness-command.md#ci-protection) sets a ruleset on
+every repository without test groups. A suite too long for one job lists its groups in
+`test/ci-groups.toml`, and each `test` check then ends with ` - <group>`; see
+[test groups](../components/githooks.md#test-groups). [`harness ci-protection`](../harness-command.md#ci-protection) sets a ruleset on
 the default branch with those names as required checks, and refuses to run while
 `verify-workflows.jl` fails. A red required check stops the merge; the
 [`ci-triage`](../components/agents.md#ci-triage) agent separates a real failure from a known one.

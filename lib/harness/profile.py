@@ -151,6 +151,7 @@ class Profile:
     docs_exceptions: tuple[str, ...] = ()
     docs_additions: tuple[str, ...] = ()
     protected_dir: tuple[str, ...] = ()
+    dependents_bases: tuple[str, ...] = ()
 
 
 # The words of the expected type in a refusal.
@@ -175,6 +176,7 @@ OPTIONAL = {
     "docs_exceptions": LIST,
     "docs_additions": LIST,
     "protected_dir": LIST,
+    "dependents_bases": LIST,
 }
 # A GitHub account or organisation name, an entry of `org`: letters, digits and single hyphens,
 # 1 to 39 characters, not starting or ending with a hyphen.
@@ -231,6 +233,7 @@ def load(
         docs_exceptions=lists.get("docs_exceptions", ()),
         docs_additions=lists.get("docs_additions", ()),
         protected_dir=lists.get("protected_dir", ()),
+        dependents_bases=lists.get("dependents_bases", ()),
     )
 
 
@@ -424,6 +427,7 @@ def values(profile: Profile) -> dict[str, str | list[str]]:
         "docs_exceptions": list(profile.docs_exceptions),
         "docs_additions": list(profile.docs_additions),
         "protected_dir": list(profile.protected_dir),
+        "dependents_bases": list(profile.dependents_bases),
     }
     out |= {
         k: v
@@ -2247,6 +2251,7 @@ def schema_cases() -> tuple[int, int]:
             "docs_exceptions": (),
             "docs_additions": (),
             "protected_dir": (),
+            "dependents_bases": (),
         }
         actual = {k: getattr(got, k, "missing") for k in expected}
         check(

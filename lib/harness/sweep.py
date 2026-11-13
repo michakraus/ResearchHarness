@@ -59,6 +59,7 @@ SUBCOMMANDS = [
     ("wiki-lint-hook", ["wiki-lint-hook"]),
     ("wiki-lint", ["wiki-lint", "Knowledge"]),
     ("workflows", ["workflows"]),
+    ("dependents", ["dependents"]),
     ("clone", ["clone"]),
     ("repos status", ["repos", "status", "--no-prs"]),
     ("repos pull", ["repos", "pull"]),
@@ -78,7 +79,7 @@ PRECONDITIONS = [
     (
         "the profile file",
         ".config/research-harness/profile.toml",
-        ["install", "settings compare", "workflows", "render", "get", "leaks"],
+        ["install", "settings compare", "workflows", "dependents", "render", "get", "leaks"],
     ),
     ("the model tables", ".config/research-harness/models.toml", ["install"]),
     ("~/.config/opencode", ".config/opencode", ["install"]),
@@ -90,7 +91,7 @@ PRECONDITIONS = [
     ("the chezmoi source", "dotfiles", ["dotfiles-kit"]),
 ]
 
-APPLY = ["githooks", "wiki-lint-hook", "workflows", "trust"]
+APPLY = ["githooks", "wiki-lint-hook", "workflows", "dependents", "trust"]
 
 # The variables that would point a subcommand past the fixture.
 UNSET = [
