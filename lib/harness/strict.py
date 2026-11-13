@@ -21,7 +21,8 @@ stubs on the PATH logs that it ran and passes. The real hook cases run the hook 
 of the harness's environment, where it holds basedpyright and pyyaml, and a `python3` on the PATH
 that lacks yaml: a fixed baselined error with its old baseline refuses the commit, and with the
 baseline written again commits. Where the environment lacks either, one `skip` line stands for
-them.
+them. The skip cases check that line on an environment without basedpyright, one whose
+interpreter lacks yaml, and one that does not exist.
 """
 
 import argparse

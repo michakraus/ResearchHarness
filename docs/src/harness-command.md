@@ -1908,9 +1908,10 @@ as it was in the work tree and the index, a violation that is not staged, and an
 without one tool or both. Where the harness's Python environment holds `basedpyright` and
 `pyyaml`, three cases run the hook with those real tools on a fixture with one baselined error: the
 error with its baseline commits, the error fixed with the old baseline is refused with `went down`,
-and the baseline written again commits. Elsewhere one `skip` line stands for them, and three cases
-check that line on an environment without `basedpyright`, one without `yaml` and one that does not
-exist. [Development](development.md#the-strict-profile) describes the profile.
+and the baseline written again commits. Elsewhere one `skip` line stands for them. Three more cases
+run on every environment and check that line on an environment without `basedpyright`, one without
+`yaml` and one that does not exist. [Development](development.md#the-strict-profile) describes the
+profile.
 
 ### `docs.py`
 
