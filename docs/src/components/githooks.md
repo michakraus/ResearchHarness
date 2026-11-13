@@ -340,7 +340,7 @@ can only read the repository.
 | job | what it runs |
 |:--|:--|
 | `list` | reads the dependents from `.github/dependents.toml` with `dependents.jl list`; it fails with a line that names `harness dependents --apply` when the file is missing |
-| `test` | one job per dependent, on Ubuntu with Julia `1`, 60 minutes at most, and `fail-fast` off: the compat check, `Pkg.develop` of the head into the dependent's project and `Pkg.test(test_args = ["core"])`; on a failure, the same against the default branch of the base; then the row of the dependent |
+| `test` | one job per dependent, on Ubuntu with Julia `1`, 60 minutes at most, and `fail-fast` off: the compat check, `Pkg.develop` of the head into the dependent's project and `Pkg.test(test_args = ["core"])`; on a failure, the same against the default branch of the base, in a second checkout of the dependent, so that the resolution of the run against the head does not carry over; then the row of the dependent |
 
 The row is one of four:
 
