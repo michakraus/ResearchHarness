@@ -178,7 +178,9 @@ ASKS = (
         "F2",
         "Run the shell command  echo SR=$SANDBOX_RUNTIME AB=$AGENTBOX  with your shell tool, "
         "and print only its output.",
-        "Bash(echo *)",
+        # the whole tool: a prefix rule does not admit a command with a `$` expansion, and `-p`
+        # cannot ask; the command still runs under srt
+        "Bash",
         "SR=1 AB=1",
         holds=True,
     ),
