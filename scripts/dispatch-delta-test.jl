@@ -644,15 +644,16 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 [targets]
 test = ["Statistics"]
 """
-# and a used import of a name that is not public, which ExplicitImports reports as not stale
-const STALE_DYN = "include_string(@__MODULE__, \"module Dyn\\nusing LinearAlgebra: svd\\nend\")\n" *
+# The end of both sides: a module made by include_string, and a used import of a name that is not
+# public, which ExplicitImports reports and does not call stale.
+const STALE_TAIL ="include_string(@__MODULE__, \"module Dyn\\nusing LinearAlgebra: svd\\nend\")\n" *
                   "using LinearAlgebra: chkstride1\ng(A) = chkstride1(A)"
 const STALE = fixture("DDStale",
-    ["src/DDStale.jl" => mod("DDStale", "using LinearAlgebra: norm, dot, det\nf(x) = norm(x)\n$STALE_DYN"),
+    ["src/DDStale.jl" => mod("DDStale", "using LinearAlgebra: norm, dot, det\nf(x) = norm(x)\n$STALE_TAIL"),
      "ext/DDStaleStatisticsExt.jl" => mod("DDStaleStatisticsExt", "using DDStale, Statistics")],
     ["src/DDStale.jl" => mod("DDStale",
         "# the imports of the base, one line lower\nusing LinearAlgebra: norm, dot\n" *
-        "using LinearAlgebra: tr, diag, kron, lu, rank\nf(x) = norm(x)\n$STALE_DYN"),
+        "using LinearAlgebra: tr, diag, kron, lu, rank\nf(x) = norm(x)\n$STALE_TAIL"),
      "ext/DDStaleStatisticsExt.jl" => mod("DDStaleStatisticsExt", "using DDStale, Statistics\nusing Statistics: median"),
      "test/runtests.jl" => "using DDStale\nDDStale.diag([1 2; 3 4])\n# DDStale.trace and DDStale.tr_x are no use of tr\n",
      "docs/src/index.md" => "# DDStale\n\n```@docs\nDDStale.kron\n```\n",

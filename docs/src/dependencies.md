@@ -318,8 +318,8 @@ syntax tree. TestEnv activates the test environment of a package. YAML reads YAM
 The scripts use them as follows. `dispatch-delta.jl` uses Aqua's piracy hunt, JET's
 `report_package` and ExplicitImports' `improper_explicit_imports` on each side, and pins Aqua to
 one version because the piracy hunt is internal API. A side loads each one from the first
-environment of its load path that names it: the package's test environment, then the default environment `@v#.#`, then the harness environment.
-The pin holds only where neither of the first two names the package; each side records the Aqua
+environment of its load path that names it: the package's test environment, then the default
+environment `@v#.#`, then the harness environment. The pin holds only where neither of the first two names the package; each side records the Aqua
 version that it loaded.
 `explicit-imports.jl` uses ExplicitImports. `gate.jl`, `mutate.jl`, `fatou-lsp.jl` and
 `dispatch-delta.jl` use JSON for their reports and messages. `harness format`, the
@@ -334,8 +334,8 @@ do. A copy of their code in the harness would be larger and less correct.
 
 Call sites: Aqua and JET, `scripts/dispatch-delta.jl`; ExplicitImports,
 `githooks/explicit-imports.jl` and `scripts/dispatch-delta.jl`; JSON, `scripts/gate.jl`,
-`scripts/mutate.jl`, `scripts/fatou-lsp.jl` and `scripts/dispatch-delta.jl`; JuliaFormatter, `harness format`
-(`githooks/format-tree.jl`), the installed pre-commit hook (`githooks/pre-commit.jl`) and
+`scripts/mutate.jl`, `scripts/fatou-lsp.jl` and `scripts/dispatch-delta.jl`; JuliaFormatter,
+`harness format` (`githooks/format-tree.jl`), the installed pre-commit hook (`githooks/pre-commit.jl`) and
 `scripts/gate.jl`; JuliaSyntax, `scripts/mutate.jl` and
 `scripts/mutants.jl`; TestEnv, `scripts/run-tests.jl`, `scripts/mutate-worker.jl` and
 `scripts/dispatch-delta.jl`; YAML, `harness ci-protection` through

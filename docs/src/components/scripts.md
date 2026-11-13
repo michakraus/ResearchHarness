@@ -243,7 +243,8 @@ the harness environment last in `LOAD_PATH`, then `TestEnv.activate()`. Each sid
 `<side>.json`: the package, the side, the Julia version, whether its tree held a `Manifest.toml`,
 the versions of Aqua and the dependencies, the packages that the side has loaded, its public
 names, one record per own method, the ambiguities and piracies, the abstract fields, and, without
-`--api`, the stale explicit imports. Then it runs JET into `<side>-jet.json`. Its output goes to `<side>.log`.
+`--api`, the stale explicit imports. Then it runs JET into `<side>-jet.json`. Its output goes to
+`<side>.log`.
 The script removes the base tree at its end and keeps the JSON files and the logs.
 
 The own methods of a side are the methods of the package's module tree and of each extension that
@@ -311,9 +312,9 @@ has as unknown, and each module below it.
 
 The last line is `Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO`. The exit status
 is 0 on PASS, 1 on a `FAIL:` line, 2 on bad arguments, and 3 when a side, or with `--api` a key,
-gave no verdict, or ExplicitImports does not load, and no line failed. `--timeout` gives each side that many seconds to write its
-JSON, 600 by default, and the JET step as many again from that moment. `--no-jet` leaves out the
-JET step.
+gave no verdict, or ExplicitImports does not load, and no line failed. `--timeout` gives each side
+that many seconds to write its JSON, 600 by default, and the JET step as many again from that
+moment. `--no-jet` leaves out the JET step.
 
 Each side also records the public API of its package. `public` holds one record per public name,
 with its `module` (the path below the root module, `""` for the root), its `name` and its `kind`
