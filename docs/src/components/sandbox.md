@@ -301,15 +301,15 @@ sandbox. For each host directory, in the order of the names, it holds:
 	helper = "!f() { test \"$1\" = get && exec git credential-store --file <host>/<name>.store get; }; f"
 ```
 
-with the full path of each file, the second line of the host only where `default.store` exists,
-and one section of the second kind for each other store file. Where `github.com/` exists, a last
-section `[credential "https://gist.github.com"]` holds only the empty `helper`, so no token reaches
-a gist. git applies the helpers of every section whose URL matches, in the order of the
+with the full path of each file, the host section's second `helper` only where `default.store`
+exists, and one section of the second kind for each other store file. Where `github.com/` exists,
+a last section `[credential "https://gist.github.com"]` holds only the empty `helper`, so no token
+reaches a gist. git applies the helpers of every section whose URL matches, in the order of the
 configuration, and an empty `helper` clears those before it. git matches the path by whole
-components and with case. So each owner gets its own token, every other owner of the host the
-default's, and an owner whose remote has another case gets the default, which fails at the forge.
-The helper answers only `get`: a plain `store --file` erases the file's line on a `reject`, for
-example after a token expires.
+components and with case. So each owner gets its own token, and every other owner of the host the
+default's. A remote that spells the owner with another case gets the default, so a write to it
+fails at the forge. The helper answers only `get`: a plain `store --file` erases the file's line
+on a `reject`, for example after a token expires.
 
 The install exits with status 2 and writes nothing, with one line that names the path, on a store
 file that the group or others can read (the line names its mode), on a `<name>` outside
@@ -337,7 +337,7 @@ and starts the frontend.
 1. On GitHub, make one fine-grained token for each owner, each organisation and your account:
    resource owner that owner, all repositories, with the permissions Contents, Pull requests,
    Issues and Workflows read and write, and Actions, Checks, Commit statuses and Metadata read; no
-   Gists permission. An organisation can have to approve a token.
+   Gists permission. An organisation may have to approve a token.
 2. On the GitLab instance, make one group access token of the group, with the scopes `api`,
    `read_repository` and `write_repository`, and a role that may create projects in the group. By
    GitLab's default that is Maintainer; the group's setting *Roles allowed to create projects*

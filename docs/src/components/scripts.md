@@ -642,8 +642,9 @@ the API. No skill or agent calls it. For the context at the start, use `startup-
 ## `gh-token.py`
 
 `gh-token.py` runs gh with the token of the repository's owner. `harness install` copies it to
-`~/.local/bin/gh`, mode 755, with the launcher `agentbox`, so it comes before the real gh on the
-`PATH`; it takes gh's own arguments ([The forge tokens](sandbox.md#the-forge-tokens)).
+`~/.local/bin/gh`, mode 755, with the launcher `agentbox`; where `~/.local/bin` comes before the
+real gh on the `PATH`, the command `gh` runs the wrapper. It takes gh's own arguments
+([The forge tokens](sandbox.md#the-forge-tokens)).
 
 It finds the owner, in this order: the value of `-R` or `--repo` (`OWNER/REPO`,
 `HOST/OWNER/REPO` or a URL, also as `--repo=…`); `GH_REPO`; for `gh api`, the segment after

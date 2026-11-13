@@ -37,19 +37,23 @@ installed.
 
 It loads the profile and the model tables, `--models F`, else $RESEARCH_HARNESS_MODELS, else
 models.toml beside the profile; examples/models.toml shows them. Then it plans each chosen
-frontend, in the order of FRONTENDS (`frontends.planned`). Planning writes nothing, so each
-refusal that stops the install at once, with exit status 2, comes before anything is written.
-`check_files` then checks every target of the Julia environment, with the `julia` component, of
-each plan and of the srt settings and the launcher, and refuses a symbolic link or a directory at
-a target, also before anything is written. A target with a change
+frontend, in the order of FRONTENDS (`frontends.planned`), then the srt settings, the launcher
+and the gh wrapper, then the git configuration of the forge token store (`forge.plan_files`).
+Planning writes nothing, so each refusal that stops the install at once, with exit status 2,
+comes before anything is written. `check_files` then checks every target of the Julia
+environment, with the `julia` component, of each plan, of the srt settings, the launcher and the
+wrapper, and of the forge's file, and refuses a symbolic link or a directory at a target, also
+before anything is written. A target with a change
 that cannot be written exits 2 there under `--apply`; a dry run prints its whole plan and count
 line first, then that refusal, and exits 2. Then it installs the Julia environment, with the
 `julia` component, the Python
-environment (`install_python_env`), the files of each plan, and the srt settings and the launcher,
-in that order, prints the warnings, and runs the steps of each plan that follow the files. It
+environment (`install_python_env`), the files of each plan, and the srt settings, the launcher,
+the wrapper and the forge's file, in that order, prints the warnings and the forge's notice
+(`forge.notice`), and runs the steps of each plan that follow the files. It
 prints the installed files with no source, then the count line. After an `--apply`, it prints the
 restart line of each frontend whose files or steps changed something, in that order; the two
-environments, the srt settings and the launcher belong to no frontend. A plan's own refusal exits
+environments, the srt settings, the launcher, the wrapper and the forge's file belong to no
+frontend. A plan's own refusal exits
 2 after these lines, once
 the rest is installed.
 

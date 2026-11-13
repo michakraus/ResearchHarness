@@ -563,7 +563,8 @@ def fixture_sandbox() -> dict[str, Any]:
 
 def selftest() -> tuple[int, int]:
     """The shipped policy, each refusal of `load_policy`, each rule of `srt_settings` on a fixture
-    and on the settings template, and sandbox/agentbox on scratch homes (`agentbox_cases`):
+    and on the settings template, the gh wrapper in `plan_files`, and sandbox/agentbox on scratch
+    homes (`agentbox_cases`):
     (cases, wrong). The cases of `harness install` on scratch HOMEs, `install_file_cases`, run in
     the selftest of install.py."""
     n = wrong = 0
@@ -1573,7 +1574,8 @@ def stub(path: pathlib.Path) -> None:
 class Box:
     """A scratch home for sandbox/agentbox: the stub srt (STUB_SRT) in ~/.local/bin, the srt
     settings file of each frontend and Claude Code's override in the sandbox directory, a stub
-    of each frontend's program in path/, and the empty directory tmpdir/ for $TMPDIR."""
+    of each frontend's program in path/, the empty directory tmpdir/ for $TMPDIR, and a forge
+    token store with the GitLab file of BOX_GITLAB and BOX_TOKEN and a `github.com` default."""
 
     home: pathlib.Path
 
@@ -1680,8 +1682,9 @@ class Box:
 def agentbox_cases(check: Check, root: pathlib.Path) -> None:
     """sandbox/agentbox, run as a program on a fresh `Box` below `root` per case: its mode; for each
     frontend, the arguments that srt sees, with the caller's `a b`, `--`, the empty string, `--model`
-    and `x` each as one argument, and the environment, the caller's with AGENTBOX=1 and the three
-    cache variables of CACHES added; `resolution_cases`; `cache_cases`; srt's exit status; each
+    and `x` each as one argument, and the environment, the caller's with AGENTBOX=1, the three
+    cache variables of CACHES and the variables of the forges (`Box.forge`) added;
+    `resolution_cases`; `cache_cases`; `forge_cases`; srt's exit status; each
     refusal, which exits 2, starts no srt, makes nothing in TMPDIR and prints one line on stderr
     that names its cause; and the usage."""
     script = REPO / "sandbox" / "agentbox"
@@ -1903,8 +1906,9 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
     """The variables of the forges in a run: for each frontend, the store's GitLab host and token,
     and a new GLAB_CONFIG_DIR, in place of the caller's GITLAB_TOKEN and GLAB_CONFIG_DIR, and
     without the caller's GITLAB_ACCESS_TOKEN and OAUTH_TOKEN. With two GitLab directories, a GitLab
-    directory with two store files, only a `github.com` directory or no store, neither GitLab
-    variable, the caller's GITLAB_TOKEN removed and one line on stderr that names the store."""
+    directory with two store files, only a `github.com` directory, a GitLab directory with no store
+    file, a store file whose line holds no token, or no store, neither GitLab variable, the caller's
+    GITLAB_TOKEN removed and one line on stderr that names the store."""
     caller = {"GLAB_CONFIG_DIR": "/caller/glab", "GITLAB_TOKEN": "caller", "OAUTH_TOKEN": "caller"}
     caller |= {"GITLAB_ACCESS_TOKEN": "caller"}
     for name in ("claude", "opencode", "omp", "agy"):
@@ -1937,6 +1941,12 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
     def github_only(h: pathlib.Path) -> None:
         shutil.rmtree(h / store / BOX_GITLAB)
 
+    def no_file(h: pathlib.Path) -> None:
+        (h / store / BOX_GITLAB / "group-a.store").unlink()
+
+    def no_token(h: pathlib.Path) -> None:
+        fsutil.write_private(h / store / BOX_GITLAB / "group-a.store", b"https://gitlab.example.org\n")
+
     def no_store(h: pathlib.Path) -> None:
         shutil.rmtree(h / store)
 
@@ -1944,6 +1954,8 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
         ("two GitLab directories", second_host),
         ("a GitLab directory with two store files", second_file),
         ("only a github.com directory", github_only),
+        ("a GitLab directory with no store file", no_file),
+        ("a GitLab store file whose line holds no token", no_token),
         ("no token store", no_store),
     ]:
         box = Box.fresh(root / "none", label.replace(" ", "-").replace(".", "-"))
@@ -2185,12 +2197,13 @@ class Installs:
 def install_file_cases(check: Check, root: pathlib.Path) -> None:
     """`real_tmpdir` on an unset, an empty and a linked $TMPDIR. Then `harness install` on scratch
     HOMEs whose profile chooses claude and opencode: one file each, of the bytes that
-    `srt_settings` gives, with the real path of $TMPDIR, Claude Code's override and the launcher
-    of mode 755 (`launcher_installed`), and none after the dry run; a second dry run with no
-    change; the Claude Code settings.json byte for byte as `settings_bytes` gives it; and
-    `install_change_cases` on that base. With opencode alone and no $TMPDIR, no tmpdir entry, the
-    launcher and no override, and the dry run's status column is one for the srt file and the other
-    files; with no frontend, no file and no launcher, and a broken network overlay stops nothing.
+    `srt_settings` gives, with the real path of $TMPDIR, Claude Code's override, the launcher of
+    mode 755 (`launcher_installed`) and the gh wrapper of mode 755, and none after the dry run; a
+    second dry run with no change; the Claude Code settings.json byte for byte as `settings_bytes`
+    gives it; and `install_change_cases` on that base. With opencode alone and no $TMPDIR, no
+    tmpdir entry, the launcher and no override, and the dry run's status column is one for the srt
+    file and the other files; with no frontend, no file, no launcher and no wrapper, and a broken
+    network overlay stops nothing.
     With claude chosen and a ~/.local/bin that is a symlink to a directory, the --apply exits 2,
     names it, and writes nothing."""
     installs = Installs(check, root)

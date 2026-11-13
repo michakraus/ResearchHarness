@@ -41,8 +41,8 @@
 #
 # Outside a subshell, the script assigns no shell variable other than AGENTBOX, the three cache
 # variables, GLAB_CONFIG_DIR, GIT_TERMINAL_PROMPT, GITLAB_HOST and GITLAB_TOKEN, so that every
-# other variable of the caller, but the three that it removes, reaches the program unchanged; each
-# value is a positional parameter. It exits 2 with one line on stderr, and starts nothing, when no
+# other variable of the caller but GITLAB_ACCESS_TOKEN and OAUTH_TOKEN, which it removes, reaches
+# the program unchanged; each value is a positional parameter. It exits 2 with one line on stderr, and starts nothing, when no
 # frontend or an unknown one is named, when AGENTBOX is set, when srt or a settings file is
 # missing, when the program is not on the PATH without the cmux shims, when what `command -v`
 # gives does not start with / (a function that /bin/sh imports, or, where /bin/sh is dash, a

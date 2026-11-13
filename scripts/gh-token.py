@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """gh with the token of the repository's owner: the wrapper that `harness install` puts at
-~/.local/bin/gh, ahead of the real gh on the PATH.
+~/.local/bin/gh, which the command gh runs where ~/.local/bin comes before the real gh on the PATH.
 
     gh <the arguments of gh>
 
@@ -14,10 +14,11 @@ It reads the token store `~/.config/research-harness/forge/github.com/`: the fil
 the name compared without case, as GitHub compares it, else `default.store`; each file holds the
 one line `https://<user>:<token>@github.com` of git's `credential-store`. It sets GH_TOKEN to the
 line's password, removes GITHUB_TOKEN, and runs the real gh with the same arguments: the first
-`gh` on the PATH whose resolved file is not this script. A host other than github.com in `-R` or
-GH_REPO gets no token; an `origin` of another host names no owner. With no token, it removes
-GH_TOKEN and GITHUB_TOKEN and sets GH_CONFIG_DIR to a new empty directory, so that gh reads no
-stored login either.
+`gh` on the PATH whose resolved file is not this script. It exits with gh's status, 128 and the
+signal's number where a signal ends gh; a Ctrl-C goes to gh, and the wrapper waits for it. A host
+other than github.com in `-R` or GH_REPO gets no token; an `origin` of another host names no
+owner. With no token, it removes GH_TOKEN and GITHUB_TOKEN and sets GH_CONFIG_DIR to a new empty
+directory, so that gh reads no stored login either.
 
 It exits 2 with one line on stderr, and runs nothing, on a store file that it cannot read or whose
 line holds no password, and when the PATH holds no gh but this script. The standard library only.

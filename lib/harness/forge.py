@@ -20,8 +20,9 @@ after a token that expired.
 
 `render` exits 2, with one line that names the path, on a host directory whose name is no host
 name, a `<name>` outside `[A-Za-z0-9-]+` or starting with `-`, a store file, after symbolic links,
-that the group or others can read (the line names its mode), and a store file whose text is not
-the one line `https://<user>:<token>@<host>` with `<host>` its directory's name. It names no token.
+that the group or others can read (the line names its mode), a store file that it cannot read,
+and a store file whose text is not the one line `https://<user>:<token>@<host>` with `<host>` its
+directory's name. It names no token.
 
 `plan_files(home)` plans the rendered file at `~/.config/research-harness/forge.gitconfig`, mode
 600, beside the store and not inside it: git exits fatal on an `include` that it cannot read, and
@@ -231,8 +232,10 @@ class Git:
 def fill_cases(check: Check, root: pathlib.Path) -> None:
     """`render` on a store with an owner, a default and a GitLab group, with `GENERIC_HELPER`
     before it: each URL's password, a `reject` that keeps the owner's file, and a store without a
-    default."""
-    store = root / "store"
+    default; a store path that holds a space, quotes and a backslash; and a store without
+    `github.com`, which gets no section of gist."""
+    # The helper quotes the path for the shell and escapes it for the configuration file.
+    store = root / 'a "q" \\b\'s store'
     tokens = {name: fake_token(name) for name in ("Example-A", DEFAULT, "group-a")}
     owner = store_file(store, GITHUB, "Example-A", tokens["Example-A"])
     store_file(store, GITHUB, DEFAULT, tokens[DEFAULT])
@@ -286,6 +289,11 @@ def fill_cases(check: Check, root: pathlib.Path) -> None:
         "without default.store, the owner of a store file still gets its token",
     )
 
+    gitlab = root / "gitlab"
+    store_file(gitlab, "gitlab.example.org", "group-a", tokens["group-a"])
+    text = render(gitlab)
+    check(GIST not in text, f"a store without github.com renders no section of {GIST}")
+
 
 class Install:
     """`harness install --apply` on scratch HOMEs below `root` whose profile chooses claude."""
@@ -310,9 +318,10 @@ class Install:
 
 
 def install_refusal_cases(check: Check, root: pathlib.Path) -> None:
-    """`harness install --apply` with a store file that the group or others can read, one named
-    `-x.store`, one whose line names another host, and one in a host directory whose name is no
-    host name: each exits 2, names the file and writes nothing. With a valid store and a
+    """`harness install --apply` with a store file that others or the group can read, one named
+    `-x.store`, one whose line names another host, one with a second line, one in a host
+    directory whose name is no host name, and a directory at the rendered file: each exits 2,
+    names the path and writes nothing. With a valid store and a
     `~/.gitconfig` without the include, the notice and the rendered file; with the include, no
     notice."""
     installs = Install(check, root)
@@ -320,6 +329,21 @@ def install_refusal_cases(check: Check, root: pathlib.Path) -> None:
 
     def readable(store: pathlib.Path) -> pathlib.Path:
         return store_file(store, GITHUB, "Example-A", token, 0o644)
+
+    def group_readable(store: pathlib.Path) -> pathlib.Path:
+        return store_file(store, GITHUB, "Example-A", token, 0o640)
+
+    def two_lines(store: pathlib.Path) -> pathlib.Path:
+        path = store_file(store, GITHUB, "Example-A", token)
+        line = f"https://x-access-token:{token}@github.com\n"
+        fsutil.write_private(path, (line + line).encode())
+        return path
+
+    def rendered_directory(store: pathlib.Path) -> pathlib.Path:
+        store_file(store, GITHUB, DEFAULT, token)
+        directory = store.parent / RENDERED.name
+        directory.mkdir()
+        return directory
 
     def dashed(store: pathlib.Path) -> pathlib.Path:
         return store_file(store, GITHUB, "-x", token)
@@ -330,20 +354,26 @@ def install_refusal_cases(check: Check, root: pathlib.Path) -> None:
         return path
 
     def bad_host(store: pathlib.Path) -> pathlib.Path:
-        store_file(store, "bad host", "Example-A", token)
+        # With no store file in it, only the check of the directory's name refuses it.
+        (store / "bad host").mkdir(parents=True)
         return store / "bad host"
 
     for label, make, words in [
         ("a store file of mode 644", readable, ["644"]),
+        ("a store file of mode 640", group_readable, ["640"]),
         ("a store file named -x.store", dashed, []),
         ("a store file whose line names another host", other_host, []),
+        ("a store file with a second line", two_lines, []),
         ("a host directory whose name is no host name", bad_host, []),
+        ("a directory at the rendered file", rendered_directory, []),
     ]:
         base, store = installs.fresh()
         named = make(store)
         code, out = installs.apply(base)
         written = [
-            p for p in (base / "home" / RENDERED, base / "home" / ".claude" / "settings.json") if p.exists()
+            p
+            for p in (base / "home" / RENDERED, base / "home" / ".claude" / "settings.json")
+            if p.exists() and p != named
         ]
         check(
             code == REFUSED

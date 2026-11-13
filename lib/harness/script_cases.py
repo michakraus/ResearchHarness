@@ -71,9 +71,13 @@ GH_STORE = pathlib.PurePosixPath(".config", "research-harness", "forge", "github
 GH_REFUSED = 2
 # The runs of the counting `python3` of the gh_token cases; it refuses each run after them.
 GH_PY_RUNS = 3
+# The status of the stub gh in the case of the status, and the wrapper's when SIGINT ends gh.
+GH_STUB_EXIT = 3
+GH_INTERRUPTED = 130
 # The stub of the real gh in the gh_token cases: it appends GH_TOKEN, GITHUB_TOKEN and
 # GH_CONFIG_DIR, each `<unset>` where unset, then each argument on a line of its own, then END, to
-# $GH_STUB_LOG.
+# $GH_STUB_LOG. With GH_STUB_INTERRUPT set, it then sends SIGINT to its process group, as a Ctrl-C
+# in a terminal does; it exits with $GH_STUB_STATUS, else 0.
 GH_STUB = """\
 #!/bin/sh
 {
@@ -83,6 +87,12 @@ GH_STUB = """\
     for a in "$@"; do printf 'ARG=%s\\n' "$a"; done
     echo END
 } >> "$GH_STUB_LOG"
+if [ -n "${GH_STUB_INTERRUPT-}" ]; then
+    sleep 1
+    kill -INT 0
+    sleep 5
+fi
+exit "${GH_STUB_STATUS:-0}"
 """
 
 # The stub of every program that probe-agentbox.py starts. Each copy appends the time, its working
@@ -1534,11 +1544,11 @@ class GhHome:
         (root / "nowhere").mkdir()
         return cls(root)
 
-    def repository(self, owner: str) -> pathlib.Path:
-        """A git repository below the root whose `origin` is `owner`'s."""
-        path = self.root / f"repo-{owner}"
+    def repository(self, name: str, url: str) -> pathlib.Path:
+        """A git repository `name` below the root whose `origin` is `url`."""
+        path = self.root / name
         path.mkdir()
-        for args in (["init", "-q"], ["remote", "add", "origin", f"https://github.com/{owner}/repo.git"]):
+        for args in (["init", "-q"], ["remote", "add", "origin", url]):
             subprocess.run(
                 [shutil.which("git") or "git", *args],
                 cwd=path,
@@ -1588,6 +1598,8 @@ class GhHome:
                 text=True,
                 timeout=30,
                 check=False,
+                # A process group of its own, which the stub's SIGINT reaches and this one does not.
+                start_new_session=True,
             )
             status, stderr = p.returncode, p.stderr
         except subprocess.TimeoutExpired:
@@ -1616,7 +1628,9 @@ def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path
     repository; every argument reaches the stub unchanged, and GITHUB_TOKEN never."""
     tokens = {name: f"T-{name}-{secrets.token_hex(4)}" for name in ("example-b", "Example-C", "default")}
     home = GhHome.fresh(tmp / "owners", tokens)
-    repo = home.repository("Example-C")
+    repo = home.repository("https", "https://github.com/Example-C/repo.git")
+    ssh = home.repository("ssh", "git@github.com:Example-C/repo.git")
+    gitlab = home.repository("gitlab", "https://gitlab.example.org/Example-B/repo.git")
     b, c, default = tokens["example-b"], tokens["Example-C"], tokens["default"]
     caller = f"T-caller-{secrets.token_hex(4)}"
     for args, extra, cwd, want, label in [
@@ -1635,7 +1649,14 @@ def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path
         (["api", "repos/example-b/repo/issues/1/comments"], {}, repo, b, "gh api repos/OWNER/..."),
         (["api", "/orgs/example-b/repos"], {}, repo, b, "gh api /orgs/OWNER/..."),
         (["api", "-X", "GET", "users/Example-B"], {}, repo, b, "gh api with a flag first, users/OWNER"),
+        (["pr", "view", "1", "-RExample-B/repo"], {}, repo, b, "-ROWNER/REPO"),
+        (["pr", "view", "1", "-R", "https://github.com/Example-B/repo"], {}, repo, b, "-R a URL"),
+        (["pr", "view", "1", "-R", "GitHub.com/Example-B/repo"], {}, repo, b, "-R HOST/OWNER/REPO, capitals"),
+        (["api", "user", "--", "-R", "Example-B/repo"], {}, None, default, "-R after --: the default"),
+        (["pr", "view", "-R"], {}, None, default, "-R with no value: the default"),
         (["pr", "list"], {}, repo, c, "origin's owner where nothing else names one"),
+        (["pr", "list"], {}, ssh, c, "an origin git@github.com:OWNER/REPO"),
+        (["pr", "list"], {}, gitlab, default, "an origin of another host: the default"),
         (["api", "user"], {}, None, default, "no owner outside a repository: the default"),
         (
             ["pr", "view", "1", "-R", "Example-D/repo"],
@@ -1693,9 +1714,10 @@ def gh_token_no_token_cases(check: Callable[[object, str], None], tmp: pathlib.P
 
 
 def gh_token_path_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
-    """scripts/gh-token.py runs the real gh, never itself: with a copy of the wrapper named gh, and
-    a symbolic link named gh to a copy, first on the PATH, the stub runs once and the wrapper
-    starts no second run of itself (the counting `python3`)."""
+    """scripts/gh-token.py runs the real gh, never itself: a copy of the wrapper named gh runs, with
+    its own directory, or a directory with a symbolic link named gh to it, first on the PATH; the
+    stub runs once and the counting `python3` starts once, so the wrapper starts no second run of
+    itself. With no gh on the PATH but the wrapper, it exits 2 with one line."""
     token = f"T-d-{secrets.token_hex(4)}"
     home = GhHome.fresh(tmp / "path", {"default": token})
     copy = home.root / "copy" / "gh"
@@ -1727,6 +1749,33 @@ def gh_token_path_cases(check: Callable[[object, str], None], tmp: pathlib.Path)
     )
 
 
+def gh_token_status_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """The exit status of scripts/gh-token.py: gh's status, 130 where a Ctrl-C ends gh, with no
+    traceback of the wrapper, and 2 with one line, and no gh, for a store file with no token."""
+    home = GhHome.fresh(tmp / "status", {"default": f"T-d-{secrets.token_hex(4)}"})
+    seen = home.run("api", "user", variables={"GH_STUB_STATUS": str(GH_STUB_EXIT)})
+    check(
+        seen.status == GH_STUB_EXIT and seen.runs == 1, f"gh-token.py exits with gh's status 3: {seen.status}"
+    )
+    seen = home.run("api", "user", variables={"GH_STUB_INTERRUPT": "1"})
+    check(
+        seen.status == GH_INTERRUPTED and "Traceback" not in seen.stderr,
+        f"gh-token.py, when a Ctrl-C ends gh, exits 130 with no traceback: {seen.status}, "
+        f"{seen.stderr.strip()[-200:]!r}",
+    )
+    empty = GhHome.fresh(tmp / "no-password", {})
+    fsutil.write_private(empty.root / "home" / GH_STORE / "default.store", b"https://github.com\n")
+    seen = empty.run("api", "user")
+    check(
+        seen.status == GH_REFUSED
+        and seen.runs == 0
+        and seen.stderr.count("\n") == 1
+        and "default.store" in seen.stderr,
+        f"gh-token.py with a default.store whose line holds no token exits 2 with one line, and runs no "
+        f"gh: {seen.status}, {seen.runs}, {seen.stderr!r}",
+    )
+
+
 def gh_token_cases(check: Callable[[object, str], None]) -> None:
     """The cases of scripts/gh-token.py, each in a scratch home of its own."""
     with tempfile.TemporaryDirectory(prefix="harness-gh-token-") as name:
@@ -1734,6 +1783,7 @@ def gh_token_cases(check: Callable[[object, str], None]) -> None:
         gh_token_owner_cases(check, tmp)
         gh_token_no_token_cases(check, tmp)
         gh_token_path_cases(check, tmp)
+        gh_token_status_cases(check, tmp)
 
 
 def probe_cases(check: Callable[[object, str], None]) -> None:

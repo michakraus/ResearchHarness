@@ -220,9 +220,12 @@ the profile sets `develop = true`). With `claude` chosen, it writes the stamp
 `~/.claude/.harness-install.json`, which the drift warning at session start reads. For each
 chosen frontend it also writes the `srt` settings,
 `~/.config/research-harness/sandbox/<frontend>.json`; with any frontend chosen, the launcher
-`~/.local/bin/agentbox`; and with `claude` chosen, Claude Code's override
-`~/.config/research-harness/sandbox/claude-inner-off.json`
-([The srt settings](components/sandbox.md)).
+`~/.local/bin/agentbox` and the gh wrapper `~/.local/bin/gh`; and with `claude` chosen, Claude
+Code's override `~/.config/research-harness/sandbox/claude-inner-off.json`
+([The srt settings](components/sandbox.md)). Where the forge token store
+`~/.config/research-harness/forge/` exists, it writes its git configuration
+`~/.config/research-harness/forge.gitconfig`, and prints a notice while `~/.gitconfig` does not
+include it ([The forge tokens](components/sandbox.md#the-forge-tokens)).
 
 **Where to run it:** in your own terminal. A session cannot write the installed files.
 
