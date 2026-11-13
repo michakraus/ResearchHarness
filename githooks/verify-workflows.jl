@@ -21,6 +21,10 @@
 #      obvious remedy for that report (harness workflows --apply) would overwrite the branch's
 #      files. So both questions are asked and reported apart. The default branch is the invariant
 #      harness ci-protection depends on; the working tree is what you are about to push.
+#   1c. Dependents.yml and dependents.jl are byte-identical in each base package that the profile's
+#      `dependents_bases` lists, which also has .github/dependents.toml, and ABSENT from every
+#      other repository. The content of dependents.toml is not checked here: `harness dependents`
+#      writes it from the census and reports a stale copy.
 #   2. The two canonical CI jobs parse, and their job names are exactly the strings that
 #      harness ci-protection requires. A rename here silently invalidates branch protection in every
 #      repository, so it is asserted against a literal rather than derived.
@@ -106,18 +110,31 @@ const FORBIDDEN =
 
 # Repositories whose documentation workflow is a multi-job pipeline rather than a single build: the
 # profile's `docs_exceptions`. The template does not describe them, so no comparison against it
-# means anything.
-const DOCS_PIPELINES = Vector{String}(PROFILE["docs_exceptions"])
+# means anything. Without the key, none.
+const DOCS_PIPELINES = Vector{String}(get(PROFILE, "docs_exceptions", String[]))
 
 # Repositories that keep the canonical documentation workflow and only *add* to it, such as the TeX
 # toolchain that docs/make.jl needs to compile TikZ figures before Documenter checks links: the
 # profile's `docs_additions`. The installer does not overwrite them, so the byte comparison never
 # sees them — but the canonical body must still survive inside each, which is what
 # `documenter_additions_intact` asserts. Without that, nothing would report a template change to it.
-const DOCS_ADDITIONS = Vector{String}(PROFILE["docs_additions"])
+# Without the key, none.
+const DOCS_ADDITIONS = Vector{String}(get(PROFILE, "docs_additions", String[]))
 
 # Every repository whose Documenter.yml the installer skips, as `harness workflows` does.
 const DOCS_EXCEPTIONS = vcat(DOCS_PIPELINES, DOCS_ADDITIONS)
+
+# The base packages of the profile's `dependents_bases`: `harness workflows` installs the
+# dependents workflow and its script into each, and into no other repository. Without the key,
+# none.
+const DEPENDENTS_BASES = Vector{String}(get(PROFILE, "dependents_bases", String[]))
+const DEPENDENT_FILES =
+    [("Dependents.yml", ".github/workflows/Dependents.yml"), ("dependents.jl", ".github/dependents.jl")]
+const DEPENDENTS_ABSENT = "is present, but this repository is not in dependents_bases"
+const DEPENDENTS_TOML_MISSING =
+    "dependents.toml is missing: run harness dependents --apply and commit .github/dependents.toml"
+
+isbase(name::String, isexperiment::Bool) = !isexperiment && name in DEPENDENTS_BASES
 
 struct Finding
     repo::String
@@ -289,6 +306,7 @@ function workflow_files(dir::String, name::String, isexperiment::Bool)
     if !(name in DOCS_EXCEPTIONS) && tracked(dir, "docs/make.jl")
         push!(files, ("Documenter.yml", ".github/workflows/Documenter.yml"))
     end
+    isbase(name, isexperiment) && append!(files, DEPENDENT_FILES)
     return files
 end
 
@@ -392,6 +410,18 @@ function check_repo(
                 "Documenter.yml has drifted from the template: the canonical line " *
                 "`$(gone)` is missing from it or out of order",
             )
+        end
+    end
+
+    # 1c. the dependents workflow. A base of `dependents_bases` has the byte-identical pair of
+    # check 1 and the list of dependents that the workflow reads; any other repository has neither
+    # file, because the installer removes them there. The content of dependents.toml is the check
+    # of `harness dependents`, not of this script.
+    if isbase(name, isexperiment)
+        isfile(joinpath(dir, ".github", "dependents.toml")) || fail(DEPENDENTS_TOML_MISSING)
+    else
+        for (template, rel) in DEPENDENT_FILES
+            isfile(joinpath(dir, rel)) && fail("$template $DEPENDENTS_ABSENT")
         end
     end
 

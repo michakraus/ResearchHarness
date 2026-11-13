@@ -65,6 +65,13 @@ docs_exceptions = ["ExampleBook"]
 # survives in their copy.
 docs_additions = ["ExampleFigures"]
 
+# The base packages whose pull requests run the `core` tests of their direct dependents, each a
+# repository below Packages/. `harness workflows` installs githooks/workflows/Dependents.yml and
+# dependents.jl into each and removes them from every other repository; `harness dependents`
+# writes the list of dependents into each. A name that is not a git repository with a
+# Project.toml there stops both subcommands. Optional: without it, no base.
+# dependents_bases = ["ExampleBase"]
+
 # Directories below `home` that no session may edit, such as a synchronised share, each relative
 # to `home`.
 protected_dir = ["Nextcloud"]

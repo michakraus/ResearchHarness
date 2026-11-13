@@ -15,7 +15,8 @@ subcommands of the `harness` command install the templates into every repository
   and `scripts/test-layout.jl` into `.githooks/` of each repository, and sets `core.hooksPath`
   there.
 - `harness workflows --apply` copies the files of `githooks/workflows/` into each repository that
-  has a `Project.toml`.
+  has a `Project.toml`. `Dependents.yml` and `dependents.jl` go only into the bases that the
+  profile key `dependents_bases` names.
 
 `harness wiki-lint-hook --apply` installs `pre-commit-wiki` into the prose repositories. Each copy
 is byte-identical to its template and is a tracked file in the repository. Edit the template,
@@ -313,6 +314,63 @@ A pull request that adds or changes the file reports the new check names, but th
 requires the old ones. Merge that pull request with the admin bypass, and then run
 `harness ci-protection --apply`.
 
+## `workflows/Dependents.yml`
+
+`workflows/Dependents.yml` tests the direct dependents of a base package against the head of a
+pull request on the base. It runs the `core` test group of each dependent. `harness workflows`
+copies it to `.github/workflows/Dependents.yml` of each base that the profile key
+`dependents_bases` names. It deletes the file from every other repository. The workflow runs on a
+pull request that changes `src/`, `ext/` or `Project.toml`, and by hand. A push to `main` does
+not run it. One concurrency group per ref cancels a run that a newer push replaces. The workflow
+can only read the repository.
+
+| job | what it runs |
+|:--|:--|
+| `list` | reads the dependents from `.github/dependents.toml` with `dependents.jl list`; it fails with a line that names `harness dependents --apply` when the file is missing |
+| `test` | one job per dependent, on Ubuntu with Julia `1`, 60 minutes at most, and `fail-fast` off: the compat check, `Pkg.develop` of the head into the dependent's project and `Pkg.test(test_args = ["core"])`; on a failure, the same against the default branch of the base; then the row of the dependent |
+
+The row is one of four:
+
+- *excluded*: the dependent's `[compat]` entry excludes the head, for example after a breaking
+  bump. The job does not test it, because a test needs a compat override that no user can
+  install.
+- *green*: the dependent passes against the head.
+- *regression*: the dependent fails against the head and passes against the default branch. This
+  includes a head that the resolver cannot install beside the other dependencies of the
+  dependent. The log of the head step then names the conflict ("empty intersection …").
+- *known red*: the dependent fails against both. The pull request does not cause it.
+
+Of the four rows, only a regression fails the job. A step that fails before the row also fails
+the job. Two examples are the compat check and the checkout of a dependent that the token of the
+base cannot read. The workflow is advisory: `harness ci-protection` does not require it.
+
+## `workflows/dependents.jl`
+
+`workflows/dependents.jl` holds the logic of the jobs of `Dependents.yml`. It is a script, so the
+tests of the harness can run it. `harness workflows` copies it to `.github/dependents.jl` beside
+the workflow.
+
+```bash
+julia --startup-file=no dependents.jl list <dependents.toml>
+julia --startup-file=no dependents.jl excluded <base> <dependent>
+julia --startup-file=no dependents.jl row <name> <excluded> <head outcome> <main outcome>
+```
+
+`list` prints the dependents as a JSON array, the matrix of the `test` job. `excluded` reads the
+`version` of the base's `Project.toml` and the dependent's `[compat]` entry for the base. It reads
+the entry with `Pkg.Versions.semver_spec`. It prints `excluded=true` when the version is outside
+the entry. It prints `excluded=false` when the version is inside, or when the dependent has no
+entry. `row` prints the row from the outcomes of the two test steps. It appends the row under a
+header to the job summary, and exits with status 1 for a regression. Where the variable is set,
+each command writes its result to `$GITHUB_OUTPUT` or `$GITHUB_STEP_SUMMARY`.
+
+These inputs exit with status 2 and one line on stderr:
+
+- a missing file, or a file that is not TOML;
+- a malformed entry, or a base `version` that is no version number;
+- a `[compat]` entry that is no version specifier;
+- a combination of outcomes that is none of the four rows.
+
 ## `workflows/Documenter.yml`
 
 `workflows/Documenter.yml` is the documentation workflow. It builds the documentation with
@@ -368,6 +426,9 @@ It checks these points:
 
 1. `CI.yml`, `dependabot.yml`, `TagBot.yml` and `codecov.yml` are byte-identical to the
    templates, in the working tree. `TagBot.yml` must be absent in an experiment.
+   `Dependents.yml` and `dependents.jl` are byte-identical in each base of `dependents_bases`,
+   which also has `.github/dependents.toml`, and absent from every other repository. The content
+   of `dependents.toml` is the check of `harness dependents`.
 2. The same files on the default branch, for a repository that is on another branch.
 3. The job names of `CI.yml` are the names of the required checks.
 4. No `Register.yml`, `Documentation.yml`, `CompatHelper.yml` or other forbidden file exists.
@@ -379,7 +440,9 @@ It prints the required checks of each repository that has a `test/ci-groups.toml
 checks that a repository of `docs_additions` keeps the body of `Documenter.yml`. It
 reports the repositories whose `doctest` job skips itself. It exits with status 1 when a
 repository deviates. It
-reads the profile for `docs_exceptions` and `docs_additions`.
+reads the profile for `docs_exceptions`, `docs_additions` and `dependents_bases`. It reads a key
+that the profile does not have as an empty list, so without `dependents_bases` no repository is a
+base.
 
 Run it after `harness workflows --apply`, and before a change to CI. `harness ci-protection
 --apply` refuses to run when it fails. The rule `generated-hooks-and-workflows` and the agent

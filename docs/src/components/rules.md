@@ -90,7 +90,8 @@ loads on the paths `**/.githooks/**`, `**/.github/workflows/**` and `**/Harness/
 
 The sources are in `githooks/` of this repository. `harness githooks --apply` and
 `harness workflows --apply` install them into every package and experiment repository, and
-`githooks/verify-workflows.jl` checks them. The rule tells the agent to edit the source, never an
+`githooks/verify-workflows.jl` checks them. The dependents workflow goes only into the bases of
+the profile key `dependents_bases`. The rule tells the agent to edit the source, never an
 installed copy, and to add an entry to the harness changelog. It lists the traps: `core.hooksPath`
 does not travel with a push; a session cannot set `core.hooksPath` or `core.fsmonitor`; the
 `pre-commit` hook checks only `*.jl` files; and a repository in the profile key `docs_exceptions`
