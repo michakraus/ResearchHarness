@@ -78,8 +78,8 @@ parts that a change reaches while it edits and the full suite once before it rep
 `ruff format --check`, `ruff check` and `basedpyright`, which the pre-commit hook also runs. The
 lines that it adds or changes meet the strict profile with the generated records removed. It runs
 the named mutants and its own with `harness mutate`, and breaks a file that is not Python by hand.
-After a PASS it rereads the text of the whole branch, pushes the branch and opens the pull
-request; it starts no sub-agent.
+After a PASS it rereads the text of the whole branch, runs `python-branch-verifier`, pushes the
+branch and opens the pull request.
 
 ## `python-critic`
 
@@ -134,8 +134,9 @@ first, then the code, and verifies each clause. Like `julia-builder`, it runs a 
 guard, branch, comparison and decided edge case of its change, and lists each one with its
 verdict. It also rereads the text of its change as the last step of every round. It commits and
 returns `Verdict: ready for critic`. After the critic's report, it fixes the blocking defects and
-records other defects. On `Round: finish` it does what §L says. In a package repository, it runs
-`julia-branch-verifier` and opens the pull request.
+records other defects. On `Round: finish` it does what §L says. It runs `julia-branch-verifier`
+in a Julia repository and `python-branch-verifier` in a Python repository, then opens the pull
+request, or returns the paths for the commit where §L commits to the default branch.
 
 It runs no command longer than 5 minutes and does not edit the task file. Use `julia-builder` or
 `python-builder` for a part of part tier `build`, and `worker` for a task with no part and no
@@ -203,6 +204,25 @@ It returns a verdict, the exact paths to stage, and a block for the pull-request
 stage, commit, push or open the pull request, and it does not run `Pkg.test()`. For a missing
 changelog entry it names `changelog-scribe`. Use `julia-pr-reviewer` after the pull request
 exists.
+
+## `python-branch-verifier`
+
+The verifier for a topic branch of a Python repository: a repository with a `pyproject.toml`
+whose `Project.toml`, where it has one, names no package. It runs before the pull request opens,
+or before the commit to the default branch in a repository that takes no pull request.
+`python-builder` and `part-builder` start it.
+
+It takes the diff against the merge base and reads the gate from the repository: its pre-commit
+hook, its instructions and its CI. In the Harness, the tests are `harness test --changed` and the
+changelog is a fragment in `changelog.d/`. Elsewhere, the tests are the command that the
+repository names, or `unittest` discovery, and the changelog is `CHANGELOG.md`. Then it runs a
+seven-point pass on the diff only: correctness, the strict profile and its records, the idioms of
+the `python-code` rule, the tests that the diff reaches, `shellcheck` and `actionlint`, text that
+the diff makes stale anywhere in the repository, and history outside the changelog.
+
+It fixes the findings that the branch causes, and returns a verdict, the exact paths to stage and
+a block for the pull-request body. It does not stage, commit, push or open the pull request, and
+it does not run the full suite. Use `python-critic` to judge a part of the builder-critic loop.
 
 ## `ci-triage`
 

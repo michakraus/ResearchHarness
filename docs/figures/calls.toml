@@ -28,7 +28,7 @@ caller = "build-part"
 callee = "julia-critic"
 at = "skills/build-part/SKILL.md:210"
 effort = "high"
-label = "round 1, two critics"
+label = "round 1"
 
 [[call]]
 caller = "build-part"
@@ -103,8 +103,18 @@ label = "a CHANGELOG fix"
 [[call]]
 caller = "part-builder"
 callee = "julia-branch-verifier"
-at = "agents/part-builder.md:145"
+at = "agents/part-builder.md:146"
 label = "before the pull request"
+
+[[call]]
+caller = "part-builder"
+callee = "python-branch-verifier"
+at = "agents/part-builder.md:146"
+
+[[call]]
+caller = "python-builder"
+callee = "python-branch-verifier"
+at = "agents/python-builder.md:199"
 
 [[call]]
 caller = "julia-pr-shepherd"

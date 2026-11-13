@@ -167,7 +167,8 @@ Before them, the install writes one entry for each provider of the `context_limi
 The `mcp` entry connects to the Kaimon server at `http://127.0.0.1:2828/`, which
 `launchagents/kaimon.plist` starts. The token comes from `~/.config/kaimon/auth-token` when
 OpenCode reads the file, so no secret is in the repository. `experimental.subagent_depth` is 2,
-so that a builder that the dispatcher starts can start `julia-branch-verifier` or a `reader`,
+so that a builder that the dispatcher starts can start `julia-branch-verifier`,
+`python-branch-verifier` or a `reader`,
 and an `editor` can start a `writer`.
 The dispatcher is the session that runs the `build-part` or `build-reviewed` skill. OpenCode
 allows one level by default.

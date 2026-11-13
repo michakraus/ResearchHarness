@@ -1,7 +1,7 @@
 ---
 name: plan-parts
 model: large
-description: "Plan work as parts that are each one pull request, and write each part's spec so that the builder-critic loop can build it and judge it: the parts table, the collision map, a tier per part, and each part's Done when, edge-case decisions, named mutants and files, plus the plan's own §V and §L rules. Use when the user wants a task planned or broken into pull requests, wants to know what can run in parallel, asks which parts need a decision first, or wants a part's done-condition sharpened for a critic. Two entry paths — before a plan exists, to shape it; and on a finished plan, to add the table and the specs. Use the build-part skill to run the loop, julia-branch-verifier to check a part's branch, and the julia-pr-shepherd agent to take its pull request to green."
+description: "Plan work as parts that are each one pull request, and write each part's spec so that the builder-critic loop can build it and judge it: the parts table, the collision map, a tier per part, and each part's Done when, edge-case decisions, named mutants and files, plus the plan's own §V and §L rules. Use when the user wants a task planned or broken into pull requests, wants to know what can run in parallel, asks which parts need a decision first, or wants a part's done-condition sharpened for a critic. Two entry paths — before a plan exists, to shape it; and on a finished plan, to add the table and the specs. Use the build-part skill to run the loop, julia-branch-verifier or python-branch-verifier to check a part's branch, and the julia-pr-shepherd agent to take its pull request to green."
 ---
 
 # Planning parts for the builder-critic loop

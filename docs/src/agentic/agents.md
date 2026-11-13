@@ -36,7 +36,7 @@ context. A reader changes nothing; a worker does one fully specified change.
 | advisor | `advisor` | decides one question inside the loop, in place of the user | the builder stops less often, and the critic stays blind |
 | arbitrator | `arbitrator` | rules on a loop that does not converge | a third round of the same approach seldom closes |
 | test runner | `julia-test-runner` | runs a long suite and returns the verdict | the large contexts do not wait on a slow suite |
-| verifier | `julia-branch-verifier` | checks and fixes the diff of a branch before its pull request | a fixed list of checks, on the diff only |
+| verifier | `julia-branch-verifier`, `python-branch-verifier` | checks and fixes the diff of a branch before its pull request, or before its commit where the repository takes none | a fixed list of checks, on the diff only |
 | reviewer | `julia-pr-reviewer` | reviews a pull request and posts the review | the review comes from a context that has not decided how to fix anything |
 | shepherd | `julia-pr-shepherd` | has the review done, fixes the findings and pushes | it takes a pull request from review to green CI |
 | specialists | `julia-load-doctor`, `julia-perf-analyst`, `ci-triage`, `changelog-scribe`, `exhaustive-auditor`, `literature-scout`, `latex-verifier`, `editor`, `writer` | one bounded kind of work each | each returns a short, fixed verdict |
@@ -97,7 +97,7 @@ changes.
 
 ```calls build-part
 title: The calls of build-part
-desc: The build-part skill spawns julia-builder or python-builder, julia-critic or python-critic in round 1 at high effort and in each verify round at its own effort, julia-test-runner, advisor and arbitrator. julia-builder spawns julia-branch-verifier and changelog-scribe.
+desc: The build-part skill spawns julia-builder or python-builder, julia-critic or python-critic in round 1 at high effort and in each verify round at its own effort, julia-test-runner, advisor and arbitrator. julia-builder spawns julia-branch-verifier and changelog-scribe. python-builder spawns python-branch-verifier.
 ```
 
 You start `build-part` in your session when a part is ready to build. The skill does not write
@@ -108,21 +108,23 @@ nor a `pyproject.toml`. Beside each critic, `julia-test-runner` runs the full te
 Julia part; for any other part the skill's session runs the repository's own suite in the
 background. A question inside the loop goes to the `advisor`, and a loop that does not converge
 goes to the `arbitrator`. Before the pull request of a Julia part, `julia-builder` spawns
-`julia-branch-verifier`, and it can spawn `changelog-scribe` for a fix of the CHANGELOG.
+`julia-branch-verifier`, and it can spawn `changelog-scribe` for a fix of the CHANGELOG. Before
+the pull request of a Python part, `python-builder` spawns `python-branch-verifier`.
 [The builder-critic loop](loop.md#the-full-loop-build-part) follows one part through it.
 
 ### A smaller loop: `build-reviewed`
 
 ```calls build-reviewed
 title: The calls of build-reviewed
-desc: The build-reviewed skill spawns part-builder, part-critic and julia-test-runner. part-builder spawns julia-branch-verifier.
+desc: The build-reviewed skill spawns part-builder, part-critic and julia-test-runner. part-builder spawns julia-branch-verifier or python-branch-verifier.
 ```
 
 A part of tier `reviewed` is small, with a fast gate. The skill spawns one `part-builder`, and a
 new one for each later round, and one `part-critic`, which judges the work once. A run longer than
-five minutes goes to `julia-test-runner`. Before the pull request, the builder spawns
-`julia-branch-verifier`. [The builder-critic loop](loop.md#the-small-loop-build-reviewed) follows
-one part through it.
+five minutes goes to `julia-test-runner`. Before the pull request, or before the commit where the
+repository takes none, the builder spawns `julia-branch-verifier` in a Julia repository and
+`python-branch-verifier` in a Python repository.
+[The builder-critic loop](loop.md#the-small-loop-build-reviewed) follows one part through it.
 
 ### From review to green CI: `julia-pr-shepherd`
 
@@ -141,12 +143,13 @@ ones. [Review and pull requests](review.md) describes the three agents of a pull
 
 ```calls
 title: Every spawn
-desc: Every edge of calls.toml: the build-part, build-reviewed, plan-parts and julia-structure skills, and the julia-builder, part-builder, julia-pr-shepherd and editor agents, with each agent that they spawn.
+desc: Every edge of calls.toml: the build-part, build-reviewed, plan-parts and julia-structure skills, and the julia-builder, python-builder, part-builder, julia-pr-shepherd and editor agents, with each agent that they spawn.
 ```
 
 This figure shows every entry of `calls.toml`. It adds two skills: `plan-parts` sends each part's
 spec to a `reader` that measures its facts, and `julia-structure` sends a claim that nothing uses
 a name to `exhaustive-auditor`. An agent that is not in this figure is spawned only from your
 session. Only the agents with the tool `agent` can spawn another agent: `julia-builder`,
-`part-builder`, `julia-pr-shepherd` and `editor`. Each spawn costs a new context, so an agent
-spawns another only where a fresh context or a smaller model does the work better.
+`python-builder`, `part-builder`, `julia-pr-shepherd` and `editor`. Each spawn costs a new
+context, so an agent spawns another only where a fresh context or a smaller model does the work
+better.

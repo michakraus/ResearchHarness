@@ -79,7 +79,9 @@ const ROW = 3
 
 /** The rows of a graph that runs downwards: a node's depth is the longest path to it from a node
  * that nothing calls. The nodes of one depth fill rows of at most ROW boxes, in the order of
- * `names`, with the nodes that call others last, so that they are next to their callees. */
+ * `names`, with the nodes that call others last, so that they are next to their callees. The rows
+ * fill from the last one, so that only the first row of a depth is short, and the nodes that call
+ * others share the last row rather than one of them standing alone below it. */
 function rows(names: string[], edges: Call[]): Map<string, number> {
   const depth = new Map(names.map((n) => [n, 0]))
   for (let changed = true, rounds = 0; changed; rounds++) {
@@ -97,8 +99,9 @@ function rows(names: string[], edges: Call[]): Map<string, number> {
   let row = 0
   for (const d of [...new Set(depth.values())].sort((a, b) => a - b)) {
     const group = names.filter((n) => depth.get(n) === d).sort((a, b) => Number(calls(a)) - Number(calls(b)))
-    for (let i = 0; i < group.length; i += ROW) {
-      for (const n of group.slice(i, i + ROW)) result.set(n, row)
+    const first = group.length % ROW || ROW
+    for (let i = 0; i < group.length; i = i === 0 ? first : i + ROW) {
+      for (const n of group.slice(i, i === 0 ? first : i + ROW)) result.set(n, row)
       row++
     }
   }

@@ -64,9 +64,9 @@ OpenCode and oh-my-pi.
    known issue, or park the part for you. A FAIL of the round after its ruling stops the loop, and
    the skill reports to you.
 6. **The finish.** After a PASS on a green suite, a new builder rereads the text of the whole
-   branch, runs [`julia-branch-verifier`](review.md#before-the-pull-request) and opens the pull
-   request. The code does not change after the PASS, except for the verifier's fixes and fixes of
-   text.
+   branch, runs [the verifier of its language](review.md#before-the-pull-request) and opens the
+   pull request. The code does not change after the PASS, except for the verifier's fixes and
+   fixes of text.
 7. **After the loop.** The skill records the rounds, the decisions and the rulings in the part's
    section of the task file. Each defect that a critic found late, in a class that the
    [edge catalogue](edges.md) does not hold, becomes a new line of that catalogue.
