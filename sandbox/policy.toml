@@ -98,6 +98,9 @@ state = ["~/.gemini"]
 deny_write = []
 own = ["~/.gemini/jetski-standalone-oauth-token"]
 read_files = []
-# agy's login exchanges its token here.
-network = ["oauth2.googleapis.com"]
-mach_lookup = []
+# agy refreshes its login token at the first host, checks its eligibility and calls its model at the
+# second, and reads the account at the third.
+network = ["oauth2.googleapis.com", "daily-cloudcode-pa.googleapis.com", "www.googleapis.com"]
+# agy is a Go program, and Go checks a TLS certificate through this service on macOS; srt allows it
+# otherwise only with `enableWeakerNetworkIsolation`, which would open it to every frontend.
+mach_lookup = ["com.apple.trustd.agent"]
