@@ -31,6 +31,8 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   the actions of its `uses:` lines, a second checkout of the dependent for the run against the
   default branch, and `persist-credentials: false` on every checkout; `actionlint` passes on it,
   where it is on the PATH.
+- every workflow template of githooks/workflows/: each `actions/checkout` step sets
+  `persist-credentials: false`, and the templates hold at least one such step.
 - githooks/workflows/dependents.jl, where `julia` is on the PATH: `excluded` on a head inside the
   dependent's `[compat]` entry, outside it, against an entry with two specifiers, and with no
   entry; `excluded` refuses a base or a dependent Project.toml that is not TOML, a base version
@@ -656,6 +658,33 @@ def yaml_cases(check: Check) -> None:
     )
 
 
+def checkout_cases(check: Check) -> None:
+    """No checkout of any workflow template keeps the token in the git configuration, where every
+    later step of its job, the package's build, tests and docs among them, could read it."""
+    checkouts = 0
+    keeps: list[tuple[str, str, int]] = []
+    for path in sorted(githooks.WORKFLOWS.glob("*.yml")):
+        read = wikilint.yaml_reader()(path.read_text())
+        check(
+            not read.refused,
+            f"{path.name} is YAML with no repeated key -> line {read.line}, {read.duplicate}",
+        )
+        data = cast("dict[object, object]", read.data if isinstance(read.data, dict) else {})
+        jobs = cast("dict[str, dict[str, object]]", data.get("jobs") or {})
+        for name, job in jobs.items():
+            for i, s in enumerate(cast("list[dict[str, object]]", job.get("steps") or [])):
+                if not str(s.get("uses", "")).startswith("actions/checkout@"):
+                    continue
+                checkouts += 1
+                if cast("dict[str, object]", s.get("with") or {}).get("persist-credentials") is not False:
+                    keeps.append((path.name, name, i))
+    check(
+        checkouts > 0 and not keeps,
+        f"no checkout of a workflow template keeps the token -> {checkouts} checkouts, "
+        f"without persist-credentials false (file, job, step) {keeps}",
+    )
+
+
 def julia_script(
     julia: str, *args: str, env: Mapping[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
@@ -899,6 +928,7 @@ def cases(check: Check) -> None:
                 body(check, d)
         origin_cases(check)
         yaml_cases(check)
+        checkout_cases(check)
         if julia is None:
             print("skip  githooks: no julia on the PATH; dependents.jl and verify-workflows.jl do not run")
             return
