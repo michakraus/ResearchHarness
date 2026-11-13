@@ -307,8 +307,8 @@ def github_name(url: str) -> str | None:
     """The GitHub `owner/name` of the remote URL `url`, in one of two forms:
     `<scheme>://[user@]github.com[:port]/owner/name[.git][/]`, with the scheme `https`, `http`,
     `ssh`, `git+ssh` or `ssh+git`, or `[user@]github.com:owner/name[.git][/]`. Scheme and host
-    match in any case. None for every other string: another scheme or host, a local path, a query
-    or a fragment, and a name `.` or `..`."""
+    match in any case. None for every other string, such as another scheme or host, a local path, a
+    query or a fragment, or a name `.` or `..`."""
     match = GITHUB_ORIGIN.fullmatch(url)
     if match is None or match["name"] in {".", ".."}:
         return None
@@ -316,12 +316,16 @@ def github_name(url: str) -> str | None:
 
 
 def github_repository(repo: pathlib.Path) -> str:
-    """The GitHub `owner/name` of the origin of `repo`. No origin, or one that is not on
-    github.com, raises, naming the repository: the dependents workflow checks it out from GitHub."""
+    """The GitHub `owner/name` of the origin of `repo`. No origin, or an origin of neither form of
+    `github_name`, raises, naming the repository: the dependents workflow checks it out from
+    GitHub."""
     url = git(repo, "remote", "get-url", "origin").stdout.strip()
     name = github_name(url)
     if name is None:
-        raise HarnessError(f"{repo.name}: the origin {url or '(none)'} is no repository on github.com")
+        raise HarnessError(
+            f"{repo.name}: the origin {url or '(none)'} is no GitHub URL of a form that "
+            "harness dependents reads"
+        )
     return name
 
 

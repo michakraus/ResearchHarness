@@ -650,8 +650,8 @@ dependent, sorted by name. Each table has two keys:
 An `origin` has one of two forms. The first is a URL
 `<scheme>://[user@]github.com[:port]/owner/name[.git][/]`, with the scheme `https`, `http`,
 `ssh`, `git+ssh` or `ssh+git`. The second is the scp form `[user@]github.com:owner/name[.git][/]`.
-Scheme and host match in any case. Every other form is refused: another scheme or host, a local
-path, a query or a fragment, and a name `.` or `..`. The census of every base and the read of
+Scheme and host match in any case. Every other form is refused, such as another scheme or host, a
+local path, a query or a fragment, or a name `.` or `..`. The census of every base and the read of
 every old file run before the first write, so a refusal writes no file.
 Without `--apply` it prints the diff of each file that would change. The `Dependents.yml` workflow
 of the base reads the file into its matrix.

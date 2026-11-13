@@ -12,7 +12,7 @@
 # excluded and not tested: testing it would need a compat override, a combination that no user
 # can install. A dependent that fails against the head runs again against the base's default
 # branch: red on the head and green there is a regression of the pull request, and red on both is
-# known red, which the pull request did not cause. Of the four rows, only a regression fails a
+# known red, which the pull request does not cause. Of the four rows, only a regression fails a
 # job, and the workflow is advisory: no required status check names it.
 #
 # The logic of a job is in dependents.jl, not inline here, so that the harness's tests can run it.
