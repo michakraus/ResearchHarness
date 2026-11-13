@@ -310,6 +310,9 @@ def plan_classic(slug: str, branch: str, rid: int | None, checks: list[str]) -> 
 
 # A group of test/ci-groups.toml, as CI.yml's `groups` job accepts it.
 GROUP_NAME = re.compile(r"[a-z][a-z0-9]*")
+# An extra workflow of test/ci-groups.toml: a file name of .github/workflows/ other than the
+# installed CI.yml, Documenter.yml and TagBot.yml, in any case, because APFS finds `ci.yml` as CI.yml.
+WORKFLOW_NAME = re.compile(r"(?!(?i:CI|Documenter|TagBot)\.yml$)[A-Za-z0-9_-]+\.yml")
 
 
 def ci_groups(repo: pathlib.Path) -> list[str] | None:
@@ -331,15 +334,72 @@ def ci_groups(repo: pathlib.Path) -> list[str] | None:
     return groups
 
 
+def ci_workflows(repo: pathlib.Path) -> list[pathlib.Path]:
+    """The extra workflows that the repository's test/ci-groups.toml names in `workflows`, such as
+    Metal.yml, as paths in .github/workflows/; none without the file or the key. A value that is not
+    a list of distinct WORKFLOW_NAMEs, or a name that is not a file there, is a HarnessError."""
+    path = repo / "test" / "ci-groups.toml"
+    if not path.is_file():
+        return []
+    try:
+        data = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as e:
+        raise HarnessError(f"{path}: not valid TOML: {e}") from e
+    value: object = data.get("workflows", [])
+    items = cast("list[object]", value) if isinstance(value, list) else None
+    names = [w for w in items or [] if isinstance(w, str) and WORKFLOW_NAME.fullmatch(w)]
+    if items is None or len(names) != len(items) or len(set(names)) != len(names):
+        raise HarnessError(f"{path}: `workflows` is not a list of distinct workflow file names")
+    files = [repo / ".github" / "workflows" / w for w in names]
+    missing = [f.name for f in files if not f.is_file()]
+    if missing:
+        raise HarnessError(f"{path}: `workflows` names {', '.join(missing)}, not in .github/workflows/")
+    # A required check that never reports leaves every pull request pending, so a named workflow
+    # runs on every pull request: a `pull_request` trigger with no filter of paths or branches.
+    for f in files:
+        if not runs_on_every_pull_request(f):
+            raise HarnessError(
+                f"{path}: `workflows` names {f.name}, which does not run on every pull request"
+            )
+    return files
+
+
+def runs_on_every_pull_request(path: pathlib.Path) -> bool:
+    """Whether the workflow at `path` has a `pull_request` trigger without `paths`, `paths-ignore`,
+    `branches` or `branches-ignore`. YAML 1.1 reads the key `on` as `True`."""
+    import yaml  # noqa: PLC0415 -- only this function and workflow_checks need PyYAML
+
+    try:
+        data: object = yaml.safe_load(path.read_text())
+    except yaml.YAMLError as e:
+        raise HarnessError(f"{path}: not valid YAML") from e
+    triggers: object = cast("dict[object, object]", data).get(True) if isinstance(data, dict) else None
+    if isinstance(triggers, str | list):
+        return "pull_request" in cast("str | list[object]", triggers)
+    if not isinstance(triggers, dict):
+        return False
+    table = cast("dict[object, object]", triggers)
+    if "pull_request" not in table:
+        return False
+    pr: object = table["pull_request"]
+    filters = ("paths", "paths-ignore", "branches", "branches-ignore")
+    return pr is None or (isinstance(pr, dict) and not any(k in pr for k in filters))
+
+
 def required_checks(repo: pathlib.Path) -> list[str]:
     """The required checks of a package or an experiment: REQUIRED_CHECKS without a group file, and
     with one, each `Julia` check once per group, ` - <group>` at its end, as CI.yml names its jobs,
-    and the doctest check."""
+    the doctest check, and the checks of each workflow that the file names in `workflows`."""
     groups = ci_groups(repo)
     if groups is None:
         return REQUIRED_CHECKS
     julia = [c for c in REQUIRED_CHECKS if c.startswith("Julia ")]
-    return [f"{c} - {g}" for c in julia for g in groups] + [c for c in REQUIRED_CHECKS if c not in julia]
+    extra = [c for w in ci_workflows(repo) for c in workflow_checks(w)]
+    return [
+        *(f"{c} - {g}" for c in julia for g in groups),
+        *(c for c in REQUIRED_CHECKS if c not in julia),
+        *extra,
+    ]
 
 
 def targets() -> list[tuple[pathlib.Path, list[str]]]:
@@ -660,7 +720,52 @@ def target_cases() -> tuple[int, int]:
                 else ("`groups` is not a list of distinct group names")
             )
             check(f"required_checks: a group file with {label} is refused", got, expected)
-    return 2 + len(refused), wrong
+        # `workflows` adds the checks of an extra workflow, as workflow_checks reads them
+        workflows = root / "Packages" / "A" / ".github" / "workflows"
+        (workflows / "Push.yml").write_text("on:\n  push:\njobs:\n  p:\n    runs-on: x\n")
+        (workflows / "Paths.yml").write_text(
+            "on:\n  pull_request:\n    paths: ['src/**']\njobs:\n  p:\n    runs-on: x\n"
+        )
+        (workflows / "Metal.yml").write_text(
+            "on:\n  pull_request:\njobs:\n  metal:\n    name: Metal - Julia ${{ matrix.version }} - ${{ matrix.os }}\n"
+            "    strategy:\n      matrix:\n        version: ['min', '1']\n        os: [macos-15]\n"
+        )
+        groups.write_text('groups = ["core", "long"]\nworkflows = ["Metal.yml"]\n')
+        check(
+            "required_checks: `workflows` adds the jobs of Metal.yml",
+            required_checks(root / "Packages" / "A"),
+            [*GROUPED_CHECKS, "Metal - Julia 1 - macos-15", "Metal - Julia min - macos-15"],
+        )
+        bad_workflows = {
+            "a workflow that does not exist": ('["Other.yml"]', "`workflows` names Other.yml, not in"),
+            "a workflow of pushes only": ('["Push.yml"]', "`workflows` names Push.yml, which does not run"),
+            "a workflow with a path filter": (
+                '["Paths.yml"]',
+                "`workflows` names Paths.yml, which does not run",
+            ),
+            "the installed CI.yml": ('["CI.yml"]', "`workflows` is not a list of distinct workflow"),
+            "the installed CI.yml in lower case": (
+                '["ci.yml"]',
+                "`workflows` is not a list of distinct workflow",
+            ),
+            "a workflow twice": (
+                '["Metal.yml", "Metal.yml"]',
+                "`workflows` is not a list of distinct workflow",
+            ),
+            "a text in place of a list": ('"Metal.yml"', "`workflows` is not a list of distinct workflow"),
+        }
+        for label, (value, expected) in bad_workflows.items():
+            groups.write_text(f'groups = ["core", "long"]\nworkflows = {value}\n')
+            try:
+                got = required_checks(root / "Packages" / "A")
+            except HarnessError as e:
+                got = str(e).removeprefix(f"{groups}: ")
+            check(
+                f"required_checks: a group file with {label} in `workflows` is refused",
+                got[: len(expected)] if isinstance(got, str) else got,
+                expected,
+            )
+    return 3 + len(refused) + len(bad_workflows), wrong
 
 
 def workflow_cases() -> tuple[int, int]:

@@ -81,7 +81,7 @@ They run under `~/Research/Harness/scripts/`:
 
 | to | run |
 |:--|:--|
-| run the `core` test files the diff can reach by the mirror of `src/`, and the files under `test/quality/`; where a `Project.toml` changed, the full `Pkg.test()` | `julia --startup-file=no run-tests.jl <worktree> affected` |
+| run the test files the diff can reach by the mirror of `src/`, of `core` or of every group of a `test/ci-groups.toml` but `slow`, and the files under `test/quality/`; where a `Project.toml` changed, the full `Pkg.test()` | `julia --startup-file=no run-tests.jl <worktree> affected` |
 | run a group, and report each `core` file above its 60 s, cold | `julia --startup-file=no run-tests.jl <worktree> core` |
 | see that selection without running it | `julia --startup-file=no run-tests.jl <worktree> select` |
 | run named test files, by path under `test/` or by testset label | `julia --startup-file=no run-tests.jl <worktree> <unit> ...` |

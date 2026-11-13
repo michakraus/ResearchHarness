@@ -47,6 +47,10 @@ const DEFAULT_GROUPS = ["core", "slow"]
 const OWN_JOB_GROUPS = ("doctests", "metal", "cuda", "broken")
 # a group of test/ci-groups.toml, as it ends a job name
 const CI_GROUP_NAME = r"^[a-z][a-z0-9]*$"
+# an extra workflow of test/ci-groups.toml, and the installed ones it may not name, in lower case
+# because APFS finds `ci.yml` as CI.yml
+const CI_WORKFLOW_NAME = r"^[A-Za-z0-9_-]+\.yml$"
+const INSTALLED_WORKFLOWS = ("ci.yml", "documenter.yml", "tagbot.yml")
 const GATE = r"\b(ARGS|ENV)\b"
 const ISSUE = r"#\d+|issues/\d+"
 # the top-level directories of test/ that mirror no directory of src/
@@ -151,7 +155,8 @@ in form. `groups` is `nothing` where the file is absent, or where it gives no li
 
 The file is `groups = [...]`, the groups that an empty `ARGS` runs: `core`, `slow` and the
 repository's own groups, each a name of lower-case letters and digits, and none of the groups that
-run outside the CI test jobs.
+run outside the CI test jobs. An optional `workflows = [...]` names extra workflow files of
+`.github/workflows/`, such as `Metal.yml`, whose jobs are required checks too (`ci_workflows`).
 """
 function ci_groups(repo)
     f = joinpath(repo, "test", "ci-groups.toml")
@@ -167,9 +172,11 @@ function ci_groups(repo)
         return (nothing, ["test/ci-groups.toml has no `groups` list of names"])
     gs = Vector{String}(gs)
     problems = String[]
-    for k in sort!(collect(setdiff(keys(toml), ["groups"])))
-        push!(problems, "test/ci-groups.toml has the key `$k`; it has `groups` only")
+    for k in sort!(collect(setdiff(keys(toml), ["groups", "workflows"])))
+        push!(problems,
+            "test/ci-groups.toml has the key `$k`; it has `groups` and `workflows` only")
     end
+    append!(problems, last(ci_workflows(repo, toml)))
     for g in unique(gs)
         occursin(CI_GROUP_NAME, g) ||
             push!(problems, "group \"$g\" of test/ci-groups.toml is not lower-case letters and digits")
@@ -182,6 +189,31 @@ function ci_groups(repo)
         g in gs || push!(problems, "test/ci-groups.toml does not list the group \"$g\"")
     end
     return (gs, problems)
+end
+
+"""
+    ci_workflows(repo, toml) -> (workflows, problems)
+
+The `workflows` of the parsed `test/ci-groups.toml` `toml` of `repo`: extra workflow files whose
+jobs `harness ci-protection` requires besides those of `CI.yml`, and the reasons the list is not
+in form. Each is the name of a file in `.github/workflows/` other than the installed ones.
+"""
+function ci_workflows(repo, toml)
+    ws = get(toml, "workflows", String[])
+    ws isa Vector && all(w -> w isa String, ws) ||
+        return (
+            String[], ["`workflows` of test/ci-groups.toml is not a list of file names"])
+    problems = String[]
+    for w in unique(ws)
+        occursin(CI_WORKFLOW_NAME, w) && !(lowercase(w) in INSTALLED_WORKFLOWS) ||
+            push!(problems,
+                "workflow \"$w\" of test/ci-groups.toml is not an extra workflow file name")
+        count(==(w), ws) > 1 &&
+            push!(problems, "workflow \"$w\" is in test/ci-groups.toml more than once")
+        isfile(joinpath(repo, ".github", "workflows", w)) ||
+            push!(problems, "workflow \"$w\" of test/ci-groups.toml is not in .github/workflows/")
+    end
+    return (Vector{String}(ws), problems)
 end
 
 "The groups that an empty `ARGS` runs in `repo`, outside the platform groups."

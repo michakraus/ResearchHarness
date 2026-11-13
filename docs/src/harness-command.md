@@ -681,7 +681,8 @@ harness ci-protection [--apply] [--remove-classic]
 Protects the default branch of each repository that has a `CI.yml` with a GitHub ruleset named
 `main`, which requires the status checks of the canonical `CI.yml`. A repository with a
 `test/ci-groups.toml` requires one check per test group, version and system, as `CI.yml` names its
-jobs there. Then it protects the Harness
+jobs there, and the jobs of each workflow that the file names in `workflows`, such as
+`Metal.yml`. Then it protects the Harness
 itself, the checkout that runs the command, with the same ruleset; there the required checks are
 the jobs of `.github/workflows/test.yml` that report on every pull request and are not warnings.
 It also turns on auto-merge and the deletion of merged branches. It reads the current state first

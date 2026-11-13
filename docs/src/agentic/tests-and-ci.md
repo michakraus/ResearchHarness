@@ -33,7 +33,8 @@ package load and the compilation each time, so the harness gives three tiers, ch
    evaluation, so an edit is checkable in seconds. This is the default while the agent works.
 1. **The affected tests.** [`run-tests.jl <package> affected`](../components/scripts.md#run-tests-jl-and-run-tests-test-jl)
    runs the `core` files that the diff against `origin/main` can reach, and the quality files, in
-   one fresh process. A changed `Project.toml` runs the full suite.
+   one fresh process. With a `test/ci-groups.toml`, it selects from every group of that file but
+   `slow`. A changed `Project.toml` runs the full suite.
 2. **The full suite.** `Pkg.test()`, before a push. It takes seconds in a small package and up to
    100 minutes in CI in the large ones.
 

@@ -7,20 +7,20 @@
 # parses; this script reads the layout through the same parser. A repository in another layout
 # is refused, with the violations that make it one, and only `full` runs there.
 #
-# `affected` (the default, base `origin/main`) selects the `core` test files that the diff against
+# `affected` (the default, base `origin/main`) selects the test files of its groups that the diff against
 # the base and the uncommitted changes can reach, by the mirror of the convention: `src/<path>.jl`
 # selects `test/<path>.jl`, every test file of its directory, the test files of the directories
 # above it that mirror no source file, and every file under `test/integration/` and `test/verification/`. A
 # change under `ext/` selects the last two. A changed test file selects itself, a changed helper
-# the test files that include it, and a changed `runtests.jl` the whole group. The quality files
+# the test files that include it, and a changed `runtests.jl` its whole groups. The quality files
 # run with any selection. A changed `Project.toml` or `test/Project.toml` runs `full`.
 # `select` prints what `affected` would run, and runs nothing. `full` runs `Pkg.test()`. `list`
 # prints the test files, their groups and their labels.
 # A `<unit>` is a group (`core`, `slow`, `doctests`, `metal`, `cuda`, `broken`, or a group of
 # `test/ci-groups.toml`), the path of a test file, or a substring of a testset label. The path is
 # relative to `test/` (`utils.jl`), to the package root (`test/utils.jl`), or absolute. A unit
-# that names no test file is an error. `affected` selects from `core` alone, so it never runs
-# `doctests`.
+# that names no test file is an error. The groups of `affected` are `core`, or every group of
+# `test/ci-groups.toml` but `slow`, so it never runs `doctests`.
 #
 # A selection runs in one fresh process through `TestEnv`, which builds the test environment
 # outside the package directory, each file in its own module under a `@testset` of its label, and
@@ -121,13 +121,19 @@ function changed(pkg, base)
 end
 
 """
-The test files of `group` that a change of `paths`, relative to `pkg`, can reach, and why each
+The groups that `affected` selects from: `core`, or every group of `test/ci-groups.toml` but
+`slow`, where a repository moves fast files of `core` into groups of their own.
+"""
+affected_groups(pkg) = setdiff(default_groups(pkg), ["slow"])
+
+"""
+The test files of `groups` that a change of `paths`, relative to `pkg`, can reach, and why each
 is chosen; or `:full` where a `Project.toml` changed.
 """
-function affected(pkg, entries, paths; group = "core")
+function affected(pkg, entries, paths; groups = affected_groups(pkg))
     any(p -> p in ("Project.toml", "test/Project.toml"), paths) && return :full
     t, src = joinpath(pkg, "test"), joinpath(pkg, "src")
-    runnable = filter(e -> e.group == group, entries)
+    runnable = filter(e -> e.group in groups, entries)
     rel(e) = relpath(e.path, t)
     top(e) = first(splitpath(rel(e)))
     pick, why = Entry[], String[]
