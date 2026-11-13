@@ -29,7 +29,8 @@ stops the pull request until it is fixed and the verifier has run again.
 
 The verifier does not run the suite: the loop ran it beside the critic. For a missing changelog
 entry it names [`changelog-scribe`](../components/agents.md#changelog-scribe), which writes the
-entry in the convention of the repository.
+entry in the convention of the repository. In the Harness, `python-branch-verifier` writes the
+missing fragment in `changelog.d/` itself.
 
 ## The text of a pull request
 

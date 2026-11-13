@@ -123,8 +123,8 @@ A part of tier `reviewed` is small, with a fast gate. The skill spawns one `part
 new one for each later round, and one `part-critic`, which judges the work once. A run longer than
 five minutes goes to `julia-test-runner`. Before the pull request, or before the commit where the
 repository takes none, the builder spawns `julia-branch-verifier` in a Julia repository and
-`python-branch-verifier` in a Python repository. [The builder-critic loop](loop.md#the-small-loop-build-reviewed) follows
-one part through it.
+`python-branch-verifier` in a Python repository.
+[The builder-critic loop](loop.md#the-small-loop-build-reviewed) follows one part through it.
 
 ### From review to green CI: `julia-pr-shepherd`
 
@@ -143,12 +143,13 @@ ones. [Review and pull requests](review.md) describes the three agents of a pull
 
 ```calls
 title: Every spawn
-desc: Every edge of calls.toml: the build-part, build-reviewed, plan-parts and julia-structure skills, and the julia-builder, part-builder, julia-pr-shepherd and editor agents, with each agent that they spawn.
+desc: Every edge of calls.toml: the build-part, build-reviewed, plan-parts and julia-structure skills, and the julia-builder, python-builder, part-builder, julia-pr-shepherd and editor agents, with each agent that they spawn.
 ```
 
 This figure shows every entry of `calls.toml`. It adds two skills: `plan-parts` sends each part's
 spec to a `reader` that measures its facts, and `julia-structure` sends a claim that nothing uses
 a name to `exhaustive-auditor`. An agent that is not in this figure is spawned only from your
 session. Only the agents with the tool `agent` can spawn another agent: `julia-builder`,
-`part-builder`, `julia-pr-shepherd` and `editor`. Each spawn costs a new context, so an agent
-spawns another only where a fresh context or a smaller model does the work better.
+`python-builder`, `part-builder`, `julia-pr-shepherd` and `editor`. Each spawn costs a new
+context, so an agent spawns another only where a fresh context or a smaller model does the work
+better.

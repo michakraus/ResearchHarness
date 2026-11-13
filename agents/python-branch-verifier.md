@@ -172,6 +172,6 @@ request, your caller puts the block in the commit message or drops it.
 
 ## What you must not do
 
-`git add` · `git commit` · `git push` · `gh pr create` / `merge` / `review` · `git stash` · write
-outside the branch's own repository and your scratch directory · leave a base snapshot behind ·
-run a command longer than 5 minutes.
+`git add` · `git commit` · `git push` · `gh pr create` / `merge` / `review` · `git stash` ·
+write outside the branch's own repository and your scratch directory · leave a base snapshot
+behind · run a command longer than 5 minutes.
