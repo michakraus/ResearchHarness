@@ -1148,7 +1148,7 @@ def probe_model(check: Callable[[object, str], None], tmp: pathlib.Path) -> None
     forms = {
         "claude": [
             ["-p"],
-            ["-p", "--allowedTools", "Bash(echo *)"],
+            ["-p", "--allowedTools", "Bash"],
             ["-p", "--allowedTools", "Read"],
             ["-p", "--allowedTools", "mcp__kaimon__ping"],
         ],

@@ -76,8 +76,10 @@ stays read-only. No other frontend has a `read_files` entry. oh-my-pi adds the w
 `~/.omp/agent/config.yml` and `~/.omp/agent/extensions`.
 
 `claude`'s `network` is `platform.claude.com`, where Claude Code refreshes its sign-in token, and
-`antigravity`'s is `oauth2.googleapis.com`, where `agy` exchanges its login token; the other two
-frontends have an empty `network`. An entry is `host` or `host:port`: `host` is
+`antigravity`'s is `agy`'s three hosts: `oauth2.googleapis.com`, where it refreshes its login
+token, `daily-cloudcode-pa.googleapis.com`, where it checks its eligibility and calls its model,
+and `www.googleapis.com`, where it reads the account. The other two frontends have an empty
+`network`. An entry is `host` or `host:port`: `host` is
 `localhost`, a name of two or more labels, or `*.` before such a name, and `port` is 1 to 65535
 with no leading zero. Each form is one that `srt` takes in `allowedDomains`, so no entry makes
 `srt` refuse the file. The user's own hosts for a frontend go in a `[frontend.<name>]` table of the
@@ -89,7 +91,13 @@ the prompt. `srt`'s profile allows a fixed list of services, without this one, s
 and AppKit prints the refusal into the terminal. The service receives the prompt's words and can
 write learned words to `~/Library/Spelling`. The name holds the language of the system's spelling
 setting: `mul` is *automatic by language*, and a fixed language has another name, which needs its
-own entry. The other three frontends have an empty `mach_lookup`.
+own entry.
+
+`antigravity`'s `mach_lookup` is `com.apple.trustd.agent`. `agy` is a Go program, and on macOS Go
+checks a TLS certificate through this service; without it every request of `agy` fails with
+`x509: OSStatus -26276`. `srt` allows the service otherwise only with its setting
+`enableWeakerNetworkIsolation`, which would open it to every frontend. `claude` and `opencode`
+have an empty `mach_lookup`.
 
 `harness install` exits with status 2 on a policy file with an unknown key, a missing key or
 frontend, a value that is not a list of strings, a path that does not start with `~/`, a path
@@ -111,7 +119,7 @@ and no other:
 | `network.allowedDomains` | the template's, in order; then the frontend's `network` of the policy; then that of the overlay's `[frontend.<name>]` table; without each entry of the policy or the overlay whose host, its `:port` cut off, an entry of `deniedDomains` without a port matches |
 | `network.deniedDomains` | the template's, or `[]` where it has none; `srt` refuses a file without the key |
 | `network.allowLocalBinding` | the template's |
-| `network.allowMachLookup` | the frontend's `mach_lookup`; no such key where it is empty, so the files of the other three frontends do not have it |
+| `network.allowMachLookup` | the frontend's `mach_lookup`; no such key where it is empty, so the files of `claude` and `opencode` do not have it |
 | `filesystem.allowWrite` | the template's, without each entry at or below another frontend's `state` path; then the frontend's `state`; then the real path of `$TMPDIR`, where it is set and not empty |
 | `filesystem.denyWrite` | the template's, without the frontend's `own` and without each literal entry other than the home directory that lies strictly above a path of the frontend's `state`; then its `deny_write` |
 | `filesystem.denyRead` | the home directory; then the template's; then each path of `credentials.files`; without the frontend's `own`; each literal entry other than the home directory that lies strictly above a path of the frontend's `read_files` written as the entry followed by `/*`, in its place |
