@@ -335,7 +335,8 @@ copies it to `.github/workflows/Dependents.yml` of each base that the profile ke
 `dependents_bases` names. It deletes the file from every other repository. The workflow runs on a
 pull request that changes `src/`, `ext/` or `Project.toml`, and by hand. A push to `main` does
 not run it. One concurrency group per ref cancels a run that a newer push replaces. The workflow
-can only read the repository.
+can only read the repository. No checkout keeps the token, because the tests of the dependents
+run code of other repositories.
 
 | job | what it runs |
 |:--|:--|

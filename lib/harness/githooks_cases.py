@@ -28,8 +28,9 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   refused. Without `dependents_bases`, the subcommand writes only the files of the other templates
   and names neither file.
 - githooks/workflows/Dependents.yml: its trigger, concurrency group, permissions, jobs and matrix,
-  the actions of its `uses:` lines, and a second checkout of the dependent for the run against the
-  default branch; `actionlint` passes on it, where it is on the PATH.
+  the actions of its `uses:` lines, a second checkout of the dependent for the run against the
+  default branch, and `persist-credentials: false` on every checkout; `actionlint` passes on it,
+  where it is on the PATH.
 - githooks/workflows/dependents.jl, where `julia` is on the PATH: `excluded` on a head inside the
   dependent's `[compat]` entry, outside it, against an entry with two specifiers, and with no
   entry; `excluded` refuses a base or a dependent Project.toml that is not TOML, a base version
@@ -632,6 +633,18 @@ def yaml_cases(check: Check) -> None:
         f"the run against the default branch tests a second checkout of the dependent, made before it, "
         f"not the one that the run against the head resolved -> projects {projects}, checkouts {paths}, "
         f"steps {fresh} and {main}",
+    )
+    keeps = [
+        (name, i)
+        for name, job in jobs.items()
+        for i, s in enumerate(cast("list[dict[str, object]]", job.get("steps") or []))
+        if str(s.get("uses", "")).startswith("actions/checkout@")
+        and cast("dict[str, object]", s.get("with") or {}).get("persist-credentials") is not False
+    ]
+    check(
+        not keeps,
+        f"no checkout keeps the token, since the dependents' tests run code of other repositories -> "
+        f"checkouts without persist-credentials false (job, step) {keeps}",
     )
     actionlint = shutil.which("actionlint")
     if actionlint is None:
