@@ -365,6 +365,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   assertion that fails in the full suite is measured on an exported base tree and against the head's
   `Metal` job before it is called the part's; the round's record names it (AX and BA round 1, the
   solver package)
+- **a cell of a comparison table labelled from the plan and not from the call it records:** a
+  benchmark that writes each cell's method from the pairing table keeps a correct label when an
+  adapter passes another solver, another line search or another linear solver, so every verdict
+  reads as consistent and a wrong pairing never shows. Build the label from the objects that the
+  adapter passes to the call, and give each adapter a mutant that swaps one of them (Y1 round 1,
+  *Design the solver package*)
 
 ## A type or an interface
 
