@@ -23,6 +23,9 @@ is byte-identical to its template and is a tracked file in the repository. Edit 
 then install again; never edit a copy. The other scripts of this page run from the checkout.
 This repository has a pre-commit and a pre-push hook of its own, `.githooks/pre-commit` and
 `.githooks/pre-push`; they are not templates, and [Development](../development.md) describes them.
+Both run `basedpyright` as CI does, on the interpreter of the harness's Python environment and with
+`--baselinemode=lock`, so a commit or a push that removes baselined errors must write
+`.basedpyright/baseline.json` again.
 
 ## `pre-commit`, `pre-commit.jl` and `pre-commit-test.jl`
 

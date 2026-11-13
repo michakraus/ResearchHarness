@@ -17,7 +17,11 @@ environment whose `bin/` holds stubs of `ruff` and `basedpyright`. A stub logs i
 its working directory, and fails on a marker in a `.py` file of that directory: BADFORMAT for
 `ruff format --check`, BADLINT for `ruff check`, BADTYPE for `basedpyright`. `ruff format`
 without `--check` rewrites each file with BADFORMAT, as the formatter does. A second pair of
-stubs on the PATH logs that it ran and passes.
+stubs on the PATH logs that it ran and passes. The real hook cases run the hook with the real tools
+of the harness's environment, where it holds basedpyright and pyyaml, and a `python3` on the PATH
+that lacks yaml: a fixed baselined error with its old baseline refuses the commit, and with the
+baseline written again commits. Where the environment lacks either, one `skip` line stands for
+them.
 """
 
 import argparse
@@ -39,7 +43,7 @@ from collections.abc import Callable
 from typing import Protocol
 from unittest import mock
 
-from . import REPO
+from . import REPO, install
 
 HOOK = REPO / ".githooks" / "pre-commit"
 TOOLS = ("ruff", "basedpyright")
@@ -76,8 +80,28 @@ OWN = {
     "hooks/guard/frontends/opencode.py": frozenset({"guard"}),
     "hooks/guard/frontends/omp.py": frozenset({"guard"}),
 }
-# The three commands of the hook, as the stubs log them.
+# The three commands of `githooks/pre-commit-wiki`, as the stubs log them; the cases of
+# lib/harness/wikilint.py read them.
 COMMANDS = ["ruff format --check --no-cache .", "ruff check --no-cache .", "basedpyright"]
+# The three commands of `.githooks/pre-commit`, as the stubs log them; {python} is the interpreter
+# of the environment whose bin/ holds the tools.
+HOOK_COMMANDS = [
+    "ruff format --check --no-cache .",
+    "ruff check --no-cache .",
+    "basedpyright --pythonpath {python} --baselinemode=lock",
+]
+# The baseline of basedpyright, and the line that the real pre-commit case prints where the
+# harness's environment lacks basedpyright or pyyaml.
+BASELINE = ".basedpyright/baseline.json"
+REAL_SKIP = "skip  strict: the real pre-commit case needs basedpyright and pyyaml in "
+# The fixture of the real pre-commit case: a strict project, a file that imports yaml, and a file
+# with one error that the baseline holds, in TYPED, and with the error fixed, in FIXED.
+REAL_FILES = {
+    "pyproject.toml": '[tool.basedpyright]\ntypeCheckingMode = "strict"\n',
+    "reader.py": 'import yaml\n\nprint(yaml.safe_load("a: 1"))\n',
+}
+TYPED = {**REAL_FILES, "typed.py": 'x: int = "one"\n'}
+FIXED = {**REAL_FILES, "typed.py": "x: int = 1\n"}
 
 STUB = """#!{python}
 import pathlib, sys
@@ -442,26 +466,41 @@ def commit(
     staged: dict[str, str],
     unstaged: dict[str, str] | None = None,
     tools: tuple[str, ...] = TOOLS,
+    environment: pathlib.Path | None = None,
 ) -> Run:
     """Stage the files `staged` in a new scratch repository below `tmp`, write `unstaged` into the
     work tree after that, and run `git commit` with the hook, with the stubs of `tools` in the
-    environment's `bin/` and stubs of both tools on the PATH."""
+    environment's `bin/` and stubs of both tools on the PATH. With `environment`, a real Python
+    environment, the hook runs that environment's tools, no stub is written, and the `python3` and
+    `python` of the PATH start this interpreter without its site-packages, as an interpreter
+    without `yaml`. $CI is unset, so that basedpyright's baseline mode is the hook's own."""
     base = pathlib.Path(tempfile.mkdtemp(dir=tmp))
-    repo, environment, path, log = base / "repo", base / "env", base / "path", base / "log"
-    for d in (repo, environment / "bin", path):
+    repo, path, log = base / "repo", base / "path", base / "log"
+    stubs = environment is None
+    environment = base / "env" if environment is None else environment
+    for d in (repo, path):
         d.mkdir(parents=True)
-    for tool in tools:
-        (environment / "bin" / tool).write_text(STUB.format(python=sys.executable, log=str(log)))
-        (environment / "bin" / tool).chmod(0o755)
-    for tool in TOOLS:
-        (path / tool).write_text(f"#!/bin/sh\necho \"PATH {tool} $*\" >> '{log}'\nexit 0\n")
-        (path / tool).chmod(0o755)
+    if stubs:
+        (environment / "bin").mkdir(parents=True)
+        for tool in tools:
+            (environment / "bin" / tool).write_text(STUB.format(python=sys.executable, log=str(log)))
+            (environment / "bin" / tool).chmod(0o755)
+        for tool in TOOLS:
+            (path / tool).write_text(f"#!/bin/sh\necho \"PATH {tool} $*\" >> '{log}'\nexit 0\n")
+            (path / tool).chmod(0o755)
     git_program = shutil.which("git")
     if git_program is None:
         return Run(repo, None, "no git on the PATH", [], committed=False)
     (path / "git").symlink_to(git_program)
-    (path / "python3").symlink_to(sys.executable)
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "RESEARCH_HARNESS_"))}
+    if stubs:
+        (path / "python3").symlink_to(sys.executable)
+    else:
+        for name in ("python3", "python"):
+            (path / name).write_text(f"#!/bin/sh\nexec '{sys.executable}' -S \"$@\"\n")
+            (path / name).chmod(0o755)
+    env = {
+        k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "RESEARCH_HARNESS_")) and k != "CI"
+    }
     env.update(
         GIT_CONFIG_GLOBAL="/dev/null",
         GIT_CONFIG_NOSYSTEM="1",
@@ -488,6 +527,7 @@ def commit(
     git("init", "-q", "-b", "main")
     git("config", "core.hooksPath", str(HOOK.parent))
     for name, text in staged.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
         (repo / name).write_text(text)
     git("add", "--", *staged)
     for name, text in (unstaged or {}).items():
@@ -517,10 +557,16 @@ def hook_cases(case: Callable[[Callable[[], bool], str], None], tmp: pathlib.Pat
     def commands(run: Run) -> list[str]:
         return [line.partition(" | ")[0] for line in run.log]
 
+    def expected(run: Run) -> list[str]:
+        # `commit` puts the stubs' environment beside the scratch repository.
+        return [
+            command.format(python=run.repo.parent / "env" / "bin" / "python") for command in HOOK_COMMANDS
+        ]
+
     run = commit(tmp, clean)
     places = {line.partition(" | ")[2] for line in run.log}
     case(
-        lambda: run.code == 0 and run.committed and commands(run) == COMMANDS,
+        lambda: run.code == 0 and run.committed and commands(run) == expected(run),
         f"a clean staged file: the three checks run from the environment and the commit happens -> exit "
         f"{run.code}, committed {run.committed}, {commands(run)}, {run.lines[-3:]}",
     )
@@ -546,7 +592,7 @@ def hook_cases(case: Callable[[Callable[[], bool], str], None], tmp: pathlib.Pat
     case(
         lambda: (
             run.code == 1
-            and commands(run) == COMMANDS
+            and commands(run) == expected(run)
             and "pre-commit: refused, ruff check and basedpyright failed" in run.lines
         ),
         f"a file that two checks refuse: all three run and the refusal names both -> {commands(run)}, "
@@ -593,6 +639,100 @@ def hook_cases(case: Callable[[Callable[[], bool], str], None], tmp: pathlib.Pat
         )
 
 
+def baseline_of(tmp: pathlib.Path, environment: pathlib.Path, files: dict[str, str]) -> str:
+    """The baseline that the basedpyright of `environment`, on its own interpreter, writes for a
+    tree of `files` below `tmp`; "" where it writes none."""
+    root = tree_of(tmp, files)
+    bin_ = environment / "bin"
+    subprocess.run(
+        [str(bin_ / "basedpyright"), "--pythonpath", str(bin_ / "python"), "--writebaseline"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+        timeout=TIMEOUT,
+    )
+    written = root / BASELINE
+    return written.read_text() if written.is_file() else ""
+
+
+def real_hook_cases(case: Callable[[Callable[[], bool], str], None], tmp: pathlib.Path) -> None:
+    """The real `.githooks/pre-commit` with the real tools of the harness's environment, where that
+    environment holds basedpyright and pyyaml, on a fixture of a strict project with a file that
+    imports yaml and a file with one baselined error; the `python3` of the PATH lacks yaml. With the
+    error fixed and the baseline unchanged, the hook refuses the commit and says `went down`; with
+    the baseline written again, it commits. Otherwise one line, REAL_SKIP."""
+    environment = install.python_env()
+    python = environment / "bin" / "python"
+    has_yaml = (
+        python.is_file()
+        and subprocess.run(
+            [str(python), "-c", "import yaml"], capture_output=True, check=False, timeout=TIMEOUT
+        ).returncode
+        == 0
+    )
+    if not ((environment / "bin" / "basedpyright").is_file() and has_yaml):
+        print(f"{REAL_SKIP}{environment}")
+        return
+    typed = baseline_of(tmp, environment, TYPED)
+    # basedpyright writes a baseline without errors only over an existing one.
+    fixed = baseline_of(tmp, environment, {**FIXED, BASELINE: typed})
+    run = commit(tmp, {**TYPED, BASELINE: typed}, environment=environment)
+    case(
+        lambda: '"reportAssignmentType"' in typed and run.code == 0 and run.committed,
+        f"the real hook: a baselined error and its baseline: the commit happens -> exit {run.code}, "
+        f"committed {run.committed}, {run.lines[-3:]}",
+    )
+    run = commit(tmp, {**FIXED, BASELINE: typed}, environment=environment)
+    case(
+        lambda: (
+            run.code == 1
+            and not run.committed
+            and "went down" in run.out
+            and "pre-commit: refused, basedpyright failed" in run.lines
+        ),
+        f"the real hook: the baselined error fixed and the baseline unchanged: no commit, and the "
+        f"output says went down -> exit {run.code}, committed {run.committed}, {run.lines[-3:]}",
+    )
+    run = commit(tmp, {**FIXED, BASELINE: fixed}, environment=environment)
+    case(
+        lambda: fixed not in ("", typed) and run.code == 0 and run.committed,
+        f"the real hook: the baselined error fixed and the baseline written again: the commit happens "
+        f"-> exit {run.code}, committed {run.committed}, {run.lines[-3:]}",
+    )
+
+
+def skip_cases(case: Callable[[Callable[[], bool], str], None], tmp: pathlib.Path) -> None:
+    """`real_hook_cases` on an environment without basedpyright, one whose interpreter lacks yaml,
+    and one that does not exist: one line, REAL_SKIP, and no case."""
+    base = pathlib.Path(tempfile.mkdtemp(dir=tmp))
+    no_tool, no_yaml = base / "no-tool", base / "no-yaml"
+    for environment in (no_tool, no_yaml):
+        (environment / "bin").mkdir(parents=True)
+    # The interpreter of no-tool is this one, which imports yaml under `harness test`; that of
+    # no-yaml starts without its site-packages, so `import yaml` fails there.
+    (no_tool / "bin" / "python").write_text(f"#!/bin/sh\nexec '{sys.executable}' \"$@\"\n")
+    (no_yaml / "bin" / "python").write_text(f"#!/bin/sh\nexec '{sys.executable}' -S \"$@\"\n")
+    (no_yaml / "bin" / "basedpyright").write_text("#!/bin/sh\nexit 0\n")
+    for tool in (no_tool / "bin" / "python", no_yaml / "bin" / "python", no_yaml / "bin" / "basedpyright"):
+        tool.chmod(0o755)
+    for label, environment in [
+        ("without basedpyright", no_tool),
+        ("whose interpreter lacks yaml", no_yaml),
+        ("that does not exist", base / "missing"),
+    ]:
+        out, seen = io.StringIO(), list[str]()
+        with (
+            mock.patch.object(install, "python_env", lambda e=environment: e),
+            contextlib.redirect_stdout(out),
+        ):
+            real_hook_cases(lambda _ok, text: seen.append(text), tmp)
+        lines = out.getvalue().splitlines()
+        case(
+            lambda: lines == [f"{REAL_SKIP}{environment}"] and seen == [],
+            f"the real hook case on an environment {label}: one skip line and no case -> {lines}, {seen}",
+        )
+
+
 def selftest() -> tuple[int, int]:
     """The cases of the module docstring: (number of cases, number wrong)."""
     total = wrong = 0
@@ -612,4 +752,6 @@ def selftest() -> tuple[int, int]:
         chmod_cases(case, pathlib.Path(tmp))
         handler_cases(case)
         hook_cases(case, pathlib.Path(tmp))
+        real_hook_cases(case, pathlib.Path(tmp))
+        skip_cases(case, pathlib.Path(tmp))
     return total, wrong
