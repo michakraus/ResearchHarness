@@ -6,12 +6,18 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   `[weakdeps]`, one with it only in `test/Project.toml` and an experiment with it in `[deps]`, the
   written `.github/dependents.toml` is byte for byte the expected one; the dry run writes nothing
   and exits 1, and exits 0 after `--apply`. A base whose own UUID is in its `[deps]` is not its own
-  dependent. A dependent whose origin is on another host, or that has no origin, and a listed name
-  that is no git repository with a `Project.toml` (a missing name, a directory with no `.git`, a
-  git repository with no Project.toml, `..` and a name with a `/`), are each refused with a line
-  that names them. So are a dependent's Project.toml that is not TOML, a dependent whose
-  directory name holds a space, and a base with no uuid; a refusal in the census of the second of
-  two bases writes the file of neither. The profile loads the key, and `harness get` prints it.
+  dependent, and a `[deps]` value that is not a string does not stop the census. A dependent
+  whose origin is on another host, or that has no origin, and a listed name that is no git
+  repository with a `Project.toml` (a missing name, a directory with no `.git`, a git repository
+  with no Project.toml, `..` and a name with a `/`), are each refused with a line that names
+  them. So are a dependent's Project.toml that is not TOML, a dependent whose directory name
+  holds a space, and a base with no string uuid; a refusal in the census of the second of two
+  bases writes the file of neither. An old `.github/dependents.toml` that is not UTF-8, a
+  directory or a symbolic link, or below a `.github` that is a file, is refused in the dry run and
+  with `--apply`, and changes nothing. The profile loads the key, and `harness get` prints it.
+- `githooks.github_name`: the GitHub `owner/name` of an HTTPS, SSH or `git@host:path` origin, with
+  a user, a port, `.git`, a final `/` or the host in capitals; None for another host, a local
+  path, and a path of one or three parts.
 - `harness workflows`: Dependents.yml and dependents.jl go into the listed base only, byte for
   byte; a dry run names the two files in an unlisted repository and keeps them, and `--apply`
   removes them; a listed name that does not exist and a missing Dependents.yml template are
@@ -21,15 +27,17 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   and the actions of its `uses:` lines; `actionlint` passes on it, where it is on the PATH.
 - githooks/workflows/dependents.jl, where `julia` is on the PATH: `excluded` on a head inside the
   dependent's `[compat]` entry, outside it, against an entry with two specifiers, and with no
-  entry; `row` on the four rows, with the summary it appends and its exit status, and on two
-  combinations that are none of them; `list` on a file of two dependents, on a missing file and on
+  entry; `excluded` refuses a base or a dependent Project.toml that is not TOML, a base version
+  that is no version number and a `[compat]` entry that is no version specifier; `row` on the four
+  rows, with the summary it appends and its exit status, and on two combinations that are none of
+  them; `list` on a file of two dependents, on a missing file, on a file that is not TOML and on
   two entries that the JSON of the matrix cannot hold.
 - githooks/verify-workflows.jl, where `julia` is on the PATH and the harness's Julia environment
   holds a Project.toml: a clean fixture passes, and a drifted Dependents.yml, a missing
   dependents.jl, a Dependents.yml in an unlisted repository and a listed base without
   dependents.toml each fail with a line that names the repository; an experiment that
   `dependents_bases` names is no base; without `dependents_bases`, the fixture of the other
-  templates passes.
+  templates passes, and so it does with a profile without `docs_exceptions` and `docs_additions`.
 """
 
 import argparse
@@ -44,7 +52,7 @@ from collections.abc import Callable, Generator, Mapping
 from typing import cast
 from unittest import mock
 
-from . import REPO, HarnessError, githooks, install
+from . import REPO, HarnessError, githooks, install, wikilint
 from . import profile as profile_module
 from .sweep import GIT
 
@@ -232,6 +240,15 @@ def dependents_cases(check: Check, tmp: pathlib.Path) -> None:
         [name for name, _ in rows] == ["Alpha", "Beta"],
         f"a base that names its own UUID in [deps] is not its own dependent -> {rows}",
     )
+    with changed_file(
+        repos["Alpha"] / "Project.toml",
+        project("Alpha", "00000000-0000-0000-0000-0000000000a1", deps=f'Base = "{BASE_UUID}"\nOdd = ["x"]\n'),
+    ):
+        rows = githooks.census(repos["Base"])
+    check(
+        [name for name, _ in rows] == ["Alpha", "Beta"],
+        f"a [deps] value that is not a string does not stop the census -> {rows}",
+    )
     for label, origin in (
         ("an origin on another host", "https://gitlab.example.org/example-org/Far.jl.git"),
         ("no origin", None),
@@ -252,6 +269,7 @@ def dependents_cases(check: Check, tmp: pathlib.Path) -> None:
         )
         shutil.rmtree(far)
     refused_census_cases(check, tmp, repos)
+    old_file_cases(check, tmp, repos)
     research = tmp / "Research"
     plain = research / "Packages" / "Plain"
     plain.mkdir()
@@ -273,7 +291,8 @@ def dependents_cases(check: Check, tmp: pathlib.Path) -> None:
 
 def refused_census_cases(check: Check, tmp: pathlib.Path, repos: dict[str, pathlib.Path]) -> None:
     """The census refusals that name a repository: a dependent's Project.toml that is not TOML, a
-    dependent whose directory name dependents.toml cannot hold, and a base with no uuid. A refusal
+    dependent whose directory name dependents.toml cannot hold, and a base with no uuid or a uuid
+    that is not a string. A refusal
     in the census of the second of two bases writes the file of neither."""
     listed = profile_file(tmp / "listed.toml", '["Base"]')
     written = repos["Base"] / ".github" / "dependents.toml"
@@ -295,12 +314,16 @@ def refused_census_cases(check: Check, tmp: pathlib.Path, repos: dict[str, pathl
         f"dependents refuses a dependent whose directory name holds a space, naming it -> {code}",
     )
     shutil.rmtree(odd)
-    with changed_file(repos["Base"] / "Project.toml", 'name = "Base"\nversion = "0.1.0"\n'):
-        code, _ = quiet(githooks.cmd_dependents, listed, apply=True)
-    check(
-        isinstance(code, str) and code.startswith("error: ") and "uuid" in code and "Base" in code,
-        f"dependents refuses a base with no uuid, naming it -> {code}",
-    )
+    for label, text in (
+        ("no uuid", 'name = "Base"\nversion = "0.1.0"\n'),
+        ("a uuid that is not a string", 'name = "Base"\nuuid = 11\nversion = "0.1.0"\n'),
+    ):
+        with changed_file(repos["Base"] / "Project.toml", text):
+            code, _ = quiet(githooks.cmd_dependents, listed, apply=True)
+        check(
+            isinstance(code, str) and code.startswith("error: ") and "uuid" in code and "Base" in code,
+            f"dependents refuses a base with {label}, naming it -> {code}",
+        )
     second = repository(
         tmp / "Research",
         "Packages/Second",
@@ -328,6 +351,91 @@ def refused_census_cases(check: Check, tmp: pathlib.Path, repos: dict[str, pathl
     )
     shutil.rmtree(second)
     shutil.rmtree(tmp / "Research" / "Packages" / "Far")
+
+
+def old_file_cases(check: Check, tmp: pathlib.Path, repos: dict[str, pathlib.Path]) -> None:
+    """The refusals of an old `.github/dependents.toml` that is not a UTF-8 regular file: a file
+    that is not UTF-8, a directory, a symbolic link, and a `.github` that is a file. Each refusal,
+    of the dry run and of `--apply`, names the path and changes nothing; a refusal for the second
+    of two bases writes the file of neither."""
+    listed = profile_file(tmp / "listed.toml", '["Base"]')
+    github = repos["Base"] / ".github"
+    path = github / "dependents.toml"
+    target = tmp / "target.toml"
+    target.write_text("stale\n")
+    saved = tmp / "github-saved"
+    shutil.move(github, saved)
+    for label, make in (
+        ("a file that is not UTF-8", lambda: path.write_bytes(b"# caf\xe9\n")),
+        ("a directory", path.mkdir),
+        ("a symbolic link", lambda: path.symlink_to(target)),
+        ("below a .github that is a file", lambda: None),
+    ):
+        if label.startswith("below"):
+            github.write_text("not a directory\n")
+        else:
+            github.mkdir()
+            make()
+        before = sorted((p.name, p.is_dir()) for p in github.iterdir()) if github.is_dir() else None
+        for apply in (False, True):
+            code, _ = quiet(githooks.cmd_dependents, listed, apply=apply)
+            check(
+                isinstance(code, str) and code.startswith("error: ") and "dependents.toml" in code,
+                f"dependents{' --apply' if apply else ''} refuses an old dependents.toml that is {label}, "
+                f"naming it -> {code}",
+            )
+        after = sorted((p.name, p.is_dir()) for p in github.iterdir()) if github.is_dir() else None
+        same = before == after and target.read_text() == "stale\n"
+        if label == "a file that is not UTF-8":
+            same = same and path.read_bytes() == b"# caf\xe9\n"
+        check(same, f"the refusal of an old dependents.toml that is {label} changes no file")
+        if github.is_dir():
+            shutil.rmtree(github)
+        else:
+            github.unlink()
+    shutil.move(saved, github)
+    second = repository(
+        tmp / "Research",
+        "Packages/Second",
+        project("Second", "00000000-0000-0000-0000-000000000014"),
+        "https://github.com/example-org/Second.jl.git",
+    )
+    (second / ".github" / "dependents.toml").mkdir(parents=True)
+    with changed_file(path, "stale\n"):
+        code, _ = quiet(
+            githooks.cmd_dependents, profile_file(tmp / "two.toml", '["Base", "Second"]'), apply=True
+        )
+        kept = path.read_text()
+    check(
+        isinstance(code, str) and "Second" in code and kept == "stale\n",
+        f"a refusal of the old file of the second base writes the file of neither -> {code}, {kept!r}",
+    )
+    shutil.rmtree(second)
+
+
+def origin_cases(check: Check) -> None:
+    """`githooks.github_name` on the origins that `git remote get-url origin` can print."""
+    for url, want in (
+        ("https://github.com/o/A.jl.git", "o/A.jl"),
+        ("https://github.com/o/A.jl", "o/A.jl"),
+        ("https://github.com/o/A.jl/", "o/A.jl"),
+        ("https://GitHub.com/o/A.jl.git", "o/A.jl"),
+        ("https://user@github.com/o/A.jl.git", "o/A.jl"),
+        ("git@github.com:o/A.jl", "o/A.jl"),
+        ("git@github.com:o/A.jl.git", "o/A.jl"),
+        ("ssh://git@github.com/o/A.jl.git", "o/A.jl"),
+        ("ssh://git@github.com:22/o/A.jl.git", "o/A.jl"),
+        ("https://gitlab.example.org/o/A.jl.git", None),
+        ("https://github.com.example.org/o/A.jl.git", None),
+        ("git@gitlab.example.org:o/A.jl.git", None),
+        ("file:///srv/git/o/A.jl", None),
+        ("/srv/git/o/A.jl", None),
+        ("https://github.com/o", None),
+        ("https://github.com/o/A.jl/tree", None),
+        ("", None),
+    ):
+        got = githooks.github_name(url)
+        check(got == want, f"github_name({url!r}) is {want} -> {got}")
 
 
 def installed(repo: pathlib.Path) -> list[str]:
@@ -407,10 +515,13 @@ def workflow_cases(check: Check, tmp: pathlib.Path) -> None:
 
 
 def yaml_cases(check: Check) -> None:
-    """The settings of Dependents.yml, read with PyYAML, and `actionlint` on it."""
-    import yaml  # noqa: PLC0415 -- only this case needs PyYAML
-
-    data = cast("dict[object, object]", yaml.safe_load(DEPENDENTS_YML.read_text()))
+    """The settings of Dependents.yml, read with the YAML reader of `harness wiki-lint`, and
+    `actionlint` on it."""
+    read = wikilint.yaml_reader()(DEPENDENTS_YML.read_text())
+    check(
+        not read.refused, f"Dependents.yml is YAML with no repeated key -> line {read.line}, {read.duplicate}"
+    )
+    data = cast("dict[object, object]", read.data if isinstance(read.data, dict) else {})
     # YAML 1.1 reads the key `on` as True.
     on = cast("dict[str, object]", data.get(True) or data.get("on") or {})
     pull = cast("dict[str, object]", on.get("pull_request") or {})
@@ -513,6 +624,30 @@ def script_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
             f"excluded: {label} ({version} against {compat}) gives excluded={want} -> {p.returncode}, "
             f"{lines}, {written!r} {p.stderr.strip()[-200:]}",
         )
+    good_base = f'name = "Base"\nuuid = "{BASE_UUID}"\nversion = "0.15.0"\n'
+    good_dep = f'name = "Dep"\n\n[deps]\nBase = "{BASE_UUID}"\n'
+    for label, base_text, dep_text, culprit in (
+        ("a dependent's Project.toml that is not TOML", good_base, "name = \n", "dep"),
+        ("a base Project.toml that is not TOML", "version = \n", good_dep, "base"),
+        ("a base version that is no version number", good_base.replace("0.15.0", "x.y"), good_dep, "base"),
+        (
+            "a [compat] entry that is no version specifier",
+            good_base,
+            good_dep + '\n[compat]\nBase = "not a spec"\n',
+            "dep",
+        ),
+    ):
+        (pair / "base" / "Project.toml").write_text(base_text)
+        (pair / "dep" / "Project.toml").write_text(dep_text)
+        p = julia_script(julia, "excluded", str(pair / "base"), str(pair / "dep"))
+        check(
+            p.returncode == REFUSED
+            and str(pair / culprit / "Project.toml") in p.stderr
+            and len(p.stderr.strip().splitlines()) == 1
+            and not p.stdout.strip(),
+            f"excluded refuses {label} with one line that names it -> {p.returncode}, "
+            f"{p.stderr.strip()[-300:]!r}",
+        )
     for excluded, head, main, want, status in (
         ("false", "success", "", "green", 0),
         ("false", "failure", "success", "regression", 1),
@@ -555,6 +690,16 @@ def script_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
         p.returncode == REFUSED and "harness dependents --apply" in p.stderr,
         f"list on a missing file exits 2 and names harness dependents --apply -> {p.returncode}, "
         f"{p.stderr.strip()[-200:]!r}",
+    )
+    listing.write_text("[[dependent]\n")
+    p = julia_script(julia, "list", str(listing))
+    check(
+        p.returncode == REFUSED
+        and str(listing) in p.stderr
+        and len(p.stderr.strip().splitlines()) == 1
+        and not p.stdout.strip(),
+        f"list refuses a file that is not TOML with one line that names it -> {p.returncode}, "
+        f"{p.stderr.strip()[-300:]!r}",
     )
     for label, entry in (
         ("a repository with no owner", 'name = "Alpha"\nrepository = "Alpha.jl"\n'),
@@ -647,6 +792,14 @@ def verify_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
         f"without dependents_bases, verify-workflows passes on the other templates -> {p.returncode}, "
         f"{p.stdout.strip()[-300:]!r}",
     )
+    minimal = tmp / "minimal.toml"
+    minimal.write_text(profile_module.profile_text())
+    p = verify(julia, bare, minimal)
+    check(
+        p.returncode == 0 and "all canonical" in p.stdout,
+        f"verify-workflows reads a profile without docs_exceptions and docs_additions as two empty "
+        f"lists -> {p.returncode}, {p.stdout.strip()[-300:]!r} {p.stderr.strip()[-300:]}",
+    )
 
 
 def cases(check: Check) -> None:
@@ -661,6 +814,7 @@ def cases(check: Check) -> None:
             d.mkdir()
             with mock.patch.dict(os.environ, GIT | {"RESEARCH_ROOT": str(d / "Research")}):
                 body(check, d)
+        origin_cases(check)
         yaml_cases(check)
         if julia is None:
             print("skip  githooks: no julia on the PATH; dependents.jl and verify-workflows.jl do not run")

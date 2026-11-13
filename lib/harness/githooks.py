@@ -55,7 +55,9 @@ import re
 import shutil
 import subprocess
 import tomllib
+from dataclasses import dataclass
 from typing import cast
+from urllib.parse import urlsplit
 
 # `githooks_cases` imports this module too, and reads its names only when a case runs, so the
 # cycle resolves at import.
@@ -80,12 +82,9 @@ DEPENDENTS_HEADER = (
     "# research tree; run it again rather than edit this file. Dependents.yml reads it into the\n"
     "# matrix of its test job.\n"
 )
-# A repository name below Packages/, and a GitHub `owner/name` as `git remote get-url origin`
-# prints it over HTTPS or SSH, with or without `.git`.
+# A repository name below Packages/, and a GitHub `owner/name`.
 NAME = re.compile(r"[A-Za-z0-9._-]+")
-GITHUB_URL = re.compile(
-    r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([A-Za-z0-9-]+/[A-Za-z0-9._-]+?)(?:\.git)?/?"
-)
+OWNER_NAME = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+")
 
 
 def research_root():
@@ -277,41 +276,64 @@ def bases(profile: profile_module.Profile) -> list[pathlib.Path]:
     return [packages / name for name in profile.dependents_bases]
 
 
-def project_table(path: pathlib.Path) -> dict[str, object]:
-    """The Project.toml at `path`, parsed; one that is not UTF-8 or not TOML raises, naming it."""
+@dataclass(frozen=True)
+class Project:
+    """The keys of a Project.toml that the census reads: the `uuid`, None without one, and the
+    string values of `[deps]`."""
+
+    uuid: str | None
+    deps: frozenset[str]
+
+
+def read_project(path: pathlib.Path) -> Project:
+    """The Project.toml at `path`; one that is not UTF-8 or not TOML raises, naming it."""
     try:
-        return tomllib.loads(path.read_bytes().decode("utf-8"))
+        data = tomllib.loads(path.read_bytes().decode("utf-8"))
     except (UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
         raise HarnessError(f"{path} is not a TOML file: {e}") from None
+    uuid, deps = data.get("uuid"), data.get("deps")
+    values = cast("dict[str, object]", deps).values() if isinstance(deps, dict) else ()
+    return Project(
+        uuid if isinstance(uuid, str) else None, frozenset(v for v in values if isinstance(v, str))
+    )
+
+
+def github_name(url: str) -> str | None:
+    """The GitHub `owner/name` of the remote URL `url`: a URL such as HTTPS or SSH, or the form
+    `git@host:path`, with or without a user, a port, `.git` or a final `/`, and with the host in
+    any case. None for another host or a path that is not `owner/name`."""
+    parsed = urlsplit(url if "://" in url else "ssh://" + url.replace(":", "/", 1))
+    path = parsed.path.strip("/").removesuffix(".git")
+    return path if parsed.hostname == "github.com" and OWNER_NAME.fullmatch(path) else None
 
 
 def github_repository(repo: pathlib.Path) -> str:
     """The GitHub `owner/name` of the origin of `repo`. No origin, or one that is not on
     github.com, raises, naming the repository: the dependents workflow checks it out from GitHub."""
     url = git(repo, "remote", "get-url", "origin").stdout.strip()
-    m = GITHUB_URL.fullmatch(url)
-    if m is None:
+    name = github_name(url)
+    if name is None:
         raise HarnessError(f"{repo.name}: the origin {url or '(none)'} is no repository on github.com")
-    return m.group(1)
+    return name
 
 
 def census(base: pathlib.Path) -> list[tuple[str, str]]:
-    """(name, GitHub `owner/name`) of each direct dependent of `base`, sorted by name: each other
-    repository below Packages/ whose Project.toml has the base's UUID among the values of
-    `[deps]`. `[weakdeps]`, `[extras]`, test/Project.toml and Experiments/ do not count."""
-    uuid = project_table(base / "Project.toml").get("uuid")
-    if not isinstance(uuid, str):
+    """(name, GitHub `owner/name`) of each direct dependent of `base`, sorted by name as
+    `repositories` lists them: each other repository below Packages/ whose Project.toml has the
+    base's UUID among the values of `[deps]`. `[weakdeps]`, `[extras]`, test/Project.toml and
+    Experiments/ do not count."""
+    uuid = read_project(base / "Project.toml").uuid
+    if uuid is None:
         raise HarnessError(f"{base / 'Project.toml'} has no uuid, so {base.name} is no package")
     found: list[tuple[str, str]] = []
     for repo, kind in cast("list[tuple[pathlib.Path, str]]", repositories(require_project=True)):
         if kind != "package" or repo == base:
             continue
-        deps = project_table(repo / "Project.toml").get("deps")
-        if isinstance(deps, dict) and uuid in cast("dict[str, object]", deps).values():
+        if uuid in read_project(repo / "Project.toml").deps:
             if not NAME.fullmatch(repo.name):
                 raise HarnessError(f"{repo}: the name {repo.name!r} is not one that dependents.toml can hold")
             found.append((repo.name, github_repository(repo)))
-    return sorted(found)
+    return found
 
 
 def dependents_text(rows: list[tuple[str, str]]) -> str:
@@ -322,15 +344,33 @@ def dependents_text(rows: list[tuple[str, str]]) -> str:
     )
 
 
+def old_text(path: pathlib.Path) -> str:
+    """The text of the file at `path`, or "" when nothing is there. A path that holds something
+    other than a regular file, a file that is not UTF-8, and a parent that is not a directory each
+    raise, naming the path: `dependents --apply` writes there."""
+    if path.parent.exists() and not path.parent.is_dir():
+        raise HarnessError(f"{path.parent} is not a directory, so {path} cannot be written")
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise HarnessError(f"{path} is not a regular file; remove it, then run harness dependents again")
+    if not path.exists():
+        return ""
+    try:
+        return path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise HarnessError(f"{path} is not UTF-8: {e}") from None
+
+
 def cmd_dependents(args: argparse.Namespace) -> int:
     """Write `.github/dependents.toml` into each base of `dependents_bases`, after the census of
-    every base succeeds; print the diff of each file that changes."""
+    every base and the read of every old file succeed; print the diff of each file that
+    changes."""
     listed = bases(profile_module.load(args.profile))
     texts = {base: dependents_text(census(base)) for base in listed}
+    olds = {base: old_text(base / DEPENDENTS_TOML) for base in listed}
     changes = 0
     for base, text in texts.items():
         path = base / DEPENDENTS_TOML
-        old = path.read_text() if path.is_file() else ""
+        old = olds[base]
         if old == text:
             print(f"{base.name:<28} {DEPENDENTS_TOML} is current")
             continue
@@ -340,7 +380,7 @@ def cmd_dependents(args: argparse.Namespace) -> int:
         print("".join(f"      {line}\n" for line in diff), end="")
         if args.apply:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text)
+            path.write_text(text, encoding="utf-8")
     print(f"\n{len(listed)} base(s), {changes} file(s) {'written' if args.apply else 'to write'}.")
     if args.apply and changes:
         print(f"Review the diff, then commit {DEPENDENTS_TOML} by name in each base.")

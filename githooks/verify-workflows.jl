@@ -13,10 +13,6 @@
 #      equality is drift. This is the check that makes the required-status-check list static.
 #      TagBot.yml is the one asymmetric case: byte-identical under Packages/, and asserted
 #      ABSENT under Experiments/, none of which is registered in General.
-#   1c. Dependents.yml and dependents.jl are byte-identical in each base package that the profile's
-#      `dependents_bases` lists, which also has .github/dependents.toml, and ABSENT from every
-#      other repository. The content of dependents.toml is not checked here: `harness dependents`
-#      writes it from the census and reports a stale copy.
 #   1b. The same set on the DEFAULT branch, but only for a repository whose working tree is
 #      checked out somewhere else. The working-tree pass is primary — it is what a push would
 #      carry, and it catches an uncommitted hand edit. But a repository parked on a topic branch
@@ -24,6 +20,10 @@
 #      obvious remedy for that report (harness workflows --apply) would overwrite the branch's
 #      files. So both questions are asked and reported apart. The default branch is the invariant
 #      harness ci-protection depends on; the working tree is what you are about to push.
+#   1c. Dependents.yml and dependents.jl are byte-identical in each base package that the profile's
+#      `dependents_bases` lists, which also has .github/dependents.toml, and ABSENT from every
+#      other repository. The content of dependents.toml is not checked here: `harness dependents`
+#      writes it from the census and reports a stale copy.
 #   2. The two canonical CI jobs parse, and their job names are exactly the strings that
 #      harness ci-protection requires. A rename here silently invalidates branch protection in every
 #      repository, so it is asserted against a literal rather than derived.
@@ -96,15 +96,16 @@ const FORBIDDEN =
 
 # Repositories whose documentation workflow is a multi-job pipeline rather than a single build: the
 # profile's `docs_exceptions`. The template does not describe them, so no comparison against it
-# means anything.
-const DOCS_PIPELINES = Vector{String}(PROFILE["docs_exceptions"])
+# means anything. Without the key, none.
+const DOCS_PIPELINES = Vector{String}(get(PROFILE, "docs_exceptions", String[]))
 
 # Repositories that keep the canonical documentation workflow and only *add* to it, such as the TeX
 # toolchain that docs/make.jl needs to compile TikZ figures before Documenter checks links: the
 # profile's `docs_additions`. The installer does not overwrite them, so the byte comparison never
 # sees them — but the canonical body must still survive inside each, which is what
 # `documenter_additions_intact` asserts. Without that, nothing would report a template change to it.
-const DOCS_ADDITIONS = Vector{String}(PROFILE["docs_additions"])
+# Without the key, none.
+const DOCS_ADDITIONS = Vector{String}(get(PROFILE, "docs_additions", String[]))
 
 # Every repository whose Documenter.yml the installer skips, as `harness workflows` does.
 const DOCS_EXCEPTIONS = vcat(DOCS_PIPELINES, DOCS_ADDITIONS)

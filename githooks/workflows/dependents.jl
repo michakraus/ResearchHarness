@@ -15,6 +15,9 @@
 # `excluded=false` when it lies inside or the dependent has no such entry; then one line with the
 # reason. `Pkg.develop` refuses a head outside the entry, so the job tests no such head.
 #
+# A file that is not TOML, an entry that is malformed and a [compat] entry that is no version
+# specifier exit 2 with one line on stderr.
+#
 # `row` classifies a dependent from `excluded` and the outcomes of the test steps against the head
 # of the pull request and against the default branch of the base: excluded; head `success`:
 # green; head `failure` and main `success`: regression; both `failure`: known red. It prints the
@@ -48,10 +51,22 @@ function append(variable, text)
     return nothing
 end
 
+"""
+    readtoml(path)
+
+The TOML file at `path`. A file that is not TOML ends the script with status 2.
+"""
+function readtoml(path)
+    table = TOML.tryparsefile(path)
+    table isa TOML.ParserError &&
+        fail("$path is not a TOML file: $(table.type) at line $(table.line), column $(table.column)")
+    return table
+end
+
 function list(path)
     isfile(path) ||
         fail("$path is missing: run `harness dependents --apply` and commit the file in the base")
-    entries = get(TOML.parsefile(path), "dependent", [])
+    entries = get(readtoml(path), "dependent", [])
     entries isa Vector || fail("$path: `dependent` is not an array of tables")
     items = map(entries) do entry
         name = entry isa Dict ? get(entry, "name", nothing) : nothing
@@ -68,15 +83,22 @@ function list(path)
 end
 
 function excluded(base, dependent)
-    head = TOML.parsefile(joinpath(base, "Project.toml"))
+    path = joinpath(dependent, "Project.toml")
+    head = readtoml(joinpath(base, "Project.toml"))
     name, version = get(head, "name", nothing), get(head, "version", nothing)
-    (name isa String && version isa String) ||
-        fail("$(joinpath(base, "Project.toml")) has no name or no version")
-    compat = get(get(TOML.parsefile(joinpath(dependent, "Project.toml")), "compat", Dict()), name, nothing)
+    (name isa String && version isa String && tryparse(VersionNumber, version) !== nothing) ||
+        fail("$(joinpath(base, "Project.toml")) has no name or no valid version")
+    compat = get(get(readtoml(path), "compat", Dict()), name, nothing)
     compat === nothing || compat isa String ||
-        fail("the [compat] entry for $name in $(joinpath(dependent, "Project.toml")) is not a string")
-    out = compat !== nothing &&
-          !(VersionNumber(version) in Pkg.Versions.semver_spec(compat))
+        fail("the [compat] entry for $name in $path is not a string")
+    # semver_spec raises an ErrorException on a string that is no version specifier.
+    spec = try
+        compat === nothing ? nothing : Pkg.Versions.semver_spec(compat)
+    catch e
+        e isa ErrorException || rethrow()
+        fail("the [compat] entry $(repr(compat)) for $name in $path is no version specifier")
+    end
+    out = spec !== nothing && !(VersionNumber(version) in spec)
     println("excluded=$out")
     println(compat === nothing ? "the dependent has no [compat] entry for $name" :
             "$name $version against the [compat] entry $(repr(compat))")

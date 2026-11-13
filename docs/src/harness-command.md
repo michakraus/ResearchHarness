@@ -627,8 +627,8 @@ keys `docs_exceptions` or `docs_additions` name keeps its own documentation work
 both from every other repository. It deletes the retired `CompatHelper.yml`.
 
 **Exit status:** 0 when every file is current, or after `--apply`; 1 when the dry run has a
-change; 2 when a template is missing, or when `dependents_bases` names a repository that is not a
-git repository with a `Project.toml` below `Packages/`.
+change. 2 when a template is missing. 2 also when `dependents_bases` names a repository that is
+not a git repository with a `Project.toml` below `Packages/`.
 
 **Where to run it:** anywhere; it writes tracked files only. Commit each file by name.
 
@@ -642,15 +642,27 @@ Writes `.github/dependents.toml` into each base that the profile key `dependents
 A direct dependent of a base is a git repository below `Packages/` whose `Project.toml` has the
 base's UUID in `[deps]`. `[weakdeps]`, `[extras]`, `test/Project.toml` and `Experiments/` do not
 count, and a base is not its own dependent. The file holds one `[[dependent]]` table per
-dependent, sorted by name, with `name`, the name of its directory, and `repository`, the GitHub
-`owner/name` of its `origin`, with or without `.git`. The census of every base runs before the
-first write, so a refusal writes no file. Without `--apply` it prints the diff of each file that
-would change. The `Dependents.yml` workflow of the base reads the file into its matrix.
+dependent, sorted by name. Each table has two keys:
+
+- `name`: the name of the dependent's directory;
+- `repository`: the GitHub `owner/name` of the dependent's `origin`.
+
+An `origin` can use HTTPS or SSH, with or without a user, a port or `.git`. The census of every
+base and the read of every old file run before the first write, so a refusal writes no file.
+Without `--apply` it prints the diff of each file that would change. The `Dependents.yml` workflow
+of the base reads the file into its matrix.
 
 **Exit status:** 0 when every file is current, or after `--apply`; 1 when the dry run has a
-change; 2 when `dependents_bases` names a repository that is not a git repository with a
-`Project.toml` below `Packages/`, when a base has no `uuid`, or when a dependent has no `origin` or
-an `origin` that is not on `github.com`; the message names the repository.
+change. 2, with a message that names the repository or the file, for each of these refusals:
+
+- `dependents_bases` names a repository that is not a git repository with a `Project.toml` below
+  `Packages/`;
+- a base has no `uuid`;
+- the `Project.toml` of a base or of a package is not TOML;
+- the directory name of a dependent is not a name that `dependents.toml` can hold, such as a name
+  with a space;
+- a dependent has no `origin`, or an `origin` that is not on `github.com`;
+- the old `.github/dependents.toml` is not a regular file, or is not UTF-8.
 
 **Where to run it:** anywhere; it writes tracked files only and does not commit. Commit
 `.github/dependents.toml` by name in each base.
@@ -1237,15 +1249,15 @@ harness dependents [--apply]
 directly below `Packages/` and `Experiments/`, and sets `core.hooksPath`. `wiki-lint-hook` copies
 `githooks/pre-commit-wiki` as the pre-commit hook of the prose repositories that
 `WIKI_REPOSITORIES` names. `workflows` copies the canonical files of `githooks/workflows/` and
-deletes the retired `CompatHelper.yml`; `Dependents.yml` and `dependents.jl` go only into the bases
-of the profile key `dependents_bases` (`bases`), and out of every other repository.
+deletes the retired `CompatHelper.yml`. `Dependents.yml` and `dependents.jl` go only into the
+bases of the profile key `dependents_bases` (`bases`), and out of every other repository.
 `dependents` writes `.github/dependents.toml` into each base, from the census of its direct
 dependents (`census`).
 
 A session cannot write `.git/config`. So a run that cannot set `core.hooksPath` prints the command
 for each repository, and exits with status 2. The module also gives `research_root`,
-`repositories` and `git` to other modules. Its `selftest` runs the cases of `githooks_cases.py`,
-and the sweep runs the dry runs and the `--apply` of its subcommands.
+`repositories` and `git` to other modules. Its `selftest` runs the cases of `githooks_cases.py`.
+The sweep runs the dry runs and the `--apply` of its subcommands.
 [Git hooks and workflows](components/githooks.md) describes the copied files.
 
 ### `githooks_cases.py`
@@ -1253,16 +1265,25 @@ and the sweep runs the dry runs and the `--apply` of its subcommands.
 The test cases of the dependents workflow and of `harness workflows`, which the `selftest` of
 `githooks.py` runs. It has no subcommand and no `selftest` of its own. The cases of the two
 subcommands and of `verify-workflows.jl` build fixture research roots below a temporary
-directory, with git repositories under `Packages/` and `Experiments/` and the profile of the case.
+directory. Each root has git repositories under `Packages/` and `Experiments/`, and the case
+writes its own profile.
 
-The cases run `harness dependents` on a base with dependents through `[deps]` and on packages with
-the base only in `[weakdeps]` or `test/Project.toml` or below `Experiments/`, and compare the
-written file byte for byte; `harness workflows` with and without `dependents_bases`; the settings
-of `Dependents.yml`, and `actionlint` on it where `actionlint` is on the `PATH`; and, where
-`julia` is on the `PATH`, `dependents.jl` on fixture `Project.toml` pairs and on the four rows,
-and `verify-workflows.jl` on a clean fixture and on each of its four dependents findings. Without
-`julia`, or without the Julia environment of the harness for `verify-workflows.jl`, a group prints
-one `skip` line and does not run.
+The cases run these commands:
+
+- `harness dependents`: dependents through `[deps]`, beside packages with the base only in
+  `[weakdeps]` or `test/Project.toml`, and beside an experiment. The case compares the written file
+  byte for byte. Other cases give the refusals of the subcommand.
+- `harness workflows`, with and without `dependents_bases`.
+- `github_name` on the forms of an `origin` URL.
+- The settings of `Dependents.yml`, read with the YAML reader of `wikilint.py`, and `actionlint` on
+  it where `actionlint` is on the `PATH`.
+- `dependents.jl`, where `julia` is on the `PATH`: `excluded` on fixture `Project.toml` pairs,
+  `row` on the four rows, `list`, and their refusals.
+- `verify-workflows.jl`, where `julia` is on the `PATH`: a clean fixture, each of its four
+  dependents findings, and a profile without `docs_exceptions` and `docs_additions`.
+
+Without `julia`, a group that needs it prints one `skip` line and does not run.
+`verify-workflows.jl` also needs the Julia environment of the harness.
 
 ### `repos.py`
 

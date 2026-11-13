@@ -288,29 +288,35 @@ own extra workflow file, not an edit of this one.
 
 ## `workflows/Dependents.yml`
 
-`workflows/Dependents.yml` runs the `core` test group of each direct dependent of a base package
-against the head of a pull request on the base. `harness workflows` copies it to
-`.github/workflows/Dependents.yml` of each base that the profile key `dependents_bases` names, and
-deletes it from every other repository. It runs on a pull request that changes `src/`, `ext/` or
-`Project.toml`, and by hand; a push to `main` does not run it. One concurrency group per ref
-cancels a run that a newer push replaces, and the workflow can only read the repository.
+`workflows/Dependents.yml` tests the direct dependents of a base package against the head of a
+pull request on the base. It runs the `core` test group of each dependent. `harness workflows`
+copies it to `.github/workflows/Dependents.yml` of each base that the profile key
+`dependents_bases` names. It deletes the file from every other repository. The workflow runs on a
+pull request that changes `src/`, `ext/` or `Project.toml`, and by hand. A push to `main` does
+not run it. One concurrency group per ref cancels a run that a newer push replaces. The workflow
+can only read the repository.
 
 | job | what it runs |
 |:--|:--|
 | `list` | reads the dependents from `.github/dependents.toml` with `dependents.jl list`; it fails with a line that names `harness dependents --apply` when the file is missing |
 | `test` | one job per dependent, on Ubuntu with Julia `1`, 60 minutes at most, and `fail-fast` off: the compat check, `Pkg.develop` of the head into the dependent's project and `Pkg.test(test_args = ["core"])`; on a failure, the same against the default branch of the base; then the row of the dependent |
 
-The row is one of four. A head that the dependent's `[compat]` entry excludes, such as after a
-breaking bump, is *excluded* and not tested, because a test would need a compat override that no
-user can install. A dependent that passes against the head is *green*. One that fails against the
-head and passes against the default branch is a *regression*, and one that fails against both is
-*known red*, which the pull request did not cause. Of the four rows, only a regression fails the
-job; a step that fails before the row, such as the compat check, fails it too. The workflow is
-advisory: `harness ci-protection` does not require it.
+The row is one of four:
+
+- *excluded*: the dependent's `[compat]` entry excludes the head, for example after a breaking
+  bump. The job does not test it, because a test needs a compat override that no user can
+  install.
+- *green*: the dependent passes against the head.
+- *regression*: the dependent fails against the head and passes against the default branch.
+- *known red*: the dependent fails against both. The pull request did not cause it.
+
+Of the four rows, only a regression fails the job. A step that fails before the row, such as the
+compat check, also fails the job. The workflow is advisory: `harness ci-protection` does not
+require it.
 
 ## `workflows/dependents.jl`
 
-`workflows/dependents.jl` is the logic of the jobs of `Dependents.yml`, in a script so that the
+`workflows/dependents.jl` holds the logic of the jobs of `Dependents.yml`. It is a script, so the
 tests of the harness can run it. `harness workflows` copies it to `.github/dependents.jl` beside
 the workflow.
 
@@ -320,14 +326,20 @@ julia --startup-file=no dependents.jl excluded <base> <dependent>
 julia --startup-file=no dependents.jl row <name> <excluded> <head outcome> <main outcome>
 ```
 
-`list` prints the dependents as a JSON array, the matrix of the `test` job. `excluded` prints
-`excluded=true` when the `version` of the base's `Project.toml` is outside the dependent's
-`[compat]` entry for the base, which it reads with `Pkg.Versions.semver_spec`, and
-`excluded=false` when it is inside or the dependent has no entry. `row` prints the row from the
-outcomes of the two test steps, and appends it under a header to the job summary; it exits with
-status 1 for a regression. Each writes its result to `$GITHUB_OUTPUT` or `$GITHUB_STEP_SUMMARY`
-where the variable is set. A missing file, a malformed entry and a combination of outcomes that is
-none of the four rows exit with status 2 and one line on stderr.
+`list` prints the dependents as a JSON array, the matrix of the `test` job. `excluded` reads the
+`version` of the base's `Project.toml` and the dependent's `[compat]` entry for the base. It reads
+the entry with `Pkg.Versions.semver_spec`. It prints `excluded=true` when the version is outside
+the entry. It prints `excluded=false` when the version is inside, or when the dependent has no
+entry. `row` prints the row from the outcomes of the two test steps. It appends the row under a
+header to the job summary, and exits with status 1 for a regression. Where the variable is set,
+each command writes its result to `$GITHUB_OUTPUT` or `$GITHUB_STEP_SUMMARY`.
+
+These inputs exit with status 2 and one line on stderr:
+
+- a missing file, or a file that is not TOML;
+- a malformed entry, or a base `version` that is no version number;
+- a `[compat]` entry that is no version specifier;
+- a combination of outcomes that is none of the four rows.
 
 ## `workflows/Documenter.yml`
 
@@ -395,8 +407,9 @@ It checks these points:
 It also checks that a repository of `docs_additions` keeps the body of `Documenter.yml`. It
 reports the repositories whose `doctest` job skips itself. It exits with status 1 when a
 repository deviates. It
-reads the profile for `docs_exceptions`, `docs_additions` and `dependents_bases`; without
-`dependents_bases`, no repository is a base.
+reads the profile for `docs_exceptions`, `docs_additions` and `dependents_bases`. It reads a key
+that the profile does not have as an empty list, so without `dependents_bases` no repository is a
+base.
 
 Run it after `harness workflows --apply`, and before a change to CI. `harness ci-protection
 --apply` refuses to run when it fails. The rule `generated-hooks-and-workflows` and the agent
