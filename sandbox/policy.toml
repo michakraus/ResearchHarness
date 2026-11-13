@@ -58,7 +58,8 @@ state = [
 deny_write = []
 own = ["~/.claude.json", "~/.claude/.credentials.json", "~/.config/anthropic/credentials"]
 read_files = []
-network = []
+# Claude Code refreshes its sign-in token here (`/v1/oauth/token`).
+network = ["platform.claude.com"]
 mach_lookup = []
 
 [frontend.opencode]

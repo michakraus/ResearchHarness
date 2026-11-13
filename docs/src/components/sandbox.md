@@ -75,8 +75,9 @@ no deny entry of its own, so `own` cannot lift it; and `~/.config` is a write de
 stays read-only. No other frontend has a `read_files` entry. oh-my-pi adds the write denies
 `~/.omp/agent/config.yml` and `~/.omp/agent/extensions`.
 
-`antigravity`'s `network` is `oauth2.googleapis.com`, where `agy` exchanges its login token; the
-other three frontends have an empty `network`. An entry is `host` or `host:port`: `host` is
+`claude`'s `network` is `platform.claude.com`, where Claude Code refreshes its sign-in token, and
+`antigravity`'s is `oauth2.googleapis.com`, where `agy` exchanges its login token; the other two
+frontends have an empty `network`. An entry is `host` or `host:port`: `host` is
 `localhost`, a name of two or more labels, or `*.` before such a name, and `port` is 1 to 65535
 with no leading zero. Each form is one that `srt` takes in `allowedDomains`, so no entry makes
 `srt` refuse the file. The user's own hosts for a frontend go in a `[frontend.<name>]` table of the

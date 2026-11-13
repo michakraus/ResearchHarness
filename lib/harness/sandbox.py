@@ -599,8 +599,15 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
     )
     hosts = {name: f.network for name, f in policy.frontends.items()}
     check(
-        hosts == {"claude": (), "opencode": (), "omp": (), "antigravity": ("oauth2.googleapis.com",)},
-        f"sandbox/policy.toml: antigravity's network is its login host, every other frontend's empty: "
+        hosts
+        == {
+            "claude": ("platform.claude.com",),
+            "opencode": (),
+            "omp": (),
+            "antigravity": ("oauth2.googleapis.com",),
+        },
+        f"sandbox/policy.toml: claude's and antigravity's network is each one's token host, every other "
+        f"frontend's empty: "
         f"{hosts}",
     )
     services_of = {name: f.mach_lookup for name, f in policy.frontends.items()}
@@ -1149,10 +1156,12 @@ def plan_network_cases(check: Check, root: pathlib.Path) -> None:
     )
     shipped = domains(None)
     check(
-        all(shipped[name] == template for name in ("claude", "opencode", "omp"))
+        all(shipped[name] == template for name in ("opencode", "omp"))
+        and shipped["claude"] == [*template, "platform.claude.com"]
         and shipped["antigravity"] == [*template, "oauth2.googleapis.com"],
-        f"with no overlay, antigravity's file adds oauth2.googleapis.com to the template's allowedDomains, "
-        f"every other file has the template's: { {name: d[len(template) :] for name, d in shipped.items()} }",
+        f"with no overlay, claude's file adds platform.claude.com and antigravity's oauth2.googleapis.com to "
+        f"the template's allowedDomains, every other file has the template's: "
+        f"{ {name: d[len(template) :] for name, d in shipped.items()} }",
     )
     tables = (
         '[frontend.opencode]\nnetwork = ["*.example.org", "chat.example.net", "127.0.0.1:8080", '
@@ -1164,7 +1173,7 @@ def plan_network_cases(check: Check, root: pathlib.Path) -> None:
     check(
         tabled
         == {
-            "claude": template,
+            "claude": [*template, "platform.claude.com"],
             "opencode": [*template, "*.example.org", "chat.example.net", "127.0.0.1:8080", "localhost:8080"],
             "omp": [*template, "*.example.org"],
             "antigravity": [*template, "oauth2.googleapis.com"],

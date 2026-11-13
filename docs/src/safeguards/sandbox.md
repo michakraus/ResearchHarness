@@ -94,8 +94,9 @@ rendering, the launcher and the probe in full.
 
 **Each frontend adds its own hosts.** A frontend's file adds the hosts of its `network` list in
 the policy file, and those of a `[frontend.<name>]` table of the overlay `network.toml`, to the
-template's `allowedDomains`; no other frontend's file gets them. `agy`'s login host
-`oauth2.googleapis.com` is in `antigravity`'s list. An entry `*.X` reaches every host below `X`,
+template's `allowedDomains`; no other frontend's file gets them. Claude Code's token host
+`platform.claude.com` is in `claude`'s list, and `agy`'s login host `oauth2.googleapis.com` in
+`antigravity`'s. An entry `*.X` reaches every host below `X`,
 the hosts of other tenants of a shared domain included, so a cloud provider's `*.X` also reaches
 every other customer's endpoint below it. `srt` sets `NO_PROXY` for `localhost`, `127.0.0.1` and
 `::1`, and its macOS profile allows outbound connections to `localhost` where
