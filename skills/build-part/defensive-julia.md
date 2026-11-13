@@ -9,7 +9,8 @@ probes; this file says how the code holds. A rule for test files is in
 Each entry has a **Rule**, a **Check** that a test makes, and an **Edge** line. One `julia` block
 shows the code that fails (`# fails`) and the code that holds (`# holds`). The **Edge** line names
 the section of `edges.md` and the opening words of the entry that the rule answers, or none. The
-names in the code are examples.
+names in the code are examples. D3 and D12 have no `julia` block and no Check: each links to its
+bullet in `julia-tests.md`.
 
 **Contents**
 
