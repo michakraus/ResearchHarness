@@ -360,7 +360,7 @@ point 3 on every branch.
 
 `dispatch-delta-test.jl` checks it on small packages that use the standard library only, which it
 builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`, about
-5 minutes at a load average of 10).
+6 minutes at a load average of 10).
 
 ## `julia-methods.jl` and `julia-methods-test.jl`
 

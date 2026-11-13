@@ -30,7 +30,7 @@
 #   FAIL: new stale import: <module>: <name> at <file>:<line>
 #                                                       no file of test/, docs/, scripts/ or ext/
 #                                                       names <module>.<name>
-#   FAIL: the head does not load: <error>              also an extension whose triggers the test
+#   FAIL: the head does not load: <error>               also an extension whose triggers the test
 #                                                       environment provides and that does not load
 #   UNKNOWN: the base does not load: <error>
 #   UNKNOWN: <side> does not resolve: <error>           TestEnv.activate() failed
@@ -602,8 +602,9 @@ The work of one side, in its own process after `TestEnv.activate()`: load the pa
 dependencies that its test environment provides, write the records, then run JET. `manifest` says
 whether the tree held a `Manifest.toml` before the activation; `basejson`, where it is no
 `nothing`, is the path of the base's records, which the head covers. With `stale`, the records hold
-the stale explicit imports, and a failed load of ExplicitImports is one of them. Returns the
-process's exit code; a failed load of the package writes `<side>.error`.
+the stale explicit imports; a failed load of ExplicitImports leaves them one `unknown` record, with
+its error, for every module. Returns the process's exit code; a failed load of the package writes
+`<side>.error`.
 """
 function side(s, rundir, tree, name, jet, manifest, basejson = nothing, stale = true)
     root = try
