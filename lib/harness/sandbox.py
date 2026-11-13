@@ -47,9 +47,11 @@ whose host matches by `network.denies` a `fetch` host that no `deny` entry witho
 removes, because a command of that frontend would reach the host.
 
 With at least one frontend chosen, `plan_files` also plans the launcher sandbox/agentbox at
-`~/.local/bin/agentbox`, mode 755, which starts a frontend under `srt` with its file, and, with
-`claude` chosen, Claude Code's override `claude-inner-off.json` in the same directory as the
-files, which the launcher passes to Claude Code to turn its own sandbox off.
+`~/.local/bin/agentbox`, mode 755, which starts a frontend under `srt` with its file, the gh
+wrapper scripts/gh-token.py at `~/.local/bin/gh`, mode 755, which runs gh with the token of the
+repository's owner, and, with `claude` chosen, Claude Code's override `claude-inner-off.json` in
+the same directory as the files, which the launcher passes to Claude Code to turn its own sandbox
+off.
 
 The module has no subcommand; its cases run in `harness test`.
 """
@@ -59,6 +61,7 @@ import json
 import os
 import pathlib
 import re
+import secrets
 import shutil
 import stat
 import subprocess
@@ -70,7 +73,7 @@ from dataclasses import FrozenInstanceError, dataclass, replace
 from typing import Any, cast
 from unittest import mock
 
-from . import REPO, HarnessError, frontends, install_cases, jsonio, network
+from . import REPO, HarnessError, frontends, fsutil, install_cases, jsonio, network
 from . import profile as profile_module
 
 POLICY = REPO / "sandbox" / "policy.toml"
@@ -84,6 +87,10 @@ GLOB_CHARS = "*?[]"
 LAUNCHER = REPO / "sandbox" / "agentbox"
 LAUNCHER_PATH = pathlib.PurePosixPath(".local", "bin", "agentbox")
 LAUNCHER_MODE = 0o755
+# The gh wrapper, which runs gh with the token of the repository's owner, and where the install puts
+# it, beside the launcher, with the launcher's mode.
+WRAPPER = REPO / "scripts" / "gh-token.py"
+WRAPPER_PATH = pathlib.PurePosixPath(".local", "bin", "gh")
 # Claude Code's settings file for `--settings` under the launcher: its own sandbox fails inside
 # srt's, so it is off.
 INNER_OFF_NAME = "claude-inner-off.json"
@@ -367,8 +374,9 @@ def plan_files(
     such an entry of any frontend that reaches a `fetch` host that no `deny` entry without a port
     removes. Each file is JSON indented by 2, the keys in the order built, with a final newline,
     and mode None. Then, where `chosen` holds claude, Claude Code's override INNER_OFF, mode None;
-    then the launcher sandbox/agentbox at ~/.local/bin/agentbox, mode 755. With no frontend chosen
-    it plans nothing, so an overlay that the install does not read stops nothing."""
+    then the launcher sandbox/agentbox at ~/.local/bin/agentbox, mode 755; then the gh wrapper
+    scripts/gh-token.py at ~/.local/bin/gh, mode 755. With no frontend chosen it plans nothing, so
+    an overlay that the install does not read stops nothing."""
     names = [name for name in frontends.FRONTENDS if name in chosen]
     if not names:
         return []
@@ -408,6 +416,7 @@ def plan_files(
     if "claude" in names:
         files.append((home / DIRECTORY / INNER_OFF_NAME, INNER_OFF, None, f"~/{DIRECTORY}/{INNER_OFF_NAME}"))
     files.append((home / LAUNCHER_PATH, LAUNCHER.read_bytes(), LAUNCHER_MODE, f"~/{LAUNCHER_PATH}"))
+    files.append((home / WRAPPER_PATH, WRAPPER.read_bytes(), LAUNCHER_MODE, f"~/{WRAPPER_PATH}"))
     return files
 
 
@@ -471,15 +480,29 @@ AGY_HOSTS = ("oauth2.googleapis.com", "daily-cloudcode-pa.googleapis.com", "www.
 # them with the home directory /h. Kaimon's token is shared: OpenCode and oh-my-pi read it to reach
 # Kaimon, and the write deny ~/.config above it keeps it read-only.
 SHIPPED_KAIMON = "/h/.config/kaimon/auth-token"
+# The forge token store, which every frontend reads: git and the gh wrapper read it inside srt.
+SHIPPED_FORGE = "/h/.config/research-harness/forge"
 SHIPPED_OWN = {
-    "claude": ("/h/.claude.json", "/h/.claude/.credentials.json", "/h/.config/anthropic/credentials"),
+    "claude": (
+        "/h/.claude.json",
+        "/h/.claude/.credentials.json",
+        "/h/.config/anthropic/credentials",
+        SHIPPED_FORGE,
+    ),
     "opencode": (
         "/h/.local/share/opencode/auth.json",
         "/h/.local/share/opencode/mcp-auth.json",
         SHIPPED_KAIMON,
+        SHIPPED_FORGE,
     ),
-    "omp": ("/h/.omp/agent/agent.db", "/h/.omp/agent/agent.db-wal", "/h/.omp/agent/.env", SHIPPED_KAIMON),
-    "antigravity": ("/h/.gemini/jetski-standalone-oauth-token",),
+    "omp": (
+        "/h/.omp/agent/agent.db",
+        "/h/.omp/agent/agent.db-wal",
+        "/h/.omp/agent/.env",
+        SHIPPED_KAIMON,
+        SHIPPED_FORGE,
+    ),
+    "antigravity": ("/h/.gemini/jetski-standalone-oauth-token", SHIPPED_FORGE),
 }
 # Claude Code's Anthropic credentials directory and the lock directory that it makes before a
 # token refresh, and agy's token file, as the shipped template and policy render them with the
@@ -558,6 +581,7 @@ def selftest() -> tuple[int, int]:
         template_cases(check)
         mach_lookup_cases(check, root)
         plan_network_cases(check, root / "plan")
+        plan_wrapper_cases(check, root / "wrapper")
         agentbox_cases(check, root / "agentbox")
     return n, wrong
 
@@ -1129,6 +1153,31 @@ def network_cases(check: Check, root: pathlib.Path, home: pathlib.Path) -> None:
     )
 
 
+def plan_wrapper_cases(check: Check, root: pathlib.Path) -> None:
+    """`plan_files` plans the gh wrapper scripts/gh-token.py at ~/.local/bin/gh, mode 755, after the
+    launcher, with one frontend chosen; with none it plans nothing."""
+    profile = profile_module.load(profile_module.DUMMY)
+    home = pathlib.Path("/h")
+    root.mkdir()
+    overlay = root / "network.toml"
+    planned = plan_files(profile, overlay, ("omp",), home, None)
+    wrapper = (
+        home / WRAPPER_PATH,
+        WRAPPER.read_bytes() if WRAPPER.is_file() else None,
+        0o755,
+        "~/.local/bin/gh",
+    )
+    check(
+        len(planned) > 1 and planned[-1] == wrapper and planned[-2][0] == home / LAUNCHER_PATH,
+        f"with omp chosen, plan_files plans the launcher, then scripts/gh-token.py at ~/.local/bin/gh, "
+        f"mode 755: {[(str(d), m, label) for d, _, m, label in planned]}",
+    )
+    check(
+        plan_files(profile, overlay, (), home, None) == [],
+        "with no frontend chosen, plan_files plans no wrapper",
+    )
+
+
 def plan_network_cases(check: Check, root: pathlib.Path) -> None:
     """The `allowedDomains` of each frontend's file as `plan_files` plans it with the dummy profile,
     the shipped policy and an overlay with frontend tables, deny entries or fetch hosts; and each
@@ -1293,6 +1342,28 @@ def plan_network_cases(check: Check, root: pathlib.Path) -> None:
     )
 
 
+def forge_template_cases(
+    check: Check, template: dict[str, Any], rendered: dict[str, dict[str, object]]
+) -> None:
+    """The forge token store: the settings template denies its reads, also in `credentials.files`,
+    and each frontend's file of `rendered` lets the frontend read it and not write it."""
+    forge = "~" + SHIPPED_FORGE[2:]
+    check(
+        forge in template["filesystem"]["denyRead"]
+        and {"path": forge, "mode": "deny"} in template["credentials"]["files"],
+        "the template denies reads of the forge token store and names it in credentials.files, mode deny",
+    )
+    for name, s in rendered.items():
+        fs = cast("dict[str, list[str]]", s["filesystem"])
+        check(
+            not [p for p in fs["denyRead"] if below(SHIPPED_FORGE, [p.removesuffix("/*")]) and p != "/h"]
+            and SHIPPED_FORGE in fs["allowRead"]
+            and not below(SHIPPED_FORGE, fs["allowWrite"]),
+            f"{name}: the forge token store is a read allow, below no read deny but the home directory, and "
+            f"below no write allow: {[p for p in fs['denyRead'] if p.startswith('/h/.config/research')]}",
+        )
+
+
 def template_cases(check: Check) -> None:
     """`srt_settings` of each frontend on the settings template's `sandbox` object, with a fixture
     domain list, and the shipped policy."""
@@ -1384,6 +1455,7 @@ def template_cases(check: Check) -> None:
     opencode = cast("dict[str, list[str]]", rendered["opencode"]["filesystem"])
     hits = [p for key in ("allowWrite", "allowRead") for p in opencode[key] if below(p, roots)]
     check(not hits, f"opencode writes and reads nothing at or below another frontend's state: {hits}")
+    forge_template_cases(check, template, rendered)
     filesystem = template["filesystem"]
     check(
         "~/.cache/claude" not in filesystem["allowWrite"]
@@ -1481,6 +1553,13 @@ CACHES = {"npm_config_cache": "npm", "UV_CACHE_DIR": "uv", "TEXMFVAR": "texmf-va
 # The directory below which sandbox/agentbox makes its run directory where TMPDIR is unset or
 # empty.
 FALLBACK_TMPDIR = pathlib.PurePosixPath("/", "tmp")
+# The forge token store, relative to the home directory, and the GitLab host and the token of the
+# store that each `Box` holds, beside a `github.com` directory; the token is made at run time.
+FORGE_STORE = pathlib.PurePosixPath(".config", "research-harness", "forge")
+BOX_GITLAB = "gitlab.example.org"
+BOX_TOKEN = f"T-g-{secrets.token_hex(4)}"
+# The variables of glab that sandbox/agentbox removes from the caller's environment.
+GITLAB_REMOVED = ("GITLAB_ACCESS_TOKEN", "OAUTH_TOKEN")
 
 
 def stub(path: pathlib.Path) -> None:
@@ -1511,7 +1590,34 @@ class Box:
             (home / DIRECTORY / f"{name}.json").write_text("{}\n")
         for program in ("claude", "opencode", "omp", "agy"):
             stub(home / "path" / program)
+        for host, name, user in [
+            (BOX_GITLAB, "group-a", "oauth2"),
+            ("github.com", "default", "x-access-token"),
+        ]:
+            (home / FORGE_STORE / host).mkdir(parents=True, exist_ok=True)
+            line = f"https://{user}:{BOX_TOKEN}@{host}\n".encode()
+            fsutil.write_private(home / FORGE_STORE / host / f"{name}.store", line)
         return cls(home)
+
+    def forge(self) -> dict[str, str]:
+        """The variables of the forges that a run with the store of `fresh` exports: no prompt of
+        git, the GitLab host and token, and GLAB_CONFIG_DIR, the glab subdirectory of the one
+        directory in tmpdir/, or {} where tmpdir/ does not hold exactly one directory."""
+        made = self.made()
+        if len(made) != 1:
+            return {}
+        return {
+            "GIT_TERMINAL_PROMPT": "0",
+            "GLAB_CONFIG_DIR": f"{made[0]}/glab",
+            "GITLAB_HOST": BOX_GITLAB,
+            "GITLAB_TOKEN": BOX_TOKEN,
+        }
+
+    def glab_empty(self) -> bool:
+        """Whether the run directory's glab subdirectory is an empty directory."""
+        made = self.made()
+        glab = made[0] / "glab" if len(made) == 1 else None
+        return glab is not None and glab.is_dir() and not any(glab.iterdir())
 
     def env(self, **extra: str) -> dict[str, str]:
         """The environment of a run: HOME, a PATH with path/ first, TMPDIR the directory tmpdir/,
@@ -1622,14 +1728,17 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
         seen = box.environment() if got is not None else {}
         caches = box.caches()
         check(
-            caches and seen == {**box.env(), "AGENTBOX": "1", **caches},
-            f"agentbox {name}: the environment is the caller's with AGENTBOX=1, and npm_config_cache, "
-            f"UV_CACHE_DIR and TEXMFVAR each name its subdirectory of one new directory below TMPDIR: "
+            caches and seen == {**box.env(), "AGENTBOX": "1", **caches, **box.forge()} and box.glab_empty(),
+            f"agentbox {name}: the environment is the caller's with AGENTBOX=1, npm_config_cache, "
+            f"UV_CACHE_DIR and TEXMFVAR each naming its subdirectory of one new directory below TMPDIR, "
+            f"GIT_TERMINAL_PROMPT=0, the store's GITLAB_HOST and GITLAB_TOKEN, and GLAB_CONFIG_DIR its "
+            f"empty subdirectory glab: "
             f"{box.made()}, { {k: v for k, v in seen.items() if box.env().get(k) != v} }",
         )
 
     resolution_cases(check, root / "resolution")
     cache_cases(check, root / "caches")
+    forge_cases(check, root / "forge")
 
     box = Box.fresh(root, "status")
     p = box.run("opencode", STUB_STATUS=str(STUB_EXIT))
@@ -1787,6 +1896,72 @@ def resolution_cases(check: Check, root: pathlib.Path) -> None:
             p.returncode == 0 and got is not None and got[3] == f"{box.home}/path/claude",
             f"agentbox claude with an exported function BASH_FUNC_claude%%, which /bin/sh does not import "
             f"({found!r}): srt gets path/claude: {p.returncode}, {got[3] if got else None}, {p.stderr!r}",
+        )
+
+
+def forge_cases(check: Check, root: pathlib.Path) -> None:
+    """The variables of the forges in a run: for each frontend, the store's GitLab host and token,
+    and a new GLAB_CONFIG_DIR, in place of the caller's GITLAB_TOKEN and GLAB_CONFIG_DIR, and
+    without the caller's GITLAB_ACCESS_TOKEN and OAUTH_TOKEN. With two GitLab directories, a GitLab
+    directory with two store files, only a `github.com` directory or no store, neither GitLab
+    variable, the caller's GITLAB_TOKEN removed and one line on stderr that names the store."""
+    caller = {"GLAB_CONFIG_DIR": "/caller/glab", "GITLAB_TOKEN": "caller", "OAUTH_TOKEN": "caller"}
+    caller |= {"GITLAB_ACCESS_TOKEN": "caller"}
+    for name in ("claude", "opencode", "omp", "agy"):
+        box = Box.fresh(root / "caller", name)
+        p = box.run(name, variables=caller)
+        seen = box.environment() if box.argv() is not None else {}
+        kept = {k: v for k, v in box.env(**caller).items() if k not in GITLAB_REMOVED}
+        want = {**kept, "AGENTBOX": "1", **box.caches(), **box.forge()}
+        check(
+            p.returncode == 0 and p.stderr == "" and box.forge() and seen == want and box.glab_empty(),
+            f"agentbox {name} with the caller's GLAB_CONFIG_DIR, GITLAB_TOKEN, GITLAB_ACCESS_TOKEN and "
+            f"OAUTH_TOKEN: the store's host and token, a new empty GLAB_CONFIG_DIR, and neither of the "
+            f"other two: {p.returncode}, {p.stderr!r}, "
+            f"{ {k: seen.get(k) for k in ('GLAB_CONFIG_DIR', 'GITLAB_HOST', *GITLAB_REMOVED)} }",
+        )
+
+    store = FORGE_STORE
+
+    def second_host(h: pathlib.Path) -> None:
+        (h / store / "gitlab.example.com").mkdir()
+        fsutil.write_private(
+            h / store / "gitlab.example.com" / "group-b.store", b"https://oauth2:x@gitlab.example.com\n"
+        )
+
+    def second_file(h: pathlib.Path) -> None:
+        fsutil.write_private(
+            h / store / BOX_GITLAB / "group-b.store", b"https://oauth2:x@gitlab.example.org\n"
+        )
+
+    def github_only(h: pathlib.Path) -> None:
+        shutil.rmtree(h / store / BOX_GITLAB)
+
+    def no_store(h: pathlib.Path) -> None:
+        shutil.rmtree(h / store)
+
+    for label, change in [
+        ("two GitLab directories", second_host),
+        ("a GitLab directory with two store files", second_file),
+        ("only a github.com directory", github_only),
+        ("no token store", no_store),
+    ]:
+        box = Box.fresh(root / "none", label.replace(" ", "-").replace(".", "-"))
+        change(box.home)
+        p = box.run("omp", variables={"GITLAB_TOKEN": "caller"})
+        seen = box.environment() if box.argv() is not None else {}
+        forge = {k: v for k, v in box.forge().items() if k not in ("GITLAB_HOST", "GITLAB_TOKEN")}
+        want = {**box.env(), "AGENTBOX": "1", **box.caches(), **forge}
+        check(
+            p.returncode == 0
+            and forge
+            and seen == want
+            and p.stderr.count("\n") == 1
+            and p.stderr.endswith("\n")
+            and str(box.home / store) in p.stderr,
+            f"agentbox omp with {label}: no GITLAB_HOST, no GITLAB_TOKEN, and one line on stderr that names "
+            f"the store: {p.returncode}, {p.stderr!r}, "
+            f"{ {k: seen.get(k) for k in ('GITLAB_HOST', 'GITLAB_TOKEN', 'GLAB_CONFIG_DIR')} }",
         )
 
 
@@ -2036,6 +2211,7 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
     labels = [
         *(f"~/{DIRECTORY}/{name}.json" for name in ("claude", "opencode", "claude-inner-off")),
         "~/.local/bin/agentbox",
+        "~/.local/bin/gh",
     ]
     check(
         codes[:2] == [1, 0] and names == ["claude-inner-off.json", "claude.json", "opencode.json"],
@@ -2061,11 +2237,18 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
         launcher_installed(base),
         "the launcher is ~/.local/bin/agentbox, of the bytes of sandbox/agentbox and mode 755",
     )
+    wrapper = base / "home" / WRAPPER_PATH
+    check(
+        wrapper.is_file()
+        and wrapper.read_bytes() == WRAPPER.read_bytes()
+        and stat.S_IMODE(wrapper.stat().st_mode) == LAUNCHER_MODE,
+        "the gh wrapper is ~/.local/bin/gh, of the bytes of scripts/gh-token.py and mode 755",
+    )
     check(
         all(listed(outs[0], label, "INSTALL") for label in labels)
         and codes[2] == 0
         and all(listed(outs[2], label, "already identical") for label in labels),
-        f"the dry run lists the four files, and a second dry run reports no change for them: {codes[2]}, "
+        f"the dry run lists the five files, and a second dry run reports no change for them: {codes[2]}, "
         f"{last_line(outs[2])!r}",
     )
     check(
@@ -2096,8 +2279,10 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
     check(
         codes == [0, 0, 0]
         and not (base / "home" / DIRECTORY).exists()
-        and not (base / "home" / ".local" / "bin" / "agentbox").exists(),
-        f"no chosen frontend: no sandbox file, no launcher, and a broken network overlay stops nothing: "
+        and not (base / "home" / ".local" / "bin" / "agentbox").exists()
+        and not (base / "home" / WRAPPER_PATH).exists(),
+        f"no chosen frontend: no sandbox file, no launcher, no gh wrapper, and a broken network overlay "
+        f"stops nothing: "
         f"{codes}, {last_line(outs[1])!r}",
     )
 

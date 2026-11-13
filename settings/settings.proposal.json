@@ -888,6 +888,7 @@
         "~/.omp/agent/agent.db-wal",
         "~/.local/share/opencode/auth.json",
         "~/.local/share/opencode/mcp-auth.json",
+        "~/.config/research-harness/forge",
         "~/**/.env",
         "~/**/.env.*",
         "~/.cache/gh",
@@ -970,6 +971,10 @@
         },
         {
           "path": "~/.local/share/opencode/mcp-auth.json",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.config/research-harness/forge",
           "mode": "deny"
         }
       ]

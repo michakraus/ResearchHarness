@@ -31,6 +31,11 @@ runs them.
   `match`, a frontend past its time limit, and the report's files with their `## Listeners`; a
   frontend probe's word on a line of its own of stdout or stderr, and the detail of a failed
   frontend probe from its error line.
+- scripts/gh-token.py in a scratch home with a stub gh that records its token variables and its
+  arguments: the owner from `-R`, `--repo`, GH_REPO, the endpoint of `gh api` and the remote
+  `origin`, compared without case, else the default; no token, and an empty GH_CONFIG_DIR, where
+  no file serves or `-R` or GH_REPO names another host; and the real gh, never the wrapper
+  itself, first on the PATH as a copy or a link.
 """
 
 import importlib.util
@@ -38,6 +43,7 @@ import json
 import os
 import pathlib
 import re
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -46,10 +52,11 @@ import tempfile
 import types
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import cast
 from unittest import mock
 
-from . import REPO
+from . import REPO, fsutil
 
 EVIDENCE = REPO / "skills" / "build-part" / "evidence.md"
 RUN_TESTS = REPO / "scripts" / "run-tests.jl"
@@ -57,6 +64,26 @@ SPEC_GATE = REPO / "scripts" / "spec-gate.py"
 SPEC_BUNDLE = REPO / "scripts" / "spec-bundle.py"
 SPEC_VALIDATE = REPO / "scripts" / "spec-validate.py"
 PROBE = REPO / "scripts" / "probe-agentbox.py"
+GH_TOKEN = REPO / "scripts" / "gh-token.py"
+# The `github.com` directory of the token store, relative to the home directory.
+GH_STORE = pathlib.PurePosixPath(".config", "research-harness", "forge", "github.com")
+# The exit status of scripts/gh-token.py on a refusal.
+GH_REFUSED = 2
+# The runs of the counting `python3` of the gh_token cases; it refuses each run after them.
+GH_PY_RUNS = 3
+# The stub of the real gh in the gh_token cases: it appends GH_TOKEN, GITHUB_TOKEN and
+# GH_CONFIG_DIR, each `<unset>` where unset, then each argument on a line of its own, then END, to
+# $GH_STUB_LOG.
+GH_STUB = """\
+#!/bin/sh
+{
+    printf 'GH_TOKEN=%s\\n' "${GH_TOKEN-<unset>}"
+    printf 'GITHUB_TOKEN=%s\\n' "${GITHUB_TOKEN-<unset>}"
+    printf 'GH_CONFIG_DIR=%s\\n' "${GH_CONFIG_DIR-<unset>}"
+    for a in "$@"; do printf 'ARG=%s\\n' "$a"; done
+    echo END
+} >> "$GH_STUB_LOG"
+"""
 
 # The stub of every program that probe-agentbox.py starts. Each copy appends the time, its working
 # directory and its arguments, joined by \x1f, to `<name>.log` in the directory of the stubs, and
@@ -1460,6 +1487,255 @@ def probe_words(check: Callable[[object, str], None], tmp: pathlib.Path) -> None
     )
 
 
+@dataclass(frozen=True)
+class GhSeen:
+    """What the stub gh of the gh_token cases saw: GH_TOKEN, GITHUB_TOKEN and GH_CONFIG_DIR, each
+    None where unset, its arguments, and the number of its runs; with the wrapper's exit status and
+    stderr."""
+
+    token: str | None
+    github_token: str | None
+    config_dir: str | None
+    args: list[str]
+    runs: int
+    status: int | None
+    stderr: str
+
+
+@dataclass(frozen=True)
+class GhHome:
+    """A scratch home below `root` for scripts/gh-token.py: its token store's `github.com`
+    directory, the stub gh (GH_STUB) in stubs/, and a `python3` in py/ that counts its runs and
+    starts this interpreter, up to GH_PY_RUNS runs, so that a wrapper that starts itself stops."""
+
+    root: pathlib.Path
+
+    @classmethod
+    def fresh(cls, root: pathlib.Path, stores: dict[str, str]) -> GhHome:
+        """A fresh home with a store file `<name>.store` of each token of `stores`."""
+        github = root / "home" / GH_STORE
+        github.mkdir(parents=True)
+        for name, token in stores.items():
+            fsutil.write_private(
+                github / f"{name}.store", f"https://x-access-token:{token}@github.com\n".encode()
+            )
+        for path, text in [
+            (root / "stubs" / "gh", GH_STUB),
+            (
+                root / "py" / "python3",
+                '#!/bin/sh\necho run >> "$GH_PY_LOG"\n'
+                'n=0\nwhile read -r _; do n=$((n + 1)); done < "$GH_PY_LOG"\n'
+                f'[ "$n" -le {GH_PY_RUNS} ] || exit 99\nexec {sys.executable} "$@"\n',
+            ),
+        ]:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+            path.chmod(0o755)
+        (root / "nowhere").mkdir()
+        return cls(root)
+
+    def repository(self, owner: str) -> pathlib.Path:
+        """A git repository below the root whose `origin` is `owner`'s."""
+        path = self.root / f"repo-{owner}"
+        path.mkdir()
+        for args in (["init", "-q"], ["remote", "add", "origin", f"https://github.com/{owner}/repo.git"]):
+            subprocess.run(
+                [shutil.which("git") or "git", *args],
+                cwd=path,
+                env=self.env(),
+                capture_output=True,
+                timeout=60,
+                check=True,
+            )
+        return path
+
+    def env(self, **extra: str) -> dict[str, str]:
+        """The environment of a run: the scratch HOME, py/ and stubs/ first on the PATH, git that
+        reads none of the user's configuration and no directory above the root, and `extra`."""
+        return {
+            "HOME": str(self.root / "home"),
+            "PATH": f"{self.root / 'py'}:{self.root / 'stubs'}:/usr/bin:/bin",
+            "GH_STUB_LOG": str(self.root / "gh.log"),
+            "GH_PY_LOG": str(self.root / "py.log"),
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CEILING_DIRECTORIES": str(self.root),
+            **extra,
+        }
+
+    def run(
+        self,
+        *args: str,
+        cwd: pathlib.Path | None = None,
+        first: pathlib.Path | None = None,
+        program: list[str] | None = None,
+        variables: dict[str, str] | None = None,
+    ) -> GhSeen:
+        """`program`, else scripts/gh-token.py on this interpreter, with `args`, in `cwd`, else
+        nowhere/, with `variables` in the environment and `first` before the PATH where it is
+        given; what the stub saw."""
+        env = self.env(**(variables or {}))
+        if first is not None:
+            env["PATH"] = f"{first}:{env['PATH']}"
+        log = self.root / "gh.log"
+        log.unlink(missing_ok=True)
+        try:
+            p = subprocess.run(
+                [*(program or [sys.executable, str(GH_TOKEN)]), *args],
+                cwd=cwd or self.root / "nowhere",
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            status, stderr = p.returncode, p.stderr
+        except subprocess.TimeoutExpired:
+            status, stderr = None, "TIMEOUT"
+        lines = log.read_text().splitlines() if log.exists() else []
+        seen = {k: v for k, _, v in (line.partition("=") for line in lines)}
+
+        def value(name: str) -> str | None:
+            got = seen.get(name)
+            return None if got in (None, "<unset>") else got
+
+        return GhSeen(
+            token=value("GH_TOKEN"),
+            github_token=value("GITHUB_TOKEN"),
+            config_dir=value("GH_CONFIG_DIR"),
+            args=[line[len("ARG=") :] for line in lines if line.startswith("ARG=")],
+            runs=lines.count("END"),
+            status=status,
+            stderr=stderr,
+        )
+
+
+def gh_token_owner_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """The owner of scripts/gh-token.py: `-R` and `--repo` in each form, GH_REPO, the endpoint of
+    `gh api`, the remote `origin`, each compared without case, and the default outside a
+    repository; every argument reaches the stub unchanged, and GITHUB_TOKEN never."""
+    tokens = {name: f"T-{name}-{secrets.token_hex(4)}" for name in ("example-b", "Example-C", "default")}
+    home = GhHome.fresh(tmp / "owners", tokens)
+    repo = home.repository("Example-C")
+    b, c, default = tokens["example-b"], tokens["Example-C"], tokens["default"]
+    caller = f"T-caller-{secrets.token_hex(4)}"
+    for args, extra, cwd, want, label in [
+        (["pr", "view", "1", "-R", "Example-B/repo"], {}, repo, b, "-R OWNER/REPO, origin another owner's"),
+        (["pr", "view", "1", "--repo", "Example-B/repo"], {}, repo, b, "--repo OWNER/REPO"),
+        (["pr", "view", "1", "--repo=Example-B/repo"], {}, repo, b, "--repo=OWNER/REPO"),
+        (["pr", "view", "1", "-R", "github.com/Example-B/repo"], {}, repo, b, "-R github.com/OWNER/REPO"),
+        (["pr", "view", "1"], {"GH_REPO": "Example-B/repo"}, repo, b, "GH_REPO, origin another owner's"),
+        (
+            ["pr", "view", "1", "-R", "Example-B/repo"],
+            {"GH_REPO": "Example-C/repo"},
+            None,
+            b,
+            "-R before GH_REPO",
+        ),
+        (["api", "repos/example-b/repo/issues/1/comments"], {}, repo, b, "gh api repos/OWNER/..."),
+        (["api", "/orgs/example-b/repos"], {}, repo, b, "gh api /orgs/OWNER/..."),
+        (["api", "-X", "GET", "users/Example-B"], {}, repo, b, "gh api with a flag first, users/OWNER"),
+        (["pr", "list"], {}, repo, c, "origin's owner where nothing else names one"),
+        (["api", "user"], {}, None, default, "no owner outside a repository: the default"),
+        (
+            ["pr", "view", "1", "-R", "Example-D/repo"],
+            {},
+            None,
+            default,
+            "an owner without a file: the default",
+        ),
+    ]:
+        seen = home.run(*args, cwd=cwd, variables={"GITHUB_TOKEN": caller, **extra})
+        check(
+            seen.status == 0
+            and seen.runs == 1
+            and seen.token == want
+            and seen.github_token is None
+            and seen.args == args,
+            f"gh-token.py, {label}: the stub runs once with the owner's token, no GITHUB_TOKEN and the "
+            f"arguments unchanged: {seen.status}, {seen.runs}, "
+            f"{[k for k, v in tokens.items() if v == seen.token]}, {seen.github_token}, {seen.args}, "
+            f"{seen.stderr.strip()!r}",
+        )
+
+
+def gh_token_no_token_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """scripts/gh-token.py with no token: no file of the owner and no default.store, and a host
+    other than github.com in `-R` or GH_REPO, where the owner has a file and default.store
+    exists."""
+    caller = tmp / "caller-config"
+    caller.mkdir()
+    (caller / "hosts.yml").write_text("caller\n")
+    home = GhHome.fresh(tmp / "none", {"Example-A": f"T-a-{secrets.token_hex(4)}"})
+    tokens = {"example-a": f"T-a-{secrets.token_hex(4)}", "default": f"T-d-{secrets.token_hex(4)}"}
+    other = GhHome.fresh(tmp / "host", tokens)
+    token = f"T-caller-{secrets.token_hex(4)}"
+    for at, args, extra, label in [
+        (home, ["api", "user"], {}, "no owner's file and no default.store"),
+        (other, ["repo", "view", "-R", "ghe.example.org/example-a/repo"], {}, "-R of another host"),
+        (other, ["repo", "view"], {"GH_REPO": "ghe.example.org/example-a/repo"}, "GH_REPO of another host"),
+    ]:
+        given = {"GITHUB_TOKEN": token, "GH_TOKEN": token, "GH_CONFIG_DIR": str(caller), **extra}
+        seen = at.run(*args, variables=given)
+        empty = seen.config_dir is not None and pathlib.Path(seen.config_dir).is_dir()
+        empty = empty and not any(pathlib.Path(cast("str", seen.config_dir)).iterdir())
+        check(
+            seen.status == 0
+            and seen.runs == 1
+            and seen.token is None
+            and seen.github_token is None
+            and empty
+            and seen.args == args,
+            f"gh-token.py, {label}: the stub sees no GH_TOKEN, no GITHUB_TOKEN and a GH_CONFIG_DIR that is "
+            f"an empty directory: {seen.status}, {seen.token is None}, {seen.github_token is None}, "
+            f"{seen.config_dir}, {seen.stderr.strip()!r}",
+        )
+
+
+def gh_token_path_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """scripts/gh-token.py runs the real gh, never itself: with a copy of the wrapper named gh, and
+    a symbolic link named gh to a copy, first on the PATH, the stub runs once and the wrapper
+    starts no second run of itself (the counting `python3`)."""
+    token = f"T-d-{secrets.token_hex(4)}"
+    home = GhHome.fresh(tmp / "path", {"default": token})
+    copy = home.root / "copy" / "gh"
+    copy.parent.mkdir()
+    copy.write_bytes(GH_TOKEN.read_bytes())
+    copy.chmod(0o755)
+    linked = home.root / "linked"
+    linked.mkdir()
+    (linked / "gh").symlink_to(copy)
+    # The copy runs as itself; its shebang's python3 is the counting one, so one run is the start.
+    for label, first in [("the copy itself", copy.parent), ("a link to the copy", linked)]:
+        (home.root / "py.log").unlink(missing_ok=True)
+        seen = home.run("api", "user", first=first, program=[str(copy)])
+        py = home.root / "py.log"
+        starts = len(py.read_text().splitlines()) if py.exists() else 0
+        check(
+            seen.status == 0 and seen.runs == 1 and seen.token == token and starts == 1,
+            f"gh-token.py as gh, with {label} first on the PATH, runs the stub once and itself once: "
+            f"{seen.status}, {seen.runs}, {starts}, {seen.stderr.strip()[-200:]!r}",
+        )
+    lonely = GhHome.fresh(tmp / "lonely", {})
+    seen = lonely.run(
+        "api", "user", program=[str(copy)], variables={"PATH": f"{lonely.root / 'py'}:{copy.parent}"}
+    )
+    check(
+        seen.status == GH_REFUSED and seen.runs == 0 and seen.stderr.count("\n") == 1 and "gh" in seen.stderr,
+        f"gh-token.py with no gh on the PATH but itself exits 2 with one line: {seen.status}, "
+        f"{seen.stderr!r}",
+    )
+
+
+def gh_token_cases(check: Callable[[object, str], None]) -> None:
+    """The cases of scripts/gh-token.py, each in a scratch home of its own."""
+    with tempfile.TemporaryDirectory(prefix="harness-gh-token-") as name:
+        tmp = pathlib.Path(name)
+        gh_token_owner_cases(check, tmp)
+        gh_token_no_token_cases(check, tmp)
+        gh_token_path_cases(check, tmp)
+
+
 def probe_cases(check: Callable[[object, str], None]) -> None:
     """The cases of scripts/probe-agentbox.py, each in a scratch home of its own."""
     with tempfile.TemporaryDirectory(prefix="harness-probe-agentbox-") as name:
@@ -1543,6 +1819,7 @@ def selftest() -> tuple[int, int]:
         )
     spec_format(check)
     probe_cases(check)
+    gh_token_cases(check)
     with tempfile.TemporaryDirectory(prefix="harness-script-timeouts-") as tmp:
         timeout_cases(check, pathlib.Path(tmp))
     problems = fix_round_mutants(lambda path: (REPO / path).read_text())

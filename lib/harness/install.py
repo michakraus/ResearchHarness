@@ -25,6 +25,11 @@ What it installs:
                                       frontend under srt, and with `claude` chosen
                                       ~/.config/research-harness/sandbox/claude-inner-off.json;
                                       only where `[setup]` chooses a frontend
+  scripts/gh-token.py              -> ~/.local/bin/gh, mode 755, which runs gh with the token of
+                                      the repository's owner; with the launcher
+  the forge token store            -> ~/.config/research-harness/forge.gitconfig, mode 600, git's
+  ~/.config/research-harness/forge/   credential helpers of the store (lib/harness/forge.py);
+                                      only where the store exists
 
 Without `[setup]`, every frontend and the Julia environment are chosen. A layer of a frontend
 that is not chosen is neither planned nor removed; `harness doctor` warns about one that is still
@@ -75,7 +80,7 @@ from typing import Any, cast
 
 # `install_cases` imports this module too, and reads its names only when a case runs, so the cycle
 # resolves at import.
-from . import REPO, HarnessError, changing, frontends, fsutil, install_cases, outcome, sandbox, sources
+from . import REPO, HarnessError, changing, forge, frontends, fsutil, install_cases, outcome, sandbox, sources
 from . import profile as profile_module
 
 # The stamp that the `SessionStart` hook hooks/install-drift.py compares, at the top of the layer
@@ -404,6 +409,9 @@ def cmd_install(args):
         pathlib.Path.home(),
         sandbox.real_tmpdir(),
     )
+    # The git configuration of the forge token store belongs to no plan either; a refused store
+    # file exits 2 here, before anything is written.
+    forge_files = forge.plan_files(pathlib.Path.home())
     WIDTH = max(
         len(label)
         for label in [
@@ -411,7 +419,7 @@ def cmd_install(args):
             "python environment",
             *(f[3] for plan in plans for f in plan.files),
             *(r[0] for plan in plans for r in plan.refused),
-            *(f[3] for f in srt_files),
+            *(f[3] for f in [*srt_files, *forge_files]),
         ]
     )
     # Every target, the Julia environment's, each plan's and those of `srt_files`, is checked before
@@ -426,7 +434,7 @@ def cmd_install(args):
         for r in [
             check_files(julia_files if julia else []),
             *(check_files(plan.files) for plan in plans),
-            check_files(srt_files),
+            check_files([*srt_files, *forge_files]),
         ]
         if r
     ]
@@ -448,7 +456,8 @@ def cmd_install(args):
                 print(rest[1])
             changed[i] += change
     srt_changes = sum(
-        install_file(apply, data, dst, label, mode=mode) for dst, data, mode, label in srt_files
+        install_file(apply, data, dst, label, mode=mode)
+        for dst, data, mode, label in [*srt_files, *forge_files]
     )
     # The warnings go before the steps after the files, so that a step that exits 2 leaves them printed.
     for plan in plans:
@@ -457,6 +466,10 @@ def cmd_install(args):
     behind = behind_origin()
     if behind:
         warn(*behind)
+    forge_notice = forge.notice(pathlib.Path.home())
+    if forge_notice:
+        print()
+        print(forge_notice)
     for i, plan in enumerate(plans):
         for step in plan.after:
             changed[i] += step(args.apply)
