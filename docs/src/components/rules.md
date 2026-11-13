@@ -115,7 +115,8 @@ This rule gives the one layout of the tests of a Julia repository. It loads on t
 `**/test/**/*.jl`.
 
 The test dependencies are in `test/Project.toml`. `runtests.jl` holds no test: it selects the
-groups `core`, `slow`, `doctests`, `metal`, `cuda` and `broken`, and includes each file in a
+groups `core`, `slow`, `doctests`, `metal`, `cuda` and `broken`, and the groups of an optional
+`test/ci-groups.toml`, which CI runs as one job each, and includes each file in a
 `@safetestset`. A `core` file runs in 60 s or less. `test/<path>.jl` tests `src/<path>.jl`. A
 failing test is `@test_broken` with its issue on the same line, and so is a failing Aqua check.
 The rule also gives rules for compat entries, seeds, rounding and allocation assertions.
