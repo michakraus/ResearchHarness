@@ -42,6 +42,10 @@ allow = [
 #               `localhost`, a name of two or more labels or `*.` before one. The overlay
 #               `network.toml` beside the profile adds the user's hosts in a `[frontend.<name>]`
 #               table, and a deny entry without a port of the network lists removes an entry
+#   mach_lookup macOS services, by their exact name, that the frontend itself looks up over XPC
+#               or Mach; its file lists them in `network.allowMachLookup`, which srt adds to the
+#               services that its profile allows, and has no such key where the list is empty. A
+#               name holds no `*`: srt would read a trailing one as a prefix of names
 
 [frontend.claude]
 state = [
@@ -55,6 +59,7 @@ deny_write = []
 own = ["~/.claude.json", "~/.claude/.credentials.json", "~/.config/anthropic/credentials"]
 read_files = []
 network = []
+mach_lookup = []
 
 [frontend.opencode]
 state = ["~/.local/share/opencode", "~/.local/state/opencode", "~/.cache/opencode"]
@@ -70,6 +75,7 @@ read_files = [
     "~/.config/api-keys/tokenharbor-token",
 ]
 network = []
+mach_lookup = []
 
 [frontend.omp]
 state = ["~/.omp"]
@@ -82,6 +88,9 @@ own = [
 ]
 read_files = []
 network = []
+# oh-my-pi's typo detection (`spelling.typoDetection`) asks the macOS spell service for each typed
+# word; with the language set to "automatic by language", the service is this one.
+mach_lookup = ["mul-xpc (Apple)_OpenStep"]
 
 [frontend.antigravity]
 state = ["~/.gemini"]
@@ -90,3 +99,4 @@ own = ["~/.gemini/jetski-standalone-oauth-token"]
 read_files = []
 # agy's login exchanges its token here.
 network = ["oauth2.googleapis.com"]
+mach_lookup = []

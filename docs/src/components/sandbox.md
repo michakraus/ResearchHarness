@@ -35,6 +35,7 @@ files from both.
 | `frontend.<name>.own` | the template's deny entries that the frontend reads itself: its own credential files, by name, and a file that it reads only, which a write deny above it keeps read-only |
 | `frontend.<name>.read_files` | files below a read deny directory that the frontend reads and does not write |
 | `frontend.<name>.network` | hosts that the frontend itself reaches, which its file adds to the template's `allowedDomains` |
+| `frontend.<name>.mach_lookup` | macOS services, each by its exact name, that the frontend itself looks up over XPC or Mach |
 
 The read limit denies reads of the whole home directory and allows the paths of `read.allow`
 again. A path that the template denies stays hidden inside an allowed path: in `srt` a deny inside
@@ -81,10 +82,20 @@ with no leading zero. Each form is one that `srt` takes in `allowedDomains`, so 
 `srt` refuse the file. The user's own hosts for a frontend go in a `[frontend.<name>]` table of the
 overlay `network.toml` beside the profile ([The profile](../profile.md)), not in this file.
 
+`omp`'s `mach_lookup` is `mul-xpc (Apple)_OpenStep`, the macOS spell service. oh-my-pi's typo
+detection, the setting `spelling.typoDetection`, which is on by default, asks it for each word of
+the prompt. `srt`'s profile allows a fixed list of services, without this one, so the lookup fails
+and AppKit prints the refusal into the terminal. The service receives the prompt's words and can
+write learned words to `~/Library/Spelling`. The name holds the language of the system's spelling
+setting: `mul` is *automatic by language*, and a fixed language has another name, which needs its
+own entry. The other three frontends have an empty `mach_lookup`.
+
 `harness install` exits with status 2 on a policy file with an unknown key, a missing key or
 frontend, a value that is not a list of strings, a path that does not start with `~/`, a path
-with a `..` segment, which could leave the home directory, or a `network` entry of another form.
-The message names the key or the path.
+with a `..` segment, which could leave the home directory, a `network` entry of another form, or
+a `mach_lookup` entry that is empty or holds `*` or a control character: `srt` reads a trailing
+`*` as a prefix of names, so the policy names each service whole. The message names the key or
+the path.
 It also exits with status 2 on a `read_files` path that is itself an entry of the frontend's read
 denies, compared as paths after the `~` expansion, so `~/x/`, `~//x` and `~/./x` are `~/x`, and
 `~/` is the home directory; such a file goes in `own`.
@@ -99,6 +110,7 @@ and no other:
 | `network.allowedDomains` | the template's, in order; then the frontend's `network` of the policy; then that of the overlay's `[frontend.<name>]` table; without each entry of the policy or the overlay whose host, its `:port` cut off, an entry of `deniedDomains` without a port matches |
 | `network.deniedDomains` | the template's, or `[]` where it has none; `srt` refuses a file without the key |
 | `network.allowLocalBinding` | the template's |
+| `network.allowMachLookup` | the frontend's `mach_lookup`; no such key where it is empty, so the files of the other three frontends do not have it |
 | `filesystem.allowWrite` | the template's, without each entry at or below another frontend's `state` path; then the frontend's `state`; then the real path of `$TMPDIR`, where it is set and not empty |
 | `filesystem.denyWrite` | the template's, without the frontend's `own` and without each literal entry other than the home directory that lies strictly above a path of the frontend's `state`; then its `deny_write` |
 | `filesystem.denyRead` | the home directory; then the template's; then each path of `credentials.files`; without the frontend's `own`; each literal entry other than the home directory that lies strictly above a path of the frontend's `read_files` written as the entry followed by `/*`, in its place |
