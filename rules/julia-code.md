@@ -171,7 +171,8 @@ process before it decides anything. Report the trade with its numbers — lines 
 size — and do not reject a simplification on speed alone.
 
 Start every accumulator from `zero(T)` or `one(T)`, never from a literal such as `0.0`. A literal
-promotes `Float32` to `Float64`, and a `Float32` test then passes on the promoted value.
+promotes `Float32` to `Float64`, and a `Float32` test then passes on the promoted value. The
+ast-grep rule `float-accumulator` finds one in a `function … end` under `src/` and `ext/`.
 
 The stance covers the code the task names. It does not widen the task: the scope rule of
 `~/.claude/CLAUDE.md` still decides which files change.

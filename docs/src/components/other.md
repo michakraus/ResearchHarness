@@ -347,8 +347,8 @@ ast-grep uses the rule in every repository of the tree.
 
 ## The rules of severity error
 
-The five rules in the sections below have the severity `error`. Each one finds a defect in Julia
-code that a pattern over the syntax tree decides with a low risk of a false hit. The message of
+The six rules in the sections below have the severity `error`. Each one finds a defect in Julia
+code that a pattern over the syntax tree decides. The message of
 each rule names the fix. To silence one hit, write the comment `# ast-grep-ignore: <rule-id>` at
 the end of the line or on the line above. Two rules match a comment, and for them this works only
 in part: `docstring-comment` cannot be silenced, and `line-citation-comment` is silenced only from
@@ -405,10 +405,56 @@ The rule `debug-probe` finds a temporary probe in a file under `src/` or `ext/`:
 scripts and docs may print, so the rule has the `files:` globs `**/src/**/*.jl` and
 `**/ext/**/*.jl`.
 
+## `rules/test-throws-bare-type.yml`
+
+The rule `test-throws-bare-type` finds `@test_throws` whose first argument is a bare exception
+type, such as `@test_throws ArgumentError f(1)`. `Test.@test_throws` and the call form
+`@test_throws(DimensionMismatch, f(1))` count too. Such a test passes when any path raises that
+type: a later guard or a library call raises the same `ArgumentError`, so a mutant that drops the
+guard survives. Assert the guard's own message with an anchored pattern, `r"^…$"`.
+
+A type name is capitalised, so the rule takes a capitalised name or a qualified name that ends in
+one, such as `LinearAlgebra.SingularException`. A lower-case name is a variable that holds a
+pattern, and is not a hit; nor is a string, a pattern or an exception value such as
+`ArgumentError("bad")`. The rule has the `files:` glob `**/test/**/*.jl`.
+
+## The rules of severity warning
+
+The two rules in the sections below have the severity `warning`. The pre-commit stage of ast-grep
+prints each of their hits as advisory and never blocks a commit on it. The comment
+`# ast-grep-ignore: <rule-id>` silences a hit as it does for a rule of severity `error`.
+
+## `rules/unspecialised-callable.yml`
+
+The rule `unspecialised-callable` finds a parameter typed `::Function`, `::Base.Function`,
+`::Callable` or `::Base.Callable` that the method only passes on or stores. Julia does not
+specialise the method on such a parameter, so the call that passes it on costs a runtime dispatch,
+and bytes that an `@allocated` reading sees. Write `f::F` with `where {F <: Base.Callable}`.
+
+The parameter is positional, optional or keyword, of a definition of the long form or the short
+form, also with a return type or a `where` clause. The rule takes the nearest definition around
+the parameter, and a call of the parameter's name in it, as `f(…)` or `f.(…)`, makes it no hit:
+Julia specialises a method on a function argument that its body calls. A call inside a closure or
+a nested definition counts too. A parameter with no name, a type parameter `F <: Function`, a
+`Union` and a field of a struct are not hits. The rule has the `files:` globs `**/src/**/*.jl`
+and `**/ext/**/*.jl`.
+
+## `rules/float-accumulator.yml`
+
+The rule `float-accumulator` finds an accumulator that starts from a `Float64` literal, as in
+`s = 0.0`, when the same function updates it with `+=`, `-=`, `*=` or `/=`, also in the dotted
+form. The literal promotes a `Float32` sum to `Float64`, so a `Float32` test passes on the
+promoted value. Start the accumulator from `zero(T)` or `one(T)`.
+
+A `Float32` literal such as `0f0` is not a hit, and neither is a variable that the function does
+not update in place. The rule looks inside a `function … end` only, so it does not see a
+short-form definition or code at top level. It has the `files:` globs `**/src/**/*.jl` and
+`**/ext/**/*.jl`.
+
 ## The rule tests
 
 The directory `rule-tests/` holds the rule tests of ast-grep: one file `<rule-id>-test.yml` for
-each rule of severity `error`. Each
+each rule of severity `error` or `warning`. Each
 file holds `valid` snippets, which the rule must not match, and `invalid` snippets, which it must
 match. `ast-grep test` runs them:
 
@@ -418,9 +464,11 @@ ast-grep test -c ~/Research/sgconfig.yml --custom-languages allow --skip-snapsho
 
 Without `--custom-languages allow`, ast-grep ignores the language `julia`, and each test that
 expects no hit passes. A snippet has no path, so a rule test cannot test the `files:` globs of
-`debug-probe`. The directory `rule-tests/scope/` holds the file `probe.jl`, with one `@show x`,
-under `src/`, `ext/`, `test/` and `scripts/`. A scan of `scope/` with `debug-probe` must hit
-exactly `src/probe.jl` and `ext/probe.jl`.
+`debug-probe` and `test-throws-bare-type`. The directory `rule-tests/scope/` holds the file
+`probe.jl`, with one `@show x`, and the file `throws.jl`, with one
+`@test_throws ArgumentError f(1)`, under `src/`, `ext/`, `test/` and `scripts/`. A scan of
+`scope/` with `debug-probe` must hit exactly `src/probe.jl` and `ext/probe.jl`. A scan with
+`test-throws-bare-type` must hit exactly `test/throws.jl`, with the severity `error`.
 
 ### The `ast-grep` job of CI
 
@@ -429,8 +477,9 @@ workflow names `ast-grep/**`, so a change of a rule or a rule test alone starts 
 installs the release 0.51.1 of ast-grep, with its SHA-256, and builds the parser with
 `build-julia.sh`. `research-sgconfig.yml` names its paths relative to `~/Research`, so the job
 writes a configuration with the checkout's absolute paths. Then it runs `ast-grep test` and the
-scan of `rule-tests/scope/`. The job fails when a test fails, when a test names a rule that does
-not exist, or when the scan does not hit exactly `src/probe.jl` and `ext/probe.jl`.
+two scans of `rule-tests/scope/`. The job fails when a test fails, when a test names a rule that
+does not exist, when a scan does not hit exactly the files that the section above names, or when
+a hit of `test-throws-bare-type` does not have the severity `error`.
 
 ## `.gitleaks.toml`
 

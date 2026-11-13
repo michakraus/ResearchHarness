@@ -1,0 +1,13 @@
+id: test-throws-bare-type
+valid:
+  - "@test_throws r\"^bad$\" f(1)"
+  - "@test_throws \"bad\" f(1)"
+  - "@test_throws ArgumentError(\"bad\") f(1)"
+  - "@test_throws(ErrorException(\"x\"), f(1))"
+  - "@test_throws re_guard f(1)"
+  - "@test_throws Messages.re_guard f(1)"
+invalid:
+  - "@test_throws ArgumentError f(1)"
+  - "@test_throws LinearAlgebra.SingularException f(1)"
+  - "@test_throws(DimensionMismatch, f(1))"
+  - "Test.@test_throws MethodError f(1)"

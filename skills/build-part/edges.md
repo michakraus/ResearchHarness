@@ -59,7 +59,7 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   two-times guard is dropped, and a named mutant that the test caught survives (P25 verify 2,
   *Rewrite the reduced basis packages*). **Assert the refusing guard's own phrase, not the type
   alone.** The mirror of the entry above: there an earlier check hides the case, here a later one
-  hides the mutant
+  hides the mutant. The ast-grep rule `test-throws-bare-type` finds a bare type under `test/`
 - **a guard's phrase that a library error also writes:** Base's matrix-product `DimensionMismatch`
   says "a matrix of size …" too, so a test that asserts that phrase as a substring passes when the
   guard is removed and a later `mul!` raises, and the mutant that drops the guard survives. A phrase
@@ -429,7 +429,8 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `rhs::Base.Callable` is not specialised on the function it is given, so its runtime dispatch costs
   bytes that an exact `@allocated` comparison against the caller's typed path sees — 16 to 800 B per
   call — and those bytes depend on what the process ran before. Type the parameter as
-  `rhs::F) where {F <: Base.Callable}` (P41, *Rewrite the reduced basis packages*)
+  `rhs::F) where {F <: Base.Callable}`; the ast-grep rule `unspecialised-callable` finds such a
+  parameter (P41, *Rewrite the reduced basis packages*)
 - a copy removed by preallocating the result with `similar(operand, …)`: it pins the element type of
   that operand, so a mixed input loses the type the product would have promoted — a Float32 basis with
   finite Float64 coordinates returned `±Inf Float32` instead of a finite Float64 result. Allocate with

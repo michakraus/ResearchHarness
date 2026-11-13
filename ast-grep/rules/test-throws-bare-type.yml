@@ -1,0 +1,28 @@
+# @test_throws with a bare exception type passes when any path raises that type: a later guard, or
+# a library call, raises the same ArgumentError, so a mutant that drops the guard survives. The
+# rule finds @test_throws (also Test.@test_throws, and the call form) whose first argument is a
+# name or a qualified name.
+id: test-throws-bare-type
+language: julia
+severity: error
+message: "@test_throws asserts the exception type alone; assert the guard's own message with an anchored pattern (r\"^…$\")"
+files:
+  - "**/test/**/*.jl"
+utils:
+  test-throws:
+    kind: macrocall_expression
+    any:
+      - has: { kind: macro_identifier, regex: '^@test_throws$' }
+      - has:
+          kind: field_expression
+          has: { kind: macro_identifier, regex: '^@test_throws$' }
+rule:
+  matches: test-throws
+  has:
+    any: [ { kind: macro_argument_list }, { kind: argument_list } ]
+    has:
+      nthChild: 1
+      # A type name is capitalised; a lower-case name is a variable that holds a pattern.
+      any:
+        - { kind: identifier, regex: '^[A-Z]' }
+        - { kind: field_expression, regex: '\.[A-Z]\w*$' }
