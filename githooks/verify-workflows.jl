@@ -10,7 +10,8 @@
 #
 #   1. CI.yml, dependabot.yml, TagBot.yml and codecov.yml are byte-identical to the templates in
 #      workflows/. They are installed by copy and are not parameterised, so anything other than
-#      equality is drift. This is the check that makes the required-status-check list static.
+#      equality is drift. This is the check that makes the required-status-check list static,
+#      apart from the test groups of check 6.
 #      TagBot.yml is the one asymmetric case: byte-identical under Packages/, and asserted
 #      ABSENT under Experiments/, none of which is registered in General.
 #   1b. The same set on the DEFAULT branch, but only for a repository whose working tree is

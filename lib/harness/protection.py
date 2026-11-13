@@ -14,12 +14,13 @@ Where to run it. Run this yourself, not from an agent shell. In the agent sandbo
 XPC failure, not a certificate problem. A call that fails that way is retried four times.
 
 Required checks. There are two static lists of required checks. The packages and experiments
-with a CI.yml require REQUIRED_CHECKS. CI.yml is byte-identical in every repository, its matrix
-is `version: [min, 1]` rather than version numbers, and its job names carry no event suffix. `min`
-resolves each package's own `[compat] julia` floor, so one matrix tests the right versions
-everywhere, and the check names never change. A required check that never reports leaves every
-pull request pending, unmergeable, with no error anywhere; so the list is correct only while the
-workflows are canonical, and the subcommand refuses to run unless `verify-workflows.jl` passes.
+with a CI.yml and no test/ci-groups.toml require REQUIRED_CHECKS. CI.yml is byte-identical in
+every repository, its matrix is `version: [min, 1]` rather than version numbers, and its job
+names carry no event suffix. `min` resolves each package's own `[compat] julia` floor, so one
+matrix tests the right versions everywhere, and the check names never change. A required check
+that never reports leaves every pull request pending, unmergeable, with no error anywhere; so the
+list is correct only while the workflows are canonical, and the subcommand refuses to run unless
+`verify-workflows.jl` passes.
 
 A repository with test/ci-groups.toml runs each test job once per group, and CI.yml then ends
 each job name with ` - <group>`. Its matrix is an expression that reads the file at run time,

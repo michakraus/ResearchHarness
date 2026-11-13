@@ -1434,9 +1434,9 @@ your own terminal: in a sandboxed session, only the first `gh` call of a process
 Its cases check `ruleset_problem` against the ruleset as GitHub returns it, against one break
 of each check, and with the ruleset of each list judged against the other list. They list the
 repositories with a scratch research root, with and without a group file, check that
-`required_checks` refuses each malformed group file, and run the subcommand there with `gh` replaced. A case
-reads `test.yml` with `workflow_checks` and fails when `HARNESS_CHECKS` differs from it, so a
-renamed or an added job fails `harness test`. The sweep does not run this subcommand, because it
+`required_checks` refuses each malformed group file, and run the subcommand there with `gh`
+replaced. A case reads `test.yml` with `workflow_checks` and fails when `HARNESS_CHECKS` differs
+from it, so a renamed or an added job fails `harness test`. The sweep does not run this subcommand, because it
 needs `gh` with a login.
 
 ### `fmt.py`

@@ -282,9 +282,9 @@ file fits every repository.
 | `doctest` | `doctest` of the package on Julia `1` on Ubuntu, where `docs/Project.toml` exists |
 
 The matrix names Julia versions by alias, `min` and `1`, so the names of the checks stay the same
-in every repository. Branch protection needs those fixed names. Only the entry of Julia `1` on
-Ubuntu measures coverage and sends it to Codecov. A repository that needs another job gets its
-own extra workflow file, not an edit of this one.
+in every repository without test groups. Branch protection needs those fixed names. Only the entry
+of Julia `1` on Ubuntu measures coverage and sends it to Codecov, once per test group. A repository
+that needs another job gets its own extra workflow file, not an edit of this one.
 
 ### Test groups
 
@@ -342,7 +342,7 @@ condition stops it on every other issue comment.
 It sets a threshold of 1 % on both the project status and the patch status. Without the
 threshold, Codecov fails a pull request for any decrease of the coverage. With it, a real
 regression still fails, but a small drift does not. The coverage comes from one entry of the
-matrix of `CI.yml`.
+matrix of `CI.yml`, or from that entry of each test group, which Codecov merges.
 
 ## `workflows/dependabot.yml`
 
@@ -375,7 +375,8 @@ It checks these points:
 6. A `test/ci-groups.toml` lists distinct group names, each group has an `if` in
    `test/runtests.jl`, and `GROUPS` runs exactly these groups for empty `ARGS`.
 
-It prints the required checks of each repository that has a `test/ci-groups.toml`. It also checks that a repository of `docs_additions` keeps the body of `Documenter.yml`. It
+It prints the required checks of each repository that has a `test/ci-groups.toml`. It also
+checks that a repository of `docs_additions` keeps the body of `Documenter.yml`. It
 reports the repositories whose `doctest` job skips itself. It exits with status 1 when a
 repository deviates. It
 reads the profile for `docs_exceptions` and `docs_additions`.

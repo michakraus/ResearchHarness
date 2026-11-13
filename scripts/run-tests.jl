@@ -16,10 +16,11 @@
 # run with any selection. A changed `Project.toml` or `test/Project.toml` runs `full`.
 # `select` prints what `affected` would run, and runs nothing. `full` runs `Pkg.test()`. `list`
 # prints the test files, their groups and their labels.
-# A `<unit>` is a group (`core`, `slow`, `doctests`, `metal`, `cuda`, `broken`), the path of a
-# test file, or a substring of a testset label. The path is relative to `test/` (`utils.jl`), to
-# the package root (`test/utils.jl`), or absolute. A unit that names no test file is an error.
-# `affected` selects from `core` alone, so it never runs `doctests`.
+# A `<unit>` is a group (`core`, `slow`, `doctests`, `metal`, `cuda`, `broken`, or a group of
+# `test/ci-groups.toml`), the path of a test file, or a substring of a testset label. The path is
+# relative to `test/` (`utils.jl`), to the package root (`test/utils.jl`), or absolute. A unit
+# that names no test file is an error. `affected` selects from `core` alone, so it never runs
+# `doctests`.
 #
 # A selection runs in one fresh process through `TestEnv`, which builds the test environment
 # outside the package directory, each file in its own module under a `@testset` of its label, and

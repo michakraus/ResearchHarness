@@ -11,13 +11,14 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
 - **The test dependencies are in `test/Project.toml`.** `Project.toml` has no `[extras]` and no
   `[targets]`.
 - **`runtests.jl` holds no test.** It holds `using SafeTestsets`,
-  `const GROUPS = isempty(ARGS) ? ["core", "slow"] : ARGS` (or the platform line below), and one
+  `const GROUPS = isempty(ARGS) ? ["core", "slow"] : ARGS` (or a line below), and one
   `if "<group>" in GROUPS` per group. Each `if` holds only
   `@safetestset "<label>" include("<path>")` lines.
-- **The groups are `core`, `slow`, `doctests`, `metal`, `cuda` and `broken`.** Empty `ARGS` runs
-  `core` and `slow`. `doctests` holds `test/quality/doctests.jl` and no other file. The CI
-  Doctests job does not run this file: it runs the doctests itself, through `doctest`. A device
-  group runs in its own CI workflow. No test file reads `ARGS` or `ENV` to decide what runs.
+- **The groups are `core`, `slow`, `doctests`, `metal`, `cuda` and `broken`**, and the groups of
+  `test/ci-groups.toml` below. Empty `ARGS` runs `core` and `slow`, or the groups of that file.
+  `doctests` holds `test/quality/doctests.jl` and no other file. The CI Doctests job does not run
+  this file: it runs the doctests itself, through `doctest`. A device group runs in its own CI
+  workflow. No test file reads `ARGS` or `ENV` to decide what runs.
 - **A suite too long for one CI job splits into the groups of `test/ci-groups.toml`**:
   `groups = ["core", "slow", "properties", "long"]`. CI then runs one test job per group, and the
   required checks end in ` - <group>`. The file lists `core`, `slow` and the repository's own

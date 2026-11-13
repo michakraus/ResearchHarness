@@ -21,7 +21,7 @@ CLI frontends, and the update job.
 
 `test-layout.jl` parses the test layout of a Julia repository and checks it against the test
 convention. The rule `julia-tests` (`rules/julia-tests.md`) describes the convention. The rules
-have the tags D1 to D10, and `using`, `seed`, `label` and `compat`.
+have the tags D1 to D10, and `using`, `seed`, `label`, `compat` and `ci-groups`.
 
 ```bash
 julia --startup-file=no test-layout.jl --check <repository> ...
