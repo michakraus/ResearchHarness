@@ -86,7 +86,8 @@ function excluded(base, dependent)
     path = joinpath(dependent, "Project.toml")
     head = readtoml(joinpath(base, "Project.toml"))
     name, version = get(head, "name", nothing), get(head, "version", nothing)
-    (name isa String && version isa String && tryparse(VersionNumber, version) !== nothing) ||
+    (name isa String && version isa String &&
+     tryparse(VersionNumber, version) !== nothing) ||
         fail("$(joinpath(base, "Project.toml")) has no name or no valid version")
     compat = get(get(readtoml(path), "compat", Dict()), name, nothing)
     compat === nothing || compat isa String ||
