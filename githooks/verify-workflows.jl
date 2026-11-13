@@ -33,6 +33,11 @@
 #   5. Which repositories the doctest job will skip - those with no docs/Project.toml. The job is
 #      byte-identical everywhere and skips itself, so this is reported rather than treated as an
 #      error, but a silent skip is worse than a loud one.
+#   6. A repository's test/ci-groups.toml, where it has one, against its test/runtests.jl, with the
+#      rules of scripts/test-layout.jl: the file lists distinct group names, each group has an
+#      `if` there, and GROUPS runs exactly those groups for an empty ARGS, so the CI jobs together
+#      run what Pkg.test() runs. CI.yml runs one test job per group, and harness ci-protection
+#      requires a check per group, so a group file that does not match the suite splits it wrong.
 
 # The harness's Julia environment, which `harness install --apply` instantiates from
 # Project.toml; first in LOAD_PATH, so no caller needs `--project`.
@@ -42,6 +47,11 @@ end
 using TOML
 using YAML
 
+# The parser of the test layout and its rules for the test groups, for check 6.
+module Layout
+include(joinpath(@__DIR__, "..", "scripts", "test-layout.jl"))
+end
+
 const ROOT = get(ENV, "RESEARCH_ROOT", joinpath(homedir(), "Research"))
 const TEMPLATES = joinpath(@__DIR__, "workflows")
 const PROFILE = TOML.parsefile(
@@ -50,15 +60,18 @@ const PROFILE = TOML.parsefile(
 
 const QUIET = "--quiet" in ARGS
 
-# Job names. These are the required status checks, modulo the matrix expansion below.
-const TEST_JOB_NAME = "Julia \${{ matrix.version }} - \${{ matrix.os }} - \${{ matrix.arch }}"
+# Job names. These are the required status checks, modulo the matrix expansion below. The test job
+# ends its name with ` - <group>` for a group of test/ci-groups.toml, and only for one.
+const TEST_JOB_NAME = "Julia \${{ matrix.version }} - \${{ matrix.os }} - \${{ matrix.arch }}\${{ matrix.group && format(' - {0}', matrix.group) || '' }}"
 const DOCTEST_JOB_NAME = "Doctests - \${{ matrix.os }}"
 
 const VERSIONS = ["min", "1"]
 const OSES = ["ubuntu-latest", "macOS-latest", "windows-latest"]
 
-required_checks() = vcat(
-    ["Julia $v - $o - default" for v in VERSIONS for o in OSES],
+"The required checks of a repository with the test groups `groups`, or with none for `nothing`."
+required_checks(groups = nothing) = vcat(
+    ["Julia $v - $o - default$(g === nothing ? "" : " - $g")"
+     for v in VERSIONS for o in OSES for g in something(groups, [nothing])],
     ["Doctests - ubuntu-latest"],
 )
 
@@ -337,6 +350,7 @@ function check_repo(
         findings::Vector{Finding},
         skips::Vector{String},
         offbranch::Vector{OffBranch},
+        grouped::Dict{String, Vector{String}},
 )
     name = basename(dir)
     wf = joinpath(dir, ".github", "workflows")
@@ -472,6 +486,20 @@ function check_repo(
     # skips itself where there is no documentation environment, but a silent skip is worse than a
     # loud one.
     tracked(dir, "docs/Project.toml") || push!(skips, name)
+
+    # 6. the test groups, where the repository has test/ci-groups.toml
+    if isfile(joinpath(dir, "test", "ci-groups.toml"))
+        runtests = Layout.layout(dir).runtests
+        if runtests === nothing
+            fail("test/ci-groups.toml exists, and test/runtests.jl does not exist or does not parse")
+        else
+            for (rule, what) in Layout.groups_violations(dir, runtests)
+                fail("[$rule] $what")
+            end
+        end
+        groups = first(Layout.ci_groups(dir))
+        groups === nothing || (grouped[name] = groups)
+    end
     return nothing
 end
 
@@ -482,16 +510,24 @@ function main()
     findings = Finding[]
     skips = String[]
     offbranch = OffBranch[]
+    grouped = Dict{String, Vector{String}}()
     for dir in all
-        check_repo(dir, findings, skips, offbranch)
+        check_repo(dir, findings, skips, offbranch, grouped)
     end
 
     if !QUIET
-        println("Required status checks (identical in every repository):")
+        println("Required status checks (identical in every repository without test/ci-groups.toml):")
         for c in required_checks()
             println("    ", c)
         end
         println()
+        for (repo, groups) in sort!(collect(grouped); by = first)
+            println("Required status checks of $repo, from test/ci-groups.toml:")
+            for c in required_checks(groups)
+                println("    ", c)
+            end
+            println()
+        end
     end
 
     if !isempty(skips)

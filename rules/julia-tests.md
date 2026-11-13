@@ -18,6 +18,14 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
   `core` and `slow`. `doctests` holds `test/quality/doctests.jl` and no other file. The CI
   Doctests job does not run this file: it runs the doctests itself, through `doctest`. A device
   group runs in its own CI workflow. No test file reads `ARGS` or `ENV` to decide what runs.
+- **A suite too long for one CI job splits into the groups of `test/ci-groups.toml`**:
+  `groups = ["core", "slow", "properties", "long"]`. CI then runs one test job per group, and the
+  required checks end in ` - <group>`. The file lists `core`, `slow` and the repository's own
+  groups, each a name of lower-case letters and digits, and none of `doctests`, `metal`, `cuda`
+  and `broken`. Each listed group has an `if` in `runtests.jl`, and empty `ARGS` runs exactly
+  them: `const GROUPS = isempty(ARGS) ? ["core", "slow", "properties", "long"] : ARGS`, in the
+  order of the file, so `Pkg.test()` still runs every group. A `metal` group appends `"metal"`
+  to the Apple list of the platform line. `verify-workflows.jl` checks the file too.
 - **A repository with a `metal` group has the platform line, and only such a repository has it:**
   `const GROUPS = isempty(ARGS) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? ["core", "slow", "metal"] : ["core", "slow"]) : ARGS`.
   Empty `ARGS` on Apple silicon then runs `metal` too. The check compares both lines as

@@ -276,14 +276,42 @@ file fits every repository.
 
 | job | what it runs |
 |:--|:--|
-| `test` | the tests on Julia `min` and `1`, on Ubuntu, macOS and Windows; `pre` and `nightly` on Ubuntu, as information only |
-| `downgrade` | the tests with each direct dependency of `Project.toml` and `test/Project.toml` at the lower bound of its `[compat]` entry, the two resolved together, on Julia `min`; information only |
+| `groups` | reads `test/ci-groups.toml` and gives the list of test groups to the two jobs below; one empty group where the file does not exist |
+| `test` | the tests on Julia `min` and `1`, on Ubuntu, macOS and Windows, once per test group; `pre` and `nightly` on Ubuntu, the whole suite, as information only |
+| `downgrade` | the tests with each direct dependency of `Project.toml` and `test/Project.toml` at the lower bound of its `[compat]` entry, the two resolved together, on Julia `min`, once per test group; information only |
 | `doctest` | `doctest` of the package on Julia `1` on Ubuntu, where `docs/Project.toml` exists |
 
 The matrix names Julia versions by alias, `min` and `1`, so the names of the checks stay the same
 in every repository. Branch protection needs those fixed names. Only the entry of Julia `1` on
 Ubuntu measures coverage and sends it to Codecov. A repository that needs another job gets its
 own extra workflow file, not an edit of this one.
+
+### Test groups
+
+A repository whose suite is too long for one job lists its test groups in `test/ci-groups.toml`.
+The file is in the repository, so `CI.yml` stays identical in every repository:
+
+```toml
+# The test groups that CI runs as separate jobs.
+groups = ["core", "slow", "properties", "long"]
+```
+
+The `test` and `downgrade` jobs then run once per group, with the group as the argument of
+`Pkg.test`, and each job name ends with ` - <group>`, such as
+`Julia min - ubuntu-latest - default - long`. Without the file, the jobs run the whole suite, and
+the job names do not change. Each group of Julia `1` on Ubuntu sends its own part of the coverage;
+Codecov merges the parts of one commit. `pre` and `nightly` run the whole suite in one job either
+way.
+
+The file lists `core`, `slow` and the repository's own groups, and `GROUPS` in `runtests.jl`
+runs exactly these groups for empty `ARGS`, so `Pkg.test()` and the `pre-push` hook still run
+every group. The rule `julia-tests`, `scripts/test-layout.jl` and `verify-workflows.jl` check
+this. `harness ci-protection` reads the file and requires one check per group and version and
+system.
+
+A pull request that adds or changes the file reports the new check names, but the ruleset still
+requires the old ones. Merge that pull request with the admin bypass, and then run
+`harness ci-protection --apply`.
 
 ## `workflows/Documenter.yml`
 
@@ -344,8 +372,10 @@ It checks these points:
 3. The job names of `CI.yml` are the names of the required checks.
 4. No `Register.yml`, `Documentation.yml`, `CompatHelper.yml` or other forbidden file exists.
 5. Each `uses:` names the expected major version of its action.
+6. A `test/ci-groups.toml` lists distinct group names, each group has an `if` in
+   `test/runtests.jl`, and `GROUPS` runs exactly these groups for empty `ARGS`.
 
-It also checks that a repository of `docs_additions` keeps the body of `Documenter.yml`. It
+It prints the required checks of each repository that has a `test/ci-groups.toml`. It also checks that a repository of `docs_additions` keeps the body of `Documenter.yml`. It
 reports the repositories whose `doctest` job skips itself. It exits with status 1 when a
 repository deviates. It
 reads the profile for `docs_exceptions` and `docs_additions`.

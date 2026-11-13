@@ -635,7 +635,9 @@ harness ci-protection [--apply] [--remove-classic]
 ```
 
 Protects the default branch of each repository that has a `CI.yml` with a GitHub ruleset named
-`main`, which requires the status checks of the canonical `CI.yml`. Then it protects the Harness
+`main`, which requires the status checks of the canonical `CI.yml`. A repository with a
+`test/ci-groups.toml` requires one check per test group, version and system, as `CI.yml` names its
+jobs there. Then it protects the Harness
 itself, the checkout that runs the command, with the same ruleset; there the required checks are
 the jobs of `.github/workflows/test.yml` that report on every pull request and are not warnings.
 It also turns on auto-merge and the deletion of merged branches. It reads the current state first
@@ -1415,7 +1417,8 @@ an empty fixture directory.
 
 The subcommand `harness ci-protection [--remove-classic] [--apply]`. It protects the default
 branch of each repository with a `CI.yml` with a GitHub ruleset named `main`: no deletion, no
-force push, and the required status checks of the canonical `CI.yml`, `REQUIRED_CHECKS`. Last it
+force push, and the required status checks of the canonical `CI.yml`: `REQUIRED_CHECKS`, or with a
+`test/ci-groups.toml` the list of `required_checks`, each `Julia` check once per test group. Last it
 protects the Harness itself, the checkout that runs the command, with the same ruleset and its own
 list, `HARNESS_CHECKS`: the jobs of `.github/workflows/test.yml` that report on every pull request
 and are not warnings. `julia.yml` and `docs.yml` have path filters, so a check of theirs would
@@ -1430,7 +1433,8 @@ your own terminal: in a sandboxed session, only the first `gh` call of a process
 
 Its cases check `ruleset_problem` against the ruleset as GitHub returns it, against one break
 of each check, and with the ruleset of each list judged against the other list. They list the
-repositories with a scratch research root, and run the subcommand there with `gh` replaced. A case
+repositories with a scratch research root, with and without a group file, check that
+`required_checks` refuses each malformed group file, and run the subcommand there with `gh` replaced. A case
 reads `test.yml` with `workflow_checks` and fails when `HARNESS_CHECKS` differs from it, so a
 renamed or an added job fails `harness test`. The sweep does not run this subcommand, because it
 needs `gh` with a login.
