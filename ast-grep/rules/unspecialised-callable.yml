@@ -1,0 +1,65 @@
+# A method parameter typed ::Function or ::Base.Callable is not specialised on the function it is
+# given when the method only passes it on, so the call costs a runtime dispatch and bytes. The rule
+# finds a named parameter (positional, optional or keyword) of a definition, long or short form,
+# whose type is Function, Callable, Base.Function or Base.Callable, when the body of that
+# definition holds no call of the parameter's name, as f(…) or f.(…). Julia specialises a method
+# on a function argument that its body calls, so such a parameter is no hit.
+id: unspecialised-callable
+language: julia
+severity: warning
+message: "a parameter typed ::Function or ::Base.Callable is not specialised; write f::F with where {F <: Base.Callable}"
+files:
+  - "**/src/**/*.jl"
+  - "**/ext/**/*.jl"
+utils:
+  # The position of a definition's call head: the signature of a function, the first child of a
+  # where clause or a return type in that position, or the left side of a short-form definition.
+  head-position:
+    any:
+      - inside: { kind: signature }
+      - all:
+          - nthChild: 1
+          - inside: { kind: where_expression, matches: head-position }
+      - all:
+          - nthChild: 1
+          - inside: { kind: typed_expression, matches: head-position }
+      - all:
+          - nthChild: 1
+          - inside: { kind: assignment, not: { inside: { kind: argument_list } } }
+  parameter-list:
+    kind: argument_list
+    inside: { kind: call_expression, matches: head-position }
+  # A long-form definition, or a short-form one: an assignment whose left side is a call, a where
+  # clause or a return type. The assignment of an optional or a keyword parameter sits directly in
+  # the parameter list, so it is not a definition.
+  definition:
+    any:
+      - kind: function_definition
+      - all:
+          - kind: assignment
+          - has:
+              nthChild: 1
+              any: [ { kind: call_expression }, { kind: where_expression }, { kind: typed_expression } ]
+          - not: { inside: { kind: argument_list } }
+  # A call of the parameter's name, µN, as f(…) or f.(…).
+  calls-parameter:
+    any: [ { kind: call_expression }, { kind: broadcast_call_expression } ]
+    has: { nthChild: 1, kind: identifier, pattern: µN }
+rule:
+  kind: typed_expression
+  all:
+    - has: { nthChild: 1, kind: identifier, pattern: µN }
+    # The nearest definition around the parameter calls it nowhere, nested definitions included.
+    - not:
+        inside:
+          stopBy: { matches: definition }
+          matches: definition
+          has: { stopBy: end, matches: calls-parameter }
+    - has:
+        nthChild: { position: 1, reverse: true }
+        any:
+          - { kind: identifier, regex: '^(Function|Callable)$' }
+          - { kind: field_expression, regex: '^Base\.(Function|Callable)$' }
+    - any:
+        - inside: { matches: parameter-list }
+        - inside: { kind: assignment, inside: { matches: parameter-list } }

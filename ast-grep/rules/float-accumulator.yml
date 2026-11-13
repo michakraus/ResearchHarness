@@ -1,0 +1,25 @@
+# An accumulator started from a float literal promotes a Float32 sum to Float64, so a Float32 test
+# passes on the promoted value. The rule finds `s = 0.0` (any Float64 literal; a Float32 literal
+# such as 0f0 is left alone) when the same function updates s with +=, -=, *= or /=.
+id: float-accumulator
+language: julia
+severity: warning
+message: an accumulator starts from a Float64 literal; start it from zero(T) or one(T) so a Float32 input stays Float32
+files:
+  - "**/src/**/*.jl"
+  - "**/ext/**/*.jl"
+rule:
+  kind: assignment
+  all:
+    - has: { nthChild: 1, kind: identifier, pattern: µS }
+    - has: { nthChild: 2, kind: operator, regex: '^=$' }
+    - has: { nthChild: 3, kind: float_literal, not: { regex: '[fF]' } }
+    - inside:
+        stopBy: end
+        kind: function_definition
+        has:
+          stopBy: end
+          kind: compound_assignment_expression
+          all:
+            - has: { nthChild: 1, pattern: µS }
+            - has: { nthChild: 2, kind: operator, regex: '^\.?[-+*/]=$' }

@@ -139,3 +139,14 @@ jobs:
           hits=$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$RUNNER_TEMP/scope.json" | sed 's|^\./||' | sort -u | tr '\n' ' ')
           echo "hits: $hits"
           test "$hits" = "ext/probe.jl src/probe.jl "
+      # The same check for test-throws-bare-type, which must hit exactly the file under test/. The
+      # rule blocks a commit, so the step also fails when a hit does not have the severity error.
+      - name: Scope of test-throws-bare-type
+        working-directory: ast-grep/rule-tests/scope
+        run: |
+          ast-grep scan -c "$RUNNER_TEMP/sgconfig.yml" --custom-languages allow --filter test-throws-bare-type \
+            --json=stream . > "$RUNNER_TEMP/scope-throws.json" || true
+          hits=$(sed -n 's/.*"file":"\([^"]*\)".*/\1/p' "$RUNNER_TEMP/scope-throws.json" | sed 's|^\./||' | sort -u | tr '\n' ' ')
+          echo "hits: $hits"
+          test "$hits" = "test/throws.jl "
+          ! grep -v '"severity":"error"' "$RUNNER_TEMP/scope-throws.json"

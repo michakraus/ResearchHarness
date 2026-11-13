@@ -1,0 +1,13 @@
+id: float-accumulator
+valid:
+  - "function f(x)\n    s = zero(eltype(x))\n    for v in x\n        s += v\n    end\n    s\nend"
+  - "function f(x)\n    s = 0f0\n    for v in x\n        s += v\n    end\n    s\nend"
+  - "function f(x)\n    s = 0.0\n    t = 0\n    t += 1\n    s\nend"
+  - "s = 0.0\nfor v in x\n    s += v\nend"
+  - "function f!(s, x)\n    s .= 0.0\n    s .+= x\n    s\nend"
+invalid:
+  - "function f(x)\n    s = 0.0\n    for v in x\n        s += v\n    end\n    s\nend"
+  - "function f(x)\n    p = 1.0\n    for v in x\n        p *= v\n    end\n    p\nend"
+  - "function f(x)\n    t = 0.0\n    while true\n        t -= 1e-3\n    end\nend"
+  - "function f(x)\n    q = 1.0\n    for v in x\n        q /= v\n    end\n    q\nend"
+  - "function f(x)\n    s = 0.0\n    s .+= x\n    s\nend"
