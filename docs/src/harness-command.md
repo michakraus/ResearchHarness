@@ -1251,9 +1251,9 @@ and the sweep runs the dry runs and the `--apply` of its subcommands.
 ### `githooks_cases.py`
 
 The test cases of the dependents workflow and of `harness workflows`, which the `selftest` of
-`githooks.py` runs. It has no subcommand and no `selftest` of its own. Each case group builds a
-fixture research root below a temporary directory, with git repositories under `Packages/` and
-`Experiments/` and the profile of the case.
+`githooks.py` runs. It has no subcommand and no `selftest` of its own. The cases of the two
+subcommands and of `verify-workflows.jl` build fixture research roots below a temporary
+directory, with git repositories under `Packages/` and `Experiments/` and the profile of the case.
 
 The cases run `harness dependents` on a base with dependents through `[deps]` and on packages with
 the base only in `[weakdeps]` or `test/Project.toml` or below `Experiments/`, and compare the

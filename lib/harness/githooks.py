@@ -5,6 +5,8 @@
                                         # Packages/ and Experiments/
     harness wiki-lint-hook [--apply]    # pre-commit-wiki into the prose repositories
     harness workflows [--apply]         # the canonical workflows from githooks/workflows/
+    harness dependents [--apply]        # .github/dependents.toml into each base of the
+                                        # profile's dependents_bases
 
 Every copy is byte-identical in every repository: a hook reads the package name from
 Project.toml, and CI.yml does the same at run time. That makes drift a file comparison, which is
@@ -31,6 +33,11 @@ WHAT `workflows` DOES NOT INSTALL, AND WHY.
                    figures, and let the others link them from its site.
   TagBot.yml       packages only. The experiment repositories are not registered in General, so
                    a tag-watching workflow there has nothing to watch.
+  Dependents.yml   with dependents.jl, only into the bases of the profile's `dependents_bases`,
+                   and out of every other repository. Its jobs read .github/dependents.toml,
+                   which `dependents` writes: one [[dependent]] table per repository below
+                   Packages/ whose Project.toml has the base's UUID in [deps], with the GitHub
+                   owner/name of its origin.
   extra workflows  a repository that needs a job the canonical CI.yml does not have gets its own
                    file, such as Metal.yml for a GPU job. Never a local edit to CI.yml: that is
                    the drift this subcommand exists to prevent.

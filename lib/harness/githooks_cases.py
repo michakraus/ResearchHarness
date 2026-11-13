@@ -7,22 +7,29 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   written `.github/dependents.toml` is byte for byte the expected one; the dry run writes nothing
   and exits 1, and exits 0 after `--apply`. A base whose own UUID is in its `[deps]` is not its own
   dependent. A dependent whose origin is on another host, or that has no origin, and a listed name
-  that is no git repository with a `Project.toml`, are each refused with a line that names them.
+  that is no git repository with a `Project.toml` (a missing name, a directory with no `.git`, a
+  git repository with no Project.toml, `..` and a name with a `/`), are each refused with a line
+  that names them. So are a dependent's Project.toml that is not TOML, a dependent whose
+  directory name holds a space, and a base with no uuid; a refusal in the census of the second of
+  two bases writes the file of neither. The profile loads the key, and `harness get` prints it.
 - `harness workflows`: Dependents.yml and dependents.jl go into the listed base only, byte for
   byte; a dry run names the two files in an unlisted repository and keeps them, and `--apply`
-  removes them; a listed name that does not exist is refused. Without `dependents_bases`, the
-  subcommand writes the five other templates alone and names neither file.
+  removes them; a listed name that does not exist and a missing Dependents.yml template are
+  refused. Without `dependents_bases`, the subcommand writes only the files of the other templates
+  and names neither file.
 - githooks/workflows/Dependents.yml: its trigger, concurrency group, permissions, jobs and matrix,
   and the actions of its `uses:` lines; `actionlint` passes on it, where it is on the PATH.
 - githooks/workflows/dependents.jl, where `julia` is on the PATH: `excluded` on a head inside the
   dependent's `[compat]` entry, outside it, against an entry with two specifiers, and with no
-  entry; `row` on the four rows, with the summary it appends and its exit status, and on a
-  combination that is none of them; `list` on a file of two dependents and on a missing file.
+  entry; `row` on the four rows, with the summary it appends and its exit status, and on two
+  combinations that are none of them; `list` on a file of two dependents, on a missing file and on
+  two entries that the JSON of the matrix cannot hold.
 - githooks/verify-workflows.jl, where `julia` is on the PATH and the harness's Julia environment
   holds a Project.toml: a clean fixture passes, and a drifted Dependents.yml, a missing
   dependents.jl, a Dependents.yml in an unlisted repository and a listed base without
-  dependents.toml each fail with a line that names the repository; without `dependents_bases`,
-  the fixture of the five templates passes.
+  dependents.toml each fail with a line that names the repository; an experiment that
+  `dependents_bases` names is no base; without `dependents_bases`, the fixture of the other
+  templates passes.
 """
 
 import argparse
@@ -394,7 +401,7 @@ def workflow_cases(check: Check, tmp: pathlib.Path) -> None:
             "codecov.yml",
         ]
         and "ependents" not in out,
-        f"without dependents_bases, workflows writes the five templates alone and names neither file "
+        f"without dependents_bases, workflows writes the other templates alone and names neither file "
         f"-> {code}, {files}",
     )
 
@@ -637,14 +644,14 @@ def verify_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
     p = verify(julia, bare, none)
     check(
         p.returncode == 0 and "all canonical" in p.stdout,
-        f"without dependents_bases, verify-workflows passes on the five templates -> {p.returncode}, "
+        f"without dependents_bases, verify-workflows passes on the other templates -> {p.returncode}, "
         f"{p.stdout.strip()[-300:]!r}",
     )
 
 
 def cases(check: Check) -> None:
-    """Every case of the module docstring, each on its own fixture root, with git's configuration
-    and identity those of the sweep."""
+    """Every case of the module docstring; each group that builds a research root builds its own,
+    with git's configuration and identity those of the sweep."""
     julia = shutil.which("julia")
     with tempfile.TemporaryDirectory(prefix="harness-githooks-") as name:
         tmp = pathlib.Path(name).resolve()

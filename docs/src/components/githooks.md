@@ -304,8 +304,9 @@ The row is one of four. A head that the dependent's `[compat]` entry excludes, s
 breaking bump, is *excluded* and not tested, because a test would need a compat override that no
 user can install. A dependent that passes against the head is *green*. One that fails against the
 head and passes against the default branch is a *regression*, and one that fails against both is
-*known red*, which the pull request did not cause. Only a regression fails the job. The workflow
-is advisory: `harness ci-protection` does not require it.
+*known red*, which the pull request did not cause. Of the four rows, only a regression fails the
+job; a step that fails before the row, such as the compat check, fails it too. The workflow is
+advisory: `harness ci-protection` does not require it.
 
 ## `workflows/dependents.jl`
 

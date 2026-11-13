@@ -18,8 +18,8 @@
 # `row` classifies a dependent from `excluded` and the outcomes of the test steps against the head
 # of the pull request and against the default branch of the base: excluded; head `success`:
 # green; head `failure` and main `success`: regression; both `failure`: known red. It prints the
-# row and appends it, under a header, to the job summary. A regression exits 1, so only a
-# regression fails the job; a combination that is none of these exits 2.
+# row and appends it, under a header, to the job summary. A regression exits 1, so of the four
+# rows only a regression fails the job; a combination that is none of these exits 2.
 #
 # `list` and `excluded` also append their result to $GITHUB_OUTPUT, and `row` to
 # $GITHUB_STEP_SUMMARY, where the variable is set.
