@@ -418,8 +418,8 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   as "one string": a list or `None` loads and prints its repr (I round 1, *Unify the agent
   configuration*)
 - a stencil width whose length `(2w+1)^D` overflows `Int`: `w = typemax(Int)` on a 1×1 grid
-  reported length 1; compute the length with checked arithmetic, or state a representable-width
-  limit (P10, *Rewrite the reduced basis packages*)
+  reported length 1 (how to write it: `defensive-julia.md` D33) (P10, *Rewrite the reduced basis
+  packages*)
 - an index form that the signature admits and the parent refuses: a single
   `Vararg{Union{CartesianIndex, Tuple, Integer}, N}` `getindex` accepts mixed forms, which the
   `AbstractArray` fallback then rejects with its own `ArgumentError`. Uniform forms per method would
@@ -433,8 +433,8 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   parameter (P41, *Rewrite the reduced basis packages*)
 - a copy removed by preallocating the result with `similar(operand, …)`: it pins the element type of
   that operand, so a mixed input loses the type the product would have promoted — a Float32 basis with
-  finite Float64 coordinates returned `±Inf Float32` instead of a finite Float64 result. Allocate with
-  `T = promote_type(eltype(operand), eltype(input))` (P29, *Rewrite the reduced basis packages*)
+  finite Float64 coordinates returned `±Inf Float32` instead of a finite Float64 result (how to
+  write it: `defensive-julia.md` D2) (P29, *Rewrite the reduced basis packages*)
 - the scalar-indexing state restored by copying one value into both stores: `allowscalar` writes a
   task-local key and a process-wide default, and `@allowscalar` restores only the task-local key,
   so a test that captures the task-local value alone leaves the default changed for every later

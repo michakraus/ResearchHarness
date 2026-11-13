@@ -80,8 +80,11 @@ a failed check or CI job blocks the round. At the end, a builder opens the pull 
 lists every decision taken without the user and every clause the head does not meet as written. The skill writes only the `state` cell of the task file and the
 lines that record the loop.
 
-Two other files belong to the skill. `edges.md` is the catalogue of edge cases by kind of part.
-`evidence.md` gives the evidence table, the test and mutation tools, and the rules for each row.
+Three other files belong to the skill. `edges.md` is the catalogue of edge cases by kind of part.
+`defensive-julia.md` is the catalogue of how a builder writes Julia code that holds against the
+defects that reviews find: each entry has a rule, the code that fails and the code that holds, a
+check, and the edge it answers. `evidence.md` gives the evidence table, the test and mutation
+tools, and the rules for each row.
 
 The skill does not plan parts, build or judge a part itself, or merge. Use `plan-parts` for a file
 without a parts table.
