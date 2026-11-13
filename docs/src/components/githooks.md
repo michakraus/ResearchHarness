@@ -309,7 +309,7 @@ every group. The rule `julia-tests`, `scripts/test-layout.jl` and `verify-workfl
 this. `harness ci-protection` reads the file and requires one check per group and version and
 system.
 
-Each job runs its group alone, so a device group such as `metal` no longer runs in the required
+Each job runs its group alone, so a device group such as `metal` does not run in the required
 macOS jobs, where empty `ARGS` runs it without a group file. The file names the repository's own
 device workflow instead, and `harness ci-protection` requires every job of that workflow that is
 not a warning:
@@ -386,7 +386,8 @@ It checks these points:
 4. No `Register.yml`, `Documentation.yml`, `CompatHelper.yml` or other forbidden file exists.
 5. Each `uses:` names the expected major version of its action.
 6. A `test/ci-groups.toml` lists distinct group names, each group has an `if` in
-   `test/runtests.jl`, and `GROUPS` runs exactly these groups for empty `ARGS`.
+   `test/runtests.jl`, and `GROUPS` runs exactly these groups for empty `ARGS`. Each workflow of
+   its `workflows` is a file in `.github/workflows/` and is not an installed one.
 
 It prints the required checks of each repository that has a `test/ci-groups.toml`. It also
 checks that a repository of `docs_additions` keeps the body of `Documenter.yml`. It

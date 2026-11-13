@@ -47,9 +47,10 @@ const DEFAULT_GROUPS = ["core", "slow"]
 const OWN_JOB_GROUPS = ("doctests", "metal", "cuda", "broken")
 # a group of test/ci-groups.toml, as it ends a job name
 const CI_GROUP_NAME = r"^[a-z][a-z0-9]*$"
-# an extra workflow of test/ci-groups.toml, and the installed ones it may not name
+# an extra workflow of test/ci-groups.toml, and the installed ones it may not name, in lower case
+# because APFS finds `ci.yml` as CI.yml
 const CI_WORKFLOW_NAME = r"^[A-Za-z0-9_-]+\.yml$"
-const INSTALLED_WORKFLOWS = ("CI.yml", "Documenter.yml", "TagBot.yml")
+const INSTALLED_WORKFLOWS = ("ci.yml", "documenter.yml", "tagbot.yml")
 const GATE = r"\b(ARGS|ENV)\b"
 const ISSUE = r"#\d+|issues/\d+"
 # the top-level directories of test/ that mirror no directory of src/
@@ -204,8 +205,9 @@ function ci_workflows(repo, toml)
             String[], ["`workflows` of test/ci-groups.toml is not a list of file names"])
     problems = String[]
     for w in unique(ws)
-        occursin(CI_WORKFLOW_NAME, w) && !(w in INSTALLED_WORKFLOWS) || push!(problems,
-            "workflow \"$w\" of test/ci-groups.toml is not an extra workflow file name")
+        occursin(CI_WORKFLOW_NAME, w) && !(lowercase(w) in INSTALLED_WORKFLOWS) ||
+            push!(problems,
+                "workflow \"$w\" of test/ci-groups.toml is not an extra workflow file name")
         count(==(w), ws) > 1 &&
             push!(problems, "workflow \"$w\" is in test/ci-groups.toml more than once")
         isfile(joinpath(repo, ".github", "workflows", w)) ||

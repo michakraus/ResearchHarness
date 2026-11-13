@@ -56,7 +56,8 @@ julia --startup-file=no run-tests.jl <package> [--jobs <n>] [affected [<base>] |
 ```
 
 - `affected`, the default, runs the `core` test files that the diff against `<base>` (default
-  `origin/main`) can reach, and the quality files. A changed `Project.toml` runs `full`.
+  `origin/main`) can reach, and the quality files. With a `test/ci-groups.toml`, it selects from
+  every group of that file but `slow`. A changed `Project.toml` runs `full`.
 - `select` prints what `affected` runs, and runs nothing. `list` prints the test files, their
   groups and their labels. `full` runs `Pkg.test()`.
 - A `<unit>` is a group, a path relative to `test/`, or a part of a testset label.

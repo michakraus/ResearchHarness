@@ -514,7 +514,7 @@ function main()
     skips = String[]
     offbranch = OffBranch[]
     grouped = Dict{String, Vector{String}}()
-    ROOT_OF = Dict(basename(d) => d for d in all)
+    dir_of = Dict(basename(d) => d for d in all)
     for dir in all
         check_repo(dir, findings, skips, offbranch, grouped)
     end
@@ -530,8 +530,9 @@ function main()
             for c in required_checks(groups)
                 println("    ", c)
             end
-            workflows = first(Layout.ci_workflows("",
-                TOML.parsefile(joinpath(ROOT_OF[repo], "test", "ci-groups.toml"))))
+            dir = dir_of[repo]
+            workflows = first(Layout.ci_workflows(dir,
+                TOML.parsefile(joinpath(dir, "test", "ci-groups.toml"))))
             isempty(workflows) ||
                 println("    and every job of ", join(workflows, ", "), " that is not a warning")
             println()
