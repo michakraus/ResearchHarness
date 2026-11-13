@@ -36,6 +36,9 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   rows, with the summary it appends and its exit status, and on two combinations that are none of
   them; `list` on a file of two dependents, on a missing file, on a file that is not TOML and on
   two entries that the JSON of the matrix cannot hold.
+- githooks/workflows/dependents.jl, where `julia` is on the PATH and the harness's Julia
+  environment holds a Project.toml: JuliaFormatter's SciML style finds it formatted, as the
+  pre-commit hook of a base checks its installed copy.
 - githooks/verify-workflows.jl, where `julia` is on the PATH and the harness's Julia environment
   holds a Project.toml: a clean fixture passes, and a drifted Dependents.yml, a missing
   dependents.jl, a Dependents.yml in an unlisted repository and a listed base without
@@ -743,6 +746,19 @@ def script_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
         )
 
 
+def format_case(check: Check, julia: str) -> None:
+    """dependents.jl in the SciML style of the bases' `.JuliaFormatter.toml`."""
+    code = (
+        "pushfirst!(LOAD_PATH, ARGS[1]); using JuliaFormatter; "
+        "exit(format_file(ARGS[2], SciMLStyle(); overwrite = false) ? 0 : 1)"
+    )
+    p = run([julia, "--startup-file=no", "-e", code, str(install.JULIA_ENV), str(DEPENDENTS_JL)])
+    check(
+        p.returncode == 0,
+        f"dependents.jl is in the SciML style -> {p.returncode} {p.stderr.strip()[-300:]}",
+    )
+
+
 def verify(julia: str, root: pathlib.Path, profile: pathlib.Path) -> subprocess.CompletedProcess[str]:
     """verify-workflows.jl --quiet on the research root `root` with the profile `profile`."""
     env = dict(os.environ) | GIT | {"RESEARCH_ROOT": str(root), "RESEARCH_HARNESS_PROFILE": str(profile)}
@@ -851,8 +867,12 @@ def cases(check: Check) -> None:
         (tmp / "script").mkdir()
         script_cases(check, tmp / "script", julia)
         if not (install.JULIA_ENV / "Project.toml").is_file():
-            print(f"skip  githooks: no Julia environment at {install.JULIA_ENV}; verify-workflows.jl skipped")
+            print(
+                f"skip  githooks: no Julia environment at {install.JULIA_ENV}; "
+                "the format of dependents.jl and verify-workflows.jl skipped"
+            )
             return
+        format_case(check, julia)
         d = tmp / "verify"
         d.mkdir()
         with mock.patch.dict(os.environ, GIT | {"RESEARCH_ROOT": str(d / "Research")}):
