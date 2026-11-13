@@ -28,7 +28,7 @@ caller = "build-part"
 callee = "julia-critic"
 at = "skills/build-part/SKILL.md:210"
 effort = "high"
-label = "round 1, two critics"
+label = "round 1"
 
 [[call]]
 caller = "build-part"
@@ -110,13 +110,11 @@ label = "before the pull request"
 caller = "part-builder"
 callee = "python-branch-verifier"
 at = "agents/part-builder.md:146"
-label = "before the pull request or the commit"
 
 [[call]]
 caller = "python-builder"
 callee = "python-branch-verifier"
 at = "agents/python-builder.md:199"
-label = "before the pull request"
 
 [[call]]
 caller = "julia-pr-shepherd"
