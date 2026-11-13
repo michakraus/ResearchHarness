@@ -217,7 +217,8 @@ git config core.hooksPath .githooks
 
 ## CI
 
-CI runs `.github/workflows/test.yml` on every push, pull request and manual dispatch:
+CI runs `.github/workflows/test.yml` on a push to `main`, on every pull request and on a manual
+dispatch:
 `bin/harness test` and the compile check on Python 3.14 and the latest 3.x, the three checks of
 the strict profile, `shellcheck` and `actionlint`. Its `python` job installs uv with
 `astral-sh/setup-uv`, pinned by its commit SHA, and runs `uv sync --locked` into the environment
@@ -256,7 +257,10 @@ below `lib/`, `hooks/`, `adapters/`, `bin/`, `scripts/`, `githooks/`, `agents/`,
 `## Unreleased`.
 `.github/workflows/julia.yml` runs the twelve Julia test files on Julia 1.13, and the rule tests
 of ast-grep in its job `ast-grep`, when a `.jl` file, `Project.toml`, `githooks/pre-commit`,
-`githooks/pre-push`, a file below `ast-grep/` or the workflow itself changes.
+`githooks/pre-push`, a file below `ast-grep/` or the workflow itself changes, on a push to `main`
+or a pull request, and on a manual dispatch. A push to a topic branch runs neither workflow: its
+pull request runs them, and in a separate concurrency group a push run would test the same commit
+again.
 `.github/workflows/docs.yml` builds the documentation site with VitePress when a file under
 `docs/`, `agents/`, `skills/`, `examples/models.toml` or the workflow itself changes.
 VitePress fails the build on a broken local link. On a push to `main`, the workflow also deploys
