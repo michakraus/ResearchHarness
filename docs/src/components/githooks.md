@@ -353,14 +353,14 @@ The row is one of five:
   bump. The job does not test it, because a test needs a compat override that no user can
   install.
 - *green*: the setup and the tests against the head pass.
-- *regression*: the setup against the head fails and the setup against the default branch passes,
-  or the tests fail against the head and pass against the default branch. A failed setup against
-  the head counts as a head that the resolver cannot install beside the other dependencies of the
-  dependent, because the compat check has already left out a head that the dependent's
-  `[compat]` excludes. The log of the head's setup step names the cause, such as a conflict
-  ("empty intersection …").
+- *regression*: the setup against the head fails, and the setup against the default branch
+  passes. Or the tests fail against the head and pass against the default branch. A failed setup
+  against the head counts as a regression. The compat check has already left out a head that the
+  dependent's `[compat]` excludes. So the resolver cannot install the head beside the other
+  dependencies of the dependent. The log of the head's setup step names the cause, such as a
+  conflict ("empty intersection …").
 - *known red*: the tests fail against both. The pull request does not cause it.
-- *inconclusive*: the setup or the tests fail against the head, and the setup against the default
+- *inconclusive*: the setup or the tests fail against the head. The setup against the default
   branch fails too, for example on the registry or a download. The row names which setup failed:
   the default branch's alone, or the head's and the default branch's.
 
