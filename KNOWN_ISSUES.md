@@ -965,3 +965,14 @@
   succeeds, and an `inconclusive` outcome in `row()`.
 - kind: defect
 - found: 2026-11-13, a CodeRabbit review of a pull request on a base package (comment 4567391241)
+
+### K160 · The committed `opencode.jsonc` holds two `ask` rules of `bash` that `harness permissions` does not generate from the settings template.
+
+- location: `adapters/opencode/opencode.jsonc:260`
+- evidence: `python3.14 bin/harness permissions` prints `adapters/opencode/opencode.jsonc REPLACE`
+  with the two lines `-      "git push * :**": "ask",` and `-      "git -C * push * :**": "ask",`,
+  and `1 change(s) to make.`; `grep -n 'push \* :' settings/settings.proposal.json` finds nothing.
+  Either the template lacks the two asks, or the committed file keeps two rules that the template
+  dropped.
+- kind: defect
+- found: 2026-11-13, the fix round 1 of part E5c

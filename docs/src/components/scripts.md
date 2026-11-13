@@ -640,6 +640,54 @@ It prints four reports:
 It estimates the tokens of a tool result at 3.5 characters per token. The usage figures come from
 the API. No skill or agent calls it. For the context at the start, use `startup-tokens.py`.
 
+## `gh-token.py`
+
+`gh-token.py` runs gh with the token of the repository's owner. `harness install` copies it to
+`~/.local/bin/gh`, mode 755, with the launcher `agentbox`; where `~/.local/bin` comes before the
+real gh on the `PATH`, the command `gh` runs the wrapper. It takes gh's own arguments
+([The forge tokens](sandbox.md#the-forge-tokens)).
+
+It finds the owner, in this order:
+
+1. The command's own argument. For `gh api`, the segment after `repos/`, `orgs/` or `users/` of
+   the first argument that starts with one of them, with or without a leading `/`, where that
+   segment is an owner's name; a placeholder such as `{owner}` or `:owner` names none. For any
+   other command, the argument after the group and the command, as in `gh pr view <argument>`,
+   where it does not start with `-`: a URL names its host and its first path segment, and for
+   `gh repo …` only, `OWNER/REPO` and `HOST/OWNER/REPO` name an owner too. Elsewhere `OWNER/x`
+   can be a branch.
+2. The value of the last `-R` or `--repo` before a `--` whose reading is certain (`OWNER/REPO`,
+   `HOST/OWNER/REPO` or a URL): `-R V` and `--repo V`, where a bare `-R` or `--repo` is always the
+   flag, and `-RV`, `-R=V` and `--repo=V`, where the argument before is not a flag without `=`.
+3. `GH_REPO`.
+4. The owner of the remote `origin`.
+
+The wrapper does not know which of gh's flags take a value, so it reads `-R` from no other
+argument that gh may read as `-R`: `-RV`, `-R=V` or `--repo=V` after a flag without `=` (the
+value of `-b` in `-b -RV`), a cluster of letters with an `R` after its first letter (`-nR V`,
+`-nRV`, or `-tRelease`, the title `Release`), and every form after the first `--`. Where the
+command's own argument names no owner and such an argument after the last certain `-R` names a
+repository of another host or owner than the one that the wrapper finds, compared without case,
+the wrapper refuses. Such an argument whose value names no repository, as `elease` of
+`-tRelease`, counts for nothing: gh would refuse that value as the value of `-R`.
+
+It reads `~/.config/research-harness/forge/github.com/<owner>.store`, the name compared without
+case, as GitHub compares it, else `default.store`, sets `GH_TOKEN` to the password of the file's
+line and removes `GITHUB_TOKEN`. Then it runs the first `gh` on the `PATH` that is an executable
+file, whose resolved file is not the wrapper, and whose bytes are not the wrapper's, with the same
+arguments, and exits with its status. A host other than `github.com` gets no token: in
+`--hostname` in any argument, also after a `--`, in a non-empty `GH_HOST`, in the command's own
+argument, in `-R` or in `GH_REPO`; an `origin` of another host names no owner. With no token it
+removes `GH_TOKEN` and `GITHUB_TOKEN` and sets `GH_CONFIG_DIR` to a new empty directory, so gh
+reads no stored login either, and removes the directory when gh ends. With a token, the caller's
+`GH_CONFIG_DIR` stays. A host other than `github.com` in `--hostname` or `GH_HOST` comes first:
+the wrapper then reads no owner and refuses nothing.
+
+It exits with status 2 and one line on stderr, and runs nothing, on the refusal above, on a store
+file that it cannot read or whose line holds no password, and when the `PATH` holds no gh but the
+wrapper. It uses the standard library only, and runs on Python 3.9 or later, the `python3` of
+macOS. The `gh_token` cases of `lib/harness/script_cases.py` run it with a stub gh in scratch homes.
+
 ## The audit scripts
 
 The scripts in `scripts/audit/` measure the harness over a window of time: where the tokens go,
