@@ -13,11 +13,15 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   them. So are a dependent's Project.toml that is not TOML, a dependent whose directory name
   holds a space, and a base with no string uuid; a refusal in the census of the second of two
   bases writes the file of neither. An old `.github/dependents.toml` that is not UTF-8, a
-  directory or a symbolic link, or below a `.github` that is a file, is refused in the dry run and
-  with `--apply`, and changes nothing. The profile loads the key, and `harness get` prints it.
-- `githooks.github_name`: the GitHub `owner/name` of an HTTPS, SSH or `git@host:path` origin, with
-  a user, a port, `.git`, a final `/` or the host in capitals; None for another host, a local
-  path, and a path of one or three parts.
+  directory or a symbolic link, or below a `.github` that is a file or a dangling symbolic link,
+  is refused in the dry run and with `--apply`, and changes nothing. The profile loads the key,
+  and `harness get` prints it.
+- `githooks.github_name`: the GitHub `owner/name` of a URL of each of the five schemes and of the
+  scp form, with or without a user, with a port, `.git`, a final `/` or the scheme or host in
+  capitals; None for another host or scheme, a local path (`github.com/o/A.jl` too), a query, a
+  fragment, a port that is not a number, a URL user that holds `@`, `?` or `#`, an scp user that
+  holds `/` or `:`, an owner that holds `.`, the name `.` or `..`, and a path of one or three
+  parts.
 - `harness workflows`: Dependents.yml and dependents.jl go into the listed base only, byte for
   byte; a dry run names the two files in an unlisted repository and keeps them, and `--apply`
   removes them; a listed name that does not exist and a missing Dependents.yml template are
@@ -355,9 +359,9 @@ def refused_census_cases(check: Check, tmp: pathlib.Path, repos: dict[str, pathl
 
 def old_file_cases(check: Check, tmp: pathlib.Path, repos: dict[str, pathlib.Path]) -> None:
     """The refusals of an old `.github/dependents.toml` that is not a UTF-8 regular file: a file
-    that is not UTF-8, a directory, a symbolic link, and a `.github` that is a file. Each refusal,
-    of the dry run and of `--apply`, names the path and changes nothing; a refusal for the second
-    of two bases writes the file of neither."""
+    that is not UTF-8, a directory, a symbolic link, and a `.github` that is a file or a dangling
+    symbolic link. Each refusal, of the dry run and of `--apply`, names the path and changes
+    nothing; a refusal for the second of two bases writes the file of neither."""
     listed = profile_file(tmp / "listed.toml", '["Base"]')
     github = repos["Base"] / ".github"
     path = github / "dependents.toml"
@@ -370,9 +374,12 @@ def old_file_cases(check: Check, tmp: pathlib.Path, repos: dict[str, pathlib.Pat
         ("a directory", path.mkdir),
         ("a symbolic link", lambda: path.symlink_to(target)),
         ("below a .github that is a file", lambda: None),
+        ("below a .github that is a dangling symbolic link", lambda: None),
     ):
-        if label.startswith("below"):
+        if label == "below a .github that is a file":
             github.write_text("not a directory\n")
+        elif label.startswith("below"):
+            github.symlink_to(tmp / "nowhere")
         else:
             github.mkdir()
             make()
@@ -425,6 +432,12 @@ def origin_cases(check: Check) -> None:
         ("git@github.com:o/A.jl.git", "o/A.jl"),
         ("ssh://git@github.com/o/A.jl.git", "o/A.jl"),
         ("ssh://git@github.com:22/o/A.jl.git", "o/A.jl"),
+        ("github.com:o/A.jl", "o/A.jl"),
+        ("HTTPS://github.com/o/A.jl", "o/A.jl"),
+        ("git+ssh://git@github.com/o/A.jl", "o/A.jl"),
+        ("ssh+git://git@github.com/o/A.jl", "o/A.jl"),
+        ("http://github.com/o/A.jl", "o/A.jl"),
+        ("git@GITHUB.COM:o/A.jl", "o/A.jl"),
         ("https://gitlab.example.org/o/A.jl.git", None),
         ("https://github.com.example.org/o/A.jl.git", None),
         ("git@gitlab.example.org:o/A.jl.git", None),
@@ -433,6 +446,21 @@ def origin_cases(check: Check) -> None:
         ("https://github.com/o", None),
         ("https://github.com/o/A.jl/tree", None),
         ("", None),
+        ("github.com/o/A.jl", None),
+        ("github.com/o/A.jl.git", None),
+        ("file://github.com/o/A.jl", None),
+        ("ftp://github.com/o/A.jl", None),
+        ("https://github.com/o/A.jl?x=1", None),
+        ("https://github.com/o/A.jl#f", None),
+        ("https://github.com/o/..", None),
+        ("https://github.com/o/.", None),
+        ("https://github.com/o.x/A.jl", None),
+        ("https://github.com:abc/o/A.jl", None),
+        ("https://a@b@github.com/o/A.jl", None),
+        ("https://a?b@github.com/o/A.jl", None),
+        ("https://a#b@github.com/o/A.jl", None),
+        ("dir/git@github.com:o/A.jl", None),
+        ("a:b@github.com:o/A.jl", None),
     ):
         got = githooks.github_name(url)
         check(got == want, f"github_name({url!r}) is {want} -> {got}")

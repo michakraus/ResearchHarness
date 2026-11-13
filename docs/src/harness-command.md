@@ -647,8 +647,12 @@ dependent, sorted by name. Each table has two keys:
 - `name`: the name of the dependent's directory;
 - `repository`: the GitHub `owner/name` of the dependent's `origin`.
 
-An `origin` can use HTTPS or SSH, with or without a user, a port or `.git`. The census of every
-base and the read of every old file run before the first write, so a refusal writes no file.
+An `origin` has one of two forms. The first is a URL
+`<scheme>://[user@]github.com[:port]/owner/name[.git][/]`, with the scheme `https`, `http`,
+`ssh`, `git+ssh` or `ssh+git`. The second is the scp form `[user@]github.com:owner/name[.git][/]`.
+Scheme and host match in any case. Every other form is refused: another scheme or host, a local
+path, a query or a fragment, and a name `.` or `..`. The census of every base and the read of
+every old file run before the first write, so a refusal writes no file.
 Without `--apply` it prints the diff of each file that would change. The `Dependents.yml` workflow
 of the base reads the file into its matrix.
 
@@ -661,8 +665,9 @@ change. 2, with a message that names the repository or the file, for each of the
 - the `Project.toml` of a base or of a package is not TOML;
 - the directory name of a dependent is not a name that `dependents.toml` can hold, such as a name
   with a space;
-- a dependent has no `origin`, or an `origin` that is not on `github.com`;
-- the old `.github/dependents.toml` is not a regular file, or is not UTF-8.
+- a dependent has no `origin`, or an `origin` of neither form above;
+- the old `.github/dependents.toml` is not a regular file, or is not UTF-8, or its `.github` is a
+  symbolic link or not a directory.
 
 **Where to run it:** anywhere; it writes tracked files only and does not commit. Commit
 `.github/dependents.toml` by name in each base.

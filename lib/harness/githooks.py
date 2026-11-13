@@ -57,7 +57,6 @@ import subprocess
 import tomllib
 from dataclasses import dataclass
 from typing import cast
-from urllib.parse import urlsplit
 
 # `githooks_cases` imports this module too, and reads its names only when a case runs, so the
 # cycle resolves at import.
@@ -82,9 +81,15 @@ DEPENDENTS_HEADER = (
     "# research tree; run it again rather than edit this file. Dependents.yml reads it into the\n"
     "# matrix of its test job.\n"
 )
-# A repository name below Packages/, and a GitHub `owner/name`.
+# A repository name below Packages/.
 NAME = re.compile(r"[A-Za-z0-9._-]+")
-OWNER_NAME = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+")
+# A GitHub origin as git prints it: a URL of one of five schemes, or the scp form, whose user and
+# host hold no `/` before the `:`. The name is the shortest one, so a final `.git` is not part of it.
+GITHUB_ORIGIN = re.compile(
+    r"(?:(?i:https?|ssh|git\+ssh|ssh\+git)://(?:[^@/?#]+@)?(?i:github\.com)(?::[0-9]+)?/"
+    r"|(?:[^@/:]+@)?(?i:github\.com):)"
+    r"(?P<owner>[A-Za-z0-9-]+)/(?P<name>[A-Za-z0-9._-]+?)(?:\.git)?/?"
+)
 
 
 def research_root():
@@ -299,12 +304,15 @@ def read_project(path: pathlib.Path) -> Project:
 
 
 def github_name(url: str) -> str | None:
-    """The GitHub `owner/name` of the remote URL `url`: a URL such as HTTPS or SSH, or the form
-    `git@host:path`, with or without a user, a port, `.git` or a final `/`, and with the host in
-    any case. None for another host or a path that is not `owner/name`."""
-    parsed = urlsplit(url if "://" in url else "ssh://" + url.replace(":", "/", 1))
-    path = parsed.path.strip("/").removesuffix(".git")
-    return path if parsed.hostname == "github.com" and OWNER_NAME.fullmatch(path) else None
+    """The GitHub `owner/name` of the remote URL `url`, in one of two forms:
+    `<scheme>://[user@]github.com[:port]/owner/name[.git][/]`, with the scheme `https`, `http`,
+    `ssh`, `git+ssh` or `ssh+git`, or `[user@]github.com:owner/name[.git][/]`. Scheme and host
+    match in any case. None for every other string: another scheme or host, a local path, a query
+    or a fragment, and a name `.` or `..`."""
+    match = GITHUB_ORIGIN.fullmatch(url)
+    if match is None or match["name"] in {".", ".."}:
+        return None
+    return f"{match['owner']}/{match['name']}"
 
 
 def github_repository(repo: pathlib.Path) -> str:
@@ -346,10 +354,12 @@ def dependents_text(rows: list[tuple[str, str]]) -> str:
 
 def old_text(path: pathlib.Path) -> str:
     """The text of the file at `path`, or "" when nothing is there. A path that holds something
-    other than a regular file, a file that is not UTF-8, and a parent that is not a directory each
-    raise, naming the path: `dependents --apply` writes there."""
-    if path.parent.exists() and not path.parent.is_dir():
-        raise HarnessError(f"{path.parent} is not a directory, so {path} cannot be written")
+    other than a regular file, a file that is not UTF-8, and a parent that is a symbolic link or not
+    a directory each raise, naming the path: `dependents --apply` writes there."""
+    if path.parent.is_symlink() or (path.parent.exists() and not path.parent.is_dir()):
+        raise HarnessError(
+            f"{path.parent} is a symbolic link or not a directory, so {path} cannot be written"
+        )
     if path.is_symlink() or (path.exists() and not path.is_file()):
         raise HarnessError(f"{path} is not a regular file; remove it, then run harness dependents again")
     if not path.exists():

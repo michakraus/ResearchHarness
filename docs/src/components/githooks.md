@@ -310,7 +310,7 @@ The row is one of four:
 - *regression*: the dependent fails against the head and passes against the default branch. This
   includes a head that the resolver cannot install beside the other dependencies of the
   dependent. The log of the head step then names the conflict ("empty intersection …").
-- *known red*: the dependent fails against both. The pull request did not cause it.
+- *known red*: the dependent fails against both. The pull request does not cause it.
 
 Of the four rows, only a regression fails the job. A step that fails before the row also fails
 the job. Two examples are the compat check and the checkout of a dependent that the token of the
