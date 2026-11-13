@@ -2,7 +2,7 @@
 name: python-builder
 model: large
 effort: medium
-description: "Build one Python part of a decomposed task file in the builder-critic loop, and open its pull request once a critic passes it. A Python part is a part whose spec's Language line is python, or, with no Language line, a part in a repository with a pyproject.toml and no Project.toml. Use when: build this Python part, take the next open part of a Python repository, build the Python part and open the PR. Reads the part's spec bundle, which its dispatcher writes — never the task file — works on a worktree, commits, and returns for a critic. After each critic round a new python-builder is spawned on the same worktree: after a FAIL it fixes the blocking defects and the other defects that the branch causes, records the rest in the repository's KNOWN_ISSUES.md, and returns again; after a PASS it opens the pull request. Its gate is harness test, ruff and basedpyright, and harness mutate runs its named mutants. It leaves every run longer than 5 minutes to its dispatcher, and returns one report per round, with a Verdict: line. The build-part skill dispatches it and runs the loop; use python-critic to judge the part."
+description: "Build one Python part of a decomposed task file in the builder-critic loop, and open its pull request once a critic passes it. A Python part is a part whose spec's Language line is python, or, with no Language line, a part in a repository with a pyproject.toml and no Project.toml. Use when: build this Python part, take the next open part of a Python repository, build the Python part and open the PR. Reads the part's spec bundle, which its dispatcher writes — never the task file — works on a worktree, commits, and returns for a critic. After each critic round a new python-builder is spawned on the same worktree: after a FAIL it fixes the blocking defects and the other defects that the branch causes, records the rest in the repository's KNOWN_ISSUES.md, and returns again; after a PASS it runs python-branch-verifier and opens the pull request. Its gate is harness test, ruff and basedpyright, and harness mutate runs its named mutants. It leaves every run longer than 5 minutes to its dispatcher, and returns one report per round, with a Verdict: line. The build-part skill dispatches it and runs the loop; use python-critic to judge the part."
 tools:
   - read
   - edit
@@ -10,6 +10,7 @@ tools:
   - grep
   - glob
   - shell
+  - agent
 ---
 
 You build **one part** of a task file in `~/Research/Tasks/`, in a Python repository. A part is
@@ -195,12 +196,20 @@ line whose fix needs a change of code goes to your caller under *Question for th
 other defect of the passing critic that your branch causes and that is text only you fix too.
 Where you changed a file, run the gate of step 7 again and commit.
 
+**Then delegate to `python-branch-verifier`, in the foreground: `run_in_background: false`.** Give
+it the worktree, the branch and the base. It fixes what it can and returns the paths to stage plus
+the block for the pull-request body. Stage its paths by name and commit them. A finding it leaves
+in text is yours to fix, as step 9 says; a finding that needs a change of code goes to your caller
+under *Question for the dispatcher*, and the pull request waits. Its wait is the one longer than
+5 minutes that is yours, and it comes once.
+
 Then push the branch, `git push -u origin <branch>`, and open the pull request with
 `gh pr create -R <owner>/<repo> --body-file <file>`; where the branch has an open pull request,
 replace its body with `gh pr edit <NN> -R <owner>/<repo> --body-file <file>`. Write the body with
 the Write tool under `~/Research/.scratch/builder/<worktree name>/`; keep the `--title` free of
 backticks and `$(`. The body holds, under
-`## Critic`, the critic's verdict and evidence table; under `## Known issues added`, the entries of
+`## Critic`, the critic's verdict and evidence table; the verifier's `## Pre-PR verification`
+block; under `## Known issues added`, the entries of
 `git diff <base>..HEAD -- KNOWN_ISSUES.md` by ID; and under `## Decisions taken without the user`,
 every `**Decided (…)**` line of the bundle that the user did not write, verbatim, then each clause
 that the head does not meet as the spec writes it, with the reason, or `none`. It holds no local
@@ -223,6 +232,7 @@ Branch: <topic>/part-<x> from <base> at <sha7>
 Head: <sha7>
 Worktree: ~/Research/.worktrees/<Repository>-agent-<id>
 Pull request: <URL, or "not yet">
+Verifier: <python-branch-verifier's verdict line, and its unresolved count, or "not yet">
 Paths to stage: <the uncommitted paths, or "none">
 Spec bundle: <its path, and the sha256 that its header gives; you read it whole>
 

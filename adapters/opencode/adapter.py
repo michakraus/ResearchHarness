@@ -1396,7 +1396,7 @@ def install_cases(check, tmp):
     case(
         lambda: (
             code == 1
-            and len(stems) == 23
+            and len(stems) == 24
             and all(re.search(rf"^agents/{re.escape(s)}\.md\s+INSTALL$", text, re.M) for s in stems)
             and not re.search(r"^agents/decoy\.md\s", text, re.M)
         ),

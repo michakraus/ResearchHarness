@@ -103,7 +103,19 @@ label = "a CHANGELOG fix"
 [[call]]
 caller = "part-builder"
 callee = "julia-branch-verifier"
-at = "agents/part-builder.md:145"
+at = "agents/part-builder.md:146"
+label = "before the pull request"
+
+[[call]]
+caller = "part-builder"
+callee = "python-branch-verifier"
+at = "agents/part-builder.md:146"
+label = "before the pull request or the commit"
+
+[[call]]
+caller = "python-builder"
+callee = "python-branch-verifier"
+at = "agents/python-builder.md:199"
 label = "before the pull request"
 
 [[call]]

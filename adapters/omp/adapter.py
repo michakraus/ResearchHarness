@@ -1736,14 +1736,14 @@ def omp_agent_cases(case, fresh, run, agent):
     case(
         lambda: (
             rendered == sorted([s.name for s in sources] + [f"{s}.md" for s in seats])
-            and len(sources) == 23
+            and len(sources) == 24
             and seats
         ),
-        f"--apply renders one oh-my-pi agent per agent of agents/, 23, and one per council seat: {rendered}",
+        f"--apply renders one oh-my-pi agent per agent of agents/, 24, and one per council seat: {rendered}",
     )
     case(
         lambda: {s.stem: differences(s) for s in sources} == {s.stem: [] for s in sources},
-        "each of the 23 agents has its name, its description, its tools mapped by the table, its model and "
+        "each of the 24 agents has its name, its description, its tools mapped by the table, its model and "
         "its effort as thinking-level from [omp], its skills as autoloadSkills, and its body, with an Under "
         "oh-my-pi section where it uses a Claude Code mechanism: "
         + "; ".join(f"{s.stem} {differences(s)}" for s in sources if differences(s))[:1500],

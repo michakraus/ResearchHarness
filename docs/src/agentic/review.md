@@ -8,11 +8,15 @@ agents of each step, and the rule of who merges.
 ## Before the pull request
 
 A builder that has a PASS does not open the pull request at once. It first runs
-[`julia-branch-verifier`](../components/agents.md#julia-branch-verifier) on the branch. The
-verifier finds the diff against the merge base and runs a pass of numbered points on the diff
-only, for example correctness, type piracy and ambiguities with the
+[`julia-branch-verifier`](../components/agents.md#julia-branch-verifier) on the branch of a Julia
+repository. The verifier finds the diff against the merge base and runs a pass of numbered points
+on the diff only, for example correctness, type piracy and ambiguities with the
 [dispatch delta](static-checks.md#what-a-change-adds-to-the-method-table), type instability,
-avoidable allocations, stale comments, and history outside the `CHANGELOG.md`. It fixes what it can, and returns three things:
+avoidable allocations, stale comments, and history outside the `CHANGELOG.md`. In a Python
+repository, [`python-branch-verifier`](../components/agents.md#python-branch-verifier) runs the
+same kind of pass with the checks of the strict profile, the tests that the diff reaches,
+`shellcheck`, `actionlint` and the text that the diff makes stale. Either verifier fixes what it
+can, and returns three things:
 
 - a verdict;
 - the exact paths to stage, so that the builder commits nothing that it did not change;

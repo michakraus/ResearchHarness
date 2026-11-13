@@ -1159,6 +1159,7 @@ MOVED = [
             "literature-scout",
             "part-builder",
             "part-critic",
+            "python-branch-verifier",
             "python-builder",
             "python-critic",
             "reader",
