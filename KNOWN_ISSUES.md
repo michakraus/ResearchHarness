@@ -977,12 +977,12 @@
 
 ### K162 · `spec-gate.py` reads the whole section for a `sections` cell such as `§J (J9)`, not the entry of that part.
 
-- location: `scripts/spec-gate.py:183`
-- evidence: line 182 splits the cell at the commas, and line 183 keeps only the first word of
-  each key, so `§J (J9)` becomes `J` and the parenthesised entry name is dropped. Line 191 then
-  takes the whole text of the `§J` heading, which `sections()` (lines 69-79) maps up to the next
-  heading of the same or a higher level, as the part's body. The label check (line 221) and the
-  **Files** check (line 192) therefore read every part's entry in the section. A fixture with the
+- location: `scripts/spec-gate.py:188`
+- evidence: line 187 splits the cell at the commas, and line 188 keeps only the first word of
+  each key, so `§J (J9)` becomes `J` and the parenthesised entry name is dropped. Line 196 then
+  takes the whole text of the `§J` heading, which `sections()` (lines 72-82) maps up to the next
+  heading of the same or a higher level, as the part's body. The label check (line 226) and the
+  **Files** check (line 197) therefore read every part's entry in the section. A fixture with the
   cells `§J (J1)` and `§J (J2)`, one `## §J` section, and the directories `Packages/Example` and
   `Harness` under `RESEARCH_ROOT`: with only J1's entry holding **Decided at the edges** and
   **Tests catch**, the gate prints `J2	PASS` and exits 0 (a false PASS); with only J2's **Files**
