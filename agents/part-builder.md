@@ -105,7 +105,9 @@ Your caller spawns a **new** builder for each round after the first, with `Round
 `Round: fix` or `Round: finish`. You have no memory of the build. You get the task file, the part
 and its rows, the directory, the branch, the base and the head, and the last builder's report as
 the handoff note. Read your part's sections as above, and `git diff <base>..<head>` in the
-directory. The handoff note is not evidence: check each claim of it that you rely on.
+directory. The handoff note is not evidence: check each claim of it that you rely on. Copy each
+row of its *Reported, not fixed* into your own report's, so that the last report holds every
+defect the loop left.
 
 `pwd` must be the directory your caller names, and `git rev-parse --short HEAD` the head it names,
 on the part's branch. Otherwise stop and report. Make no branch.
@@ -114,8 +116,8 @@ on the part's branch. Otherwise stop and report. Make no branch.
   run left for the dispatcher. Go on as *Build to the Done when* says, and return with
   `Verdict: ready for critic`.
 - **`Round: fix`**: you also get the critic's report. Do what *The critic's findings* says.
-- **`Round: finish`**: you also get the critic's verdict and evidence table. Do what *The finish*
-  says.
+- **`Round: finish`**: you also get the critic's verdict, evidence table and *Other defects*. Do
+  what *The finish* says.
 
 ## The critic's findings
 
@@ -141,7 +143,10 @@ fix adds, changes or makes false. Commit, fill *Blocking defects answered*, and 
 
 Your caller spawns you with `Round: finish` after its own read of the diff. Run step 8 over the
 whole branch first; here it fixes text only, and a false line whose fix needs a change of code goes
-to your caller under *Question for the dispatcher*. Then do what the plan's §L says for the finish.
+to your caller under *Question for the dispatcher*. Treat each of the critic's *Other defects*
+that the handoff note does not already record as *The critic's findings* says, with the same
+limit: a fix that needs a change of code goes to your caller under *Question for the dispatcher*.
+Then do what the plan's §L says for the finish.
 Before the branch leaves the worktree, delegate in the foreground to the verifier of the
 repository: `julia-branch-verifier` in `Packages/` and `Experiments/`, `python-branch-verifier` in
 a Python repository, one with a `pyproject.toml` whose `Project.toml`, where it has one, names no
@@ -155,7 +160,8 @@ Write the body with the Write tool under `~/Research/.scratch/builder/<worktree 
 `--title` free of backticks and `$(`. The body holds, under `## Critic`, the critic's verdict and
 evidence table; the verifier's `## Pre-PR verification` block where a verifier ran; under
 `## Known issues added`, the entries of `git diff <base>..HEAD -- KNOWN_ISSUES.md` by ID, where
-the repository keeps one; and under `## Decisions taken without the user`, every `**Decided (…)**`
+the repository keeps one, or else, under `## Reported, not fixed`, every row of your report's
+*Reported, not fixed*; and under `## Decisions taken without the user`, every `**Decided (…)**`
 line of the part's spec that the user did not write, then each clause that the head does not meet
 as the spec writes it, with the reason. No local path and no closing keyword in it.
 **After the critic's report, the code changes only for its findings**, and the text for step 8.

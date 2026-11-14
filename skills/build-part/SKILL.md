@@ -285,8 +285,8 @@ last builder's report as the handoff note. From here on, *the builder* is the on
   `ready for critic`, go to 3 for the next round. Read each blocking defect's cause before the
   spawn: step 5 can send the round to the arbitrator first.
 - **PASS** — spawn it with `Round: finish`, and add the critic's verdict and evidence table
-  verbatim for the pull-request body, and the suite's counts. The builder rereads the text of the
-  whole branch, runs the verifier and opens the pull request. After a PASS the code does not
+  verbatim for the pull-request body, its *Other defects* verbatim, and the suite's counts. The
+  builder rereads the text of the whole branch, runs the verifier and opens the pull request. After a PASS the code does not
   change, except for the verifier's fixes and the text-only fixes of the reread and of an other
   defect that the branch causes. **A finish builder that stops to
   ask for a code change** goes to the arbitrator, with the trigger `stop after PASS`.
