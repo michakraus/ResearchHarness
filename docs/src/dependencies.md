@@ -111,6 +111,13 @@ Claude Code [sandbox](concepts.md#sandbox) needs bubblewrap, `bwrap`, and socat.
 template sets `failIfUnavailable`, so without them Claude Code does not start. On Ubuntu,
 `harness setup` installs curl, bubblewrap, socat and lsof on every machine, in its `apt-get` line.
 
+On macOS, `age` and `age-plugin-se` are optional, and you install them yourself, with
+`brew install age age-plugin-se`; `harness setup` does not. They are for the sealed secrets:
+`ghx`, `glabx` and `git-credential-sealed` decrypt your own broad forge tokens with `age` and an
+`age-plugin-se` identity in the Secure Enclave, so each decryption asks for Touch ID. Without
+them each run of these three commands that reads a secret refuses, and nothing else changes
+([The sealed secrets](components/sandbox.md#the-forge-tokens)).
+
 ## What each tool does
 
 Each section below describes one tool of the tables, or the eight Julia packages together: what the

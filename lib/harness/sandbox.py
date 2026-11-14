@@ -49,9 +49,11 @@ removes, because a command of that frontend would reach the host.
 With at least one frontend chosen, `plan_files` also plans the launcher sandbox/agentbox at
 `~/.local/bin/agentbox`, mode 755, which starts a frontend under `srt` with its file, the gh
 wrapper scripts/gh-token.py at `~/.local/bin/gh`, mode 755, which runs gh with the token of the
-repository's owner, and, with `claude` chosen, Claude Code's override `claude-inner-off.json` in
-the same directory as the files, which the launcher passes to Claude Code to turn its own sandbox
-off.
+repository's owner, on macOS only scripts/sealed.py at `~/.local/bin/ghx`, `~/.local/bin/glabx`
+and `~/.local/bin/git-credential-sealed`, each mode 755, which run gh and glab, and answer git as
+a credential helper, with the user's own secrets that Touch ID decrypts, and, with `claude`
+chosen, Claude Code's override `claude-inner-off.json` in the same directory as the files, which
+the launcher passes to Claude Code to turn its own sandbox off.
 
 The module has no subcommand; its cases run in `harness test`.
 """
@@ -65,6 +67,7 @@ import secrets
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import tomllib
 import types
@@ -91,6 +94,13 @@ LAUNCHER_MODE = 0o755
 # it, beside the launcher, with the launcher's mode.
 WRAPPER = REPO / "scripts" / "gh-token.py"
 WRAPPER_PATH = pathlib.PurePosixPath(".local", "bin", "gh")
+# The script of the sealed secrets, which runs gh or glab, or answers git as a credential helper,
+# with a secret that Touch ID decrypts, and its three names beside the launcher, with the launcher's
+# mode; it picks its behaviour by the name that it runs as. The install plans them on macOS only.
+SEALED = REPO / "scripts" / "sealed.py"
+SEALED_PATHS = tuple(
+    pathlib.PurePosixPath(".local", "bin", name) for name in ("ghx", "glabx", "git-credential-sealed")
+)
 # Claude Code's settings file for `--settings` under the launcher: its own sandbox fails inside
 # srt's, so it is off.
 INNER_OFF_NAME = "claude-inner-off.json"
@@ -375,8 +385,10 @@ def plan_files(
     removes. Each file is JSON indented by 2, the keys in the order built, with a final newline,
     and mode None. Then, where `chosen` holds claude, Claude Code's override INNER_OFF, mode None;
     then the launcher sandbox/agentbox at ~/.local/bin/agentbox, mode 755; then the gh wrapper
-    scripts/gh-token.py at ~/.local/bin/gh, mode 755. With no frontend chosen it plans nothing, so
-    an overlay that the install does not read stops nothing."""
+    scripts/gh-token.py at ~/.local/bin/gh, mode 755; then, on macOS (`sys.platform` "darwin")
+    only, scripts/sealed.py at ~/.local/bin/ghx, ~/.local/bin/glabx and
+    ~/.local/bin/git-credential-sealed, each mode 755, in that order. With no frontend chosen it
+    plans nothing, so an overlay that the install does not read stops nothing."""
     names = [name for name in frontends.FRONTENDS if name in chosen]
     if not names:
         return []
@@ -417,6 +429,9 @@ def plan_files(
         files.append((home / DIRECTORY / INNER_OFF_NAME, INNER_OFF, None, f"~/{DIRECTORY}/{INNER_OFF_NAME}"))
     files.append((home / LAUNCHER_PATH, LAUNCHER.read_bytes(), LAUNCHER_MODE, f"~/{LAUNCHER_PATH}"))
     files.append((home / WRAPPER_PATH, WRAPPER.read_bytes(), LAUNCHER_MODE, f"~/{WRAPPER_PATH}"))
+    if sys.platform == "darwin":
+        sealed = SEALED.read_bytes()
+        files.extend((home / path, sealed, LAUNCHER_MODE, f"~/{path}") for path in SEALED_PATHS)
     return files
 
 
@@ -485,6 +500,8 @@ SHIPPED_KAIMON = "/h/.config/kaimon/auth-token"
 SHIPPED_FORGE = "/h/.config/research-harness/forge"
 # The token of the dotfiles, which no frontend reads.
 SHIPPED_DOTFILES = "/h/.config/dotfiles-credentials"
+# The directory of the sealed secrets of scripts/sealed.py, which no frontend reads.
+SHIPPED_SEALED = "/h/.config/research-harness/sealed"
 SHIPPED_OWN = {
     "claude": (
         "/h/.claude.json",
@@ -568,8 +585,9 @@ def selftest() -> tuple[int, int]:
     """The shipped policy, each refusal of `load_policy`, each rule of `srt_settings` on a fixture
     and on the settings template, the forge token store in the frontends' guard lists
     (`forge_guard_cases`), the dotfiles token in every list that denies it
-    (`dotfiles_guard_cases`), the gh wrapper in `plan_files`, and sandbox/agentbox on scratch
-    homes (`agentbox_cases`):
+    (`dotfiles_guard_cases`), the sealed secrets in the same lists (`sealed_guard_cases`), the gh
+    wrapper and the three names of scripts/sealed.py in `plan_files` on Linux and macOS, and
+    sandbox/agentbox on scratch homes (`agentbox_cases`):
     (cases, wrong). The cases of `harness install` on scratch HOMEs, `install_file_cases`, run in
     the selftest of install.py."""
     n = wrong = 0
@@ -587,6 +605,7 @@ def selftest() -> tuple[int, int]:
         template_cases(check)
         forge_guard_cases(check)
         dotfiles_guard_cases(check)
+        sealed_guard_cases(check)
         mach_lookup_cases(check, root)
         plan_network_cases(check, root / "plan")
         plan_wrapper_cases(check, root / "wrapper")
@@ -1177,27 +1196,63 @@ def network_cases(check: Check, root: pathlib.Path, home: pathlib.Path) -> None:
 
 def plan_wrapper_cases(check: Check, root: pathlib.Path) -> None:
     """`plan_files` plans the gh wrapper scripts/gh-token.py at ~/.local/bin/gh, mode 755, after the
-    launcher, with one frontend chosen; with none it plans nothing."""
+    launcher, with one frontend chosen: on Linux as the last file, and on macOS before
+    scripts/sealed.py at ~/.local/bin/ghx, ~/.local/bin/glabx and
+    ~/.local/bin/git-credential-sealed, each mode 755, in that order, which are the last three
+    files. With none it plans nothing on either platform."""
     profile = profile_module.load(profile_module.DUMMY)
     home = pathlib.Path("/h")
     root.mkdir()
     overlay = root / "network.toml"
-    planned = plan_files(profile, overlay, ("omp",), home, None)
     wrapper = (
         home / WRAPPER_PATH,
         WRAPPER.read_bytes() if WRAPPER.is_file() else None,
         0o755,
         "~/.local/bin/gh",
     )
+    sealed = SEALED.read_bytes() if SEALED.is_file() else None
+    names = [
+        (home / ".local" / "bin" / name, sealed, 0o755, f"~/.local/bin/{name}")
+        for name in ("ghx", "glabx", "git-credential-sealed")
+    ]
+
+    def shown(
+        planned: list[tuple[pathlib.Path, bytes, int | None, str]],
+    ) -> list[tuple[str, int | None, str]]:
+        return [(str(d), m, label) for d, _, m, label in planned]
+
+    with mock.patch("sys.platform", "linux"):
+        planned = plan_files(profile, overlay, ("omp",), home, None)
+        none = plan_files(profile, overlay, (), home, None)
     check(
         len(planned) > 1 and planned[-1] == wrapper and planned[-2][0] == home / LAUNCHER_PATH,
-        f"with omp chosen, plan_files plans the launcher, then scripts/gh-token.py at ~/.local/bin/gh, "
-        f"mode 755: {[(str(d), m, label) for d, _, m, label in planned]}",
+        f"on linux, with omp chosen, plan_files plans the launcher, then scripts/gh-token.py at "
+        f"~/.local/bin/gh, mode 755, as the last file: {shown(planned)}",
     )
     check(
-        plan_files(profile, overlay, (), home, None) == [],
-        "with no frontend chosen, plan_files plans no wrapper",
+        not [d for d, _, _, _ in planned if d.name in {"ghx", "glabx", "git-credential-sealed"}],
+        f"on linux, plan_files plans none of ghx, glabx and git-credential-sealed: {shown(planned)}",
     )
+    check(none == [], f"on linux, with no frontend chosen, plan_files plans nothing: {shown(none)}")
+    with mock.patch("sys.platform", "freebsd14"):
+        other = plan_files(profile, overlay, ("omp",), home, None)
+    check(
+        other[-1] == wrapper,
+        f"on freebsd14, plan_files plans the gh wrapper as the last file: {shown(other)}",
+    )
+    with mock.patch("sys.platform", "darwin"):
+        planned = plan_files(profile, overlay, ("omp",), home, None)
+        none = plan_files(profile, overlay, (), home, None)
+    tail = [wrapper, *names]
+    check(
+        len(planned) > len(tail)
+        and planned[-len(tail) :] == tail
+        and planned[-len(tail) - 1][0] == home / LAUNCHER_PATH,
+        f"on darwin, with omp chosen, plan_files plans the launcher, the gh wrapper, then scripts/sealed.py "
+        f"at ~/.local/bin/ghx, ~/.local/bin/glabx and ~/.local/bin/git-credential-sealed, each mode 755, "
+        f"as the last files: {shown(planned)}",
+    )
+    check(none == [], f"on darwin, with no frontend chosen, plan_files plans nothing: {shown(none)}")
 
 
 def plan_network_cases(check: Check, root: pathlib.Path) -> None:
@@ -1446,6 +1501,61 @@ def dotfiles_guard_cases(check: Check) -> None:
             SHIPPED_DOTFILES in fs["denyRead"] and SHIPPED_DOTFILES not in fs["allowRead"],
             f"{name}: the dotfiles token is a read deny and no read allow: "
             f"{[p for p in fs['denyRead'] if p.startswith('/h/.config/dot')]}",
+        )
+
+
+def sealed_guard_cases(check: Check) -> None:
+    """The sealed secrets of scripts/sealed.py, which no frontend reads, in every list that denies
+    the dotfiles token: the settings template's `permissions.deny`, `sandbox.filesystem.denyRead`
+    and `sandbox.credentials.files`, the guard list of OpenCode, oh-my-pi and Antigravity rendered
+    with the dummy profile, and the `denyRead` of each frontend's srt settings from the template and
+    the shipped policy, whose `own` lists do not name the directory. The template's
+    `permissions.deny` also refuses a command that runs ghx, glabx or git-credential-sealed."""
+    template = cast("dict[str, Any]", jsonio.load(REPO / "settings" / "settings.proposal.json"))
+    deny = cast("list[str]", template["permissions"]["deny"])
+    for rule in (
+        "Read(/{home}/.config/research-harness/sealed/**)",
+        "Bash(ghx)",
+        "Bash(ghx *)",
+        "Bash(glabx)",
+        "Bash(glabx *)",
+        "Bash(git-credential-sealed *)",
+    ):
+        check(rule in deny, f"the template's permissions.deny holds {rule}")
+    directory = "~" + SHIPPED_SEALED[2:]
+    sandbox = template["sandbox"]
+    check(
+        directory in sandbox["filesystem"]["denyRead"],
+        f"the template's sandbox.filesystem.denyRead holds {directory}",
+    )
+    check(
+        {"path": directory, "mode": "deny"} in sandbox["credentials"]["files"],
+        f"the template's sandbox.credentials.files names {directory}, mode deny",
+    )
+    profile = profile_module.load(profile_module.DUMMY, home=profile_module.DUMMY_HOME)
+    path = f"{profile_module.DUMMY_HOME}/.config/research-harness/sealed/**"
+    opencode = REPO / "adapters" / "opencode" / "plugins" / "guard-paths.json"
+    lists = {
+        "opencode": profile_module.render_file(opencode, profile),
+        "omp": frontends.adapter("omp").guard_paths(profile),
+        "antigravity": frontends.adapter("antigravity").guard_paths(profile),
+    }
+    for name, text in lists.items():
+        guard = cast("dict[str, list[str]]", jsonio.loads(text, where=name))["deny"]
+        check(path in guard, f"{name}: the rendered guard list denies {path}")
+    policy = load_policy(POLICY)
+    for name in frontends.FRONTENDS:
+        own = [p for p in policy.frontends[name].own if "research-harness/sealed" in p]
+        check(not own, f"{name}: the policy's own list does not name the sealed directory: {own}")
+        fs = cast(
+            "dict[str, list[str]]",
+            srt_settings(name, sandbox, policy, pathlib.Path("/h"), "/t")["filesystem"],
+        )
+        check(
+            SHIPPED_SEALED in fs["denyRead"]
+            and not [p for p in fs["allowRead"] if below(p, [SHIPPED_SEALED])],
+            f"{name}: the sealed directory is a read deny, and no read allow is at or below it: "
+            f"{[p for p in fs['denyRead'] if p.startswith('/h/.config/research')]}",
         )
 
 

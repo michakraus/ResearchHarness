@@ -359,6 +359,11 @@
       "Bash(glab auth status *-t*)",
       "Bash(glab auth status *-at*)",
       "Bash(glab auth logout*)",
+      "Bash(ghx)",
+      "Bash(ghx *)",
+      "Bash(glabx)",
+      "Bash(glabx *)",
+      "Bash(git-credential-sealed *)",
       "Bash(rtk run *)",
       "Bash(rtk proxy *)",
       "Bash(rtk curl *)",
@@ -385,6 +390,7 @@
       "Read(/{home}/.config/gh/hosts.yml)",
       "Read(/{home}/.config/research-harness/forge/**)",
       "Read(/{home}/.config/dotfiles-credentials/**)",
+      "Read(/{home}/.config/research-harness/sealed/**)",
       "Read(/{home}/.config/glab-cli/config.yml)",
       "Read(/{home}/Library/Application Support/glab-cli/config.yml)",
       "Read(/{home}/.claude/.credentials.json)",
@@ -902,6 +908,7 @@
         "~/.local/share/opencode/mcp-auth.json",
         "~/.config/research-harness/forge",
         "~/.config/dotfiles-credentials",
+        "~/.config/research-harness/sealed",
         "~/**/.env",
         "~/**/.env.*",
         "~/.cache/gh",
@@ -992,6 +999,10 @@
         },
         {
           "path": "~/.config/dotfiles-credentials",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.config/research-harness/sealed",
           "mode": "deny"
         }
       ]

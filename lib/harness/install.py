@@ -27,6 +27,11 @@ What it installs:
                                       only where `[setup]` chooses a frontend
   scripts/gh-token.py              -> ~/.local/bin/gh, mode 755, which runs gh with the token of
                                       the repository's owner; with the launcher
+  scripts/sealed.py                -> ~/.local/bin/ghx, ~/.local/bin/glabx and
+                                      ~/.local/bin/git-credential-sealed, each mode 755, which run
+                                      gh and glab, and answer git as a credential helper, with the
+                                      user's own secrets that Touch ID decrypts; with the
+                                      launcher, on macOS only
   the forge token store            -> ~/.config/research-harness/forge.gitconfig, mode 600, git's
   ~/.config/research-harness/forge/   credential helpers of the store (lib/harness/forge.py);
                                       only where the store exists
@@ -38,22 +43,23 @@ installed.
 It loads the profile and the model tables, `--models F`, else $RESEARCH_HARNESS_MODELS, else
 models.toml beside the profile; examples/models.toml shows them. Then it plans each chosen
 frontend, in the order of FRONTENDS (`frontends.planned`), then the srt settings, the launcher
-and the gh wrapper, then the git configuration of the forge token store (`forge.plan_files`).
+and the gh wrapper (on macOS with the sealed script), then the git configuration of the forge
+token store (`forge.plan_files`).
 Planning writes nothing, so each refusal that stops the install at once, with exit status 2,
 comes before anything is written. `check_files` then checks every target of the Julia
-environment, with the `julia` component, of each plan, of the srt settings, the launcher and the
-wrapper, and of the forge's file, and refuses a symbolic link or a directory at a target, also
-before anything is written. A target with a change
+environment, with the `julia` component, of each plan, of the srt settings, the launcher, the
+wrapper and the sealed script, and of the forge's file, and refuses a symbolic link or a
+directory at a target, also before anything is written. A target with a change
 that cannot be written exits 2 there under `--apply`; a dry run prints its whole plan and count
 line first, then that refusal, and exits 2. Then it installs the Julia environment, with the
 `julia` component, the Python
 environment (`install_python_env`), the files of each plan, and the srt settings, the launcher,
-the wrapper and the forge's file, in that order, prints the warnings and the forge's notice
-(`forge.notice`), and runs the steps of each plan that follow the files. It
+the wrapper, the sealed script and the forge's file, in that order, prints the warnings and the
+forge's notice (`forge.notice`), and runs the steps of each plan that follow the files. It
 prints the installed files with no source, then the count line. After an `--apply`, it prints the
 restart line of each frontend whose files or steps changed something, in that order; the two
-environments, the srt settings, the launcher, the wrapper and the forge's file belong to no
-frontend. A plan's own refusal exits
+environments, the srt settings, the launcher, the wrapper, the sealed script and the forge's file
+belong to no frontend. A plan's own refusal exits
 2 after these lines, once
 the rest is installed.
 
