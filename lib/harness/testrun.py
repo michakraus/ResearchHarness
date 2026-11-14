@@ -44,7 +44,17 @@ from . import REPO, HarnessError, changelog, doctor, sweep
 HARNESS = [sys.executable, str(REPO / "bin" / "harness")]
 PROBE = REPO / "hooks" / "probe.py"
 # The groups of hooks/probe.py, its GROUPS; a case of `selftest` checks that the two agree.
-PROBE_GROUPS = ("commands", "payloads", "manifest", "drift", "omp", "opencode", "antigravity", "kaimon-note")
+PROBE_GROUPS = (
+    "commands",
+    "payloads",
+    "manifest",
+    "drift",
+    "omp",
+    "opencode",
+    "antigravity",
+    "kaimon-note",
+    "registry-copies",
+)
 ALWAYS = ("docs", "sweep")
 SUMMARY = re.compile(r"(\d+) cases, (\d+) wrong")
 TIMEOUT = 300  # seconds per part

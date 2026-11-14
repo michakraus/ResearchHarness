@@ -3383,6 +3383,162 @@ def kaimon_note_cases():
     return len(cases) + 2, wrong
 
 
+# `registry-copies.py` warns after a Bash call that runs Julia when the registries directory of the
+# first depot holds more than one `General.tar.*` file, or when `General.toml` names no newest one.
+# Each depot of the fixture holds `registries/` with the files of REGISTRY_DEPOTS, each with its age
+# in seconds, and `General.toml` naming the file `path`; a depot of None has no `registries/`.
+REGISTRY_COPIES = HOOKS + "registry-copies.py"
+REGISTRY_DEPOTS: dict[str, tuple[dict[str, int], str] | None] = {
+    "one": ({"General.tar.zst": 60}, "General.tar.zst"),
+    "newest": ({"General.tar.gz": 3600, "General.tar.zst": 60}, "General.tar.zst"),
+    "older": ({"General.tar.gz": 60, "General.tar.zst": 3600}, "General.tar.zst"),
+    "missing": ({"General.tar.zst": 60}, "General.tar.gz"),
+    "none": None,
+}
+
+
+def registry_depot(name: str) -> str:
+    """The path of the fixture depot `name` of REGISTRY_DEPOTS, written on first use."""
+    depot = pathlib.Path(FIXTURE.name, f"depot-{name}")
+    spec = REGISTRY_DEPOTS[name]
+    if not depot.exists():
+        depot.mkdir()
+        if spec is not None:
+            registries = depot / "registries"
+            registries.mkdir()
+            now = time.time()
+            for file, age in spec[0].items():
+                (registries / file).write_bytes(b"")
+                os.utime(registries / file, (now - age, now - age))
+            (registries / "General.toml").write_text(f'path = "{spec[1]}"\n', encoding="utf-8")
+    return str(depot)
+
+
+def registry_answer(data: bytes, depot: str | None) -> tuple[str, str]:
+    """('warn', its text), ('silent', '') for exit 0 with no output, or what else
+    `registry-copies.py` did on the payload bytes `data` with JULIA_DEPOT_PATH `depot`, or with
+    none set when `depot` is None."""
+    env = {k: v for k, v in ENV.items() if k != "JULIA_DEPOT_PATH"}
+    if depot is not None:
+        env["JULIA_DEPOT_PATH"] = depot + os.pathsep
+    try:
+        proc = subprocess.run(
+            [sys.executable, REGISTRY_COPIES],
+            input=data,
+            capture_output=True,
+            env={**env, "PYTHONIOENCODING": "utf-8"},
+            timeout=TIMEOUT,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return "timeout", ""
+    failed = f"exit {proc.returncode}" if proc.returncode else "stderr" if proc.stderr else ""
+    if failed or not proc.stdout.strip():
+        return failed or "silent", ""
+    try:
+        out = json_value(proc.stdout.decode("utf-8"), "the output")["hookSpecificOutput"]
+        text = out["additionalContext"]
+    except UnicodeDecodeError, ValueError, KeyError, TypeError:
+        return "unreadable output", ""
+    if out["hookEventName"] != "PostToolUse" or not isinstance(text, str):
+        return "other output", ""
+    return "warn", text
+
+
+def registry_cases():
+    """The cases of `registry-copies.py`: (number of cases, number wrong)."""
+    julia = note_payload("julia --project=. -e 'using Foo'").encode("utf-8")
+    remedy = ("Pkg.Registry.update()", "delete the copy that `General.toml` does not name")
+    # A case: label, payloads, depot name (None: JULIA_DEPOT_PATH unset, the fixture HOME has no
+    # depot), and the texts that the warning holds, or None for no output.
+    cases: list[tuple[str, list[bytes], str | None, tuple[str, ...] | None]] = [
+        ("one copy that General.toml names gives no warning", [julia], "one", None),
+        (
+            "two copies, General.toml naming the newest, give a warning",
+            [julia],
+            "newest",
+            (
+                "`General.tar.gz` (modified",
+                "`General.tar.zst` (modified",
+                "names `General.tar.zst`, the newest",
+                *remedy,
+            ),
+        ),
+        (
+            "two copies, General.toml naming the older, give a warning",
+            [julia],
+            "older",
+            (
+                "`General.tar.gz` (modified",
+                "`General.tar.zst` (modified",
+                "Pkg reads the older copy",
+                *remedy,
+            ),
+        ),
+        (
+            "a General.toml that names a missing file gives a warning",
+            [julia],
+            "missing",
+            ("names `General.tar.gz`, which is missing", *remedy),
+        ),
+        ("no registries directory gives no warning", [julia], "none", None),
+        ("no depot below HOME gives no warning", [julia], None, None),
+        (
+            "more calls that run Julia give a warning",
+            [
+                note_payload(c).encode("utf-8")
+                for c in (
+                    "juliaup update",
+                    "cd x && A=1 ~/.juliaup/bin/julia +1.13 x.jl",
+                    "(cd x; julia -e 1) 2>&1",
+                    "if true; then julia -e 1; fi",
+                    "echo 1 | julia",
+                )
+            ],
+            "newest",
+            remedy,
+        ),
+        (
+            "a call that runs no Julia gives no warning",
+            [
+                note_payload(c).encode("utf-8")
+                for c in ("ls", "grep -rn julia src", 'echo "julia -e 1"', "cat x > julia", "echo 'julia")
+            ],
+            "older",
+            None,
+        ),
+        (
+            "an unreadable payload gives no warning",
+            [
+                b"not json",
+                b"{}",
+                b"",
+                b"[1]",
+                b"\xff",
+                b'{"tool_name": "Bash", "tool_input": "julia -e 1"}',
+                note_payload(7).encode("utf-8"),
+                NOT_BASH.encode("utf-8"),
+            ],
+            "older",
+            None,
+        ),
+    ]
+    wrong = 0
+    for label, data, depot, texts in cases:
+        path = None if depot is None else registry_depot(depot)
+        bad: list[tuple[bytes, str]] = []
+        for d in data:
+            got, text = registry_answer(d, path)
+            right = got == "silent" if texts is None else got == "warn" and all(t in text for t in texts)
+            if not right:
+                bad.append((d, f"{got} {text!r}"))
+        wrong += bool(bad)
+        mark = "BAD" if bad else "ok "
+        got = "; ".join(f"{d[:80]!r}: {w}" for d, w in bad) or "as expected"
+        print(f"{mark} {label}  [registry ]  {got}")
+    return len(cases), wrong
+
+
 # The groups of cases, in the order of a run of every group; each returns (number of cases, number
 # wrong). `harness test` runs each group as the part `probe:<group>`.
 GROUPS = {
@@ -3394,6 +3550,7 @@ GROUPS = {
     "opencode": oc_cases,
     "antigravity": agy_cases,
     "kaimon-note": kaimon_note_cases,
+    "registry-copies": registry_cases,
 }
 
 

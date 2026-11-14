@@ -167,9 +167,10 @@ report it.
 
 ## The General-registry rebase trap
 
-This trap applies to a **git-clone** registry. This machine holds `General.tar.zst`, so here it
-applies only to CI runners, where `julia-actions/cache` keeps one clone per cache key. The key is
-`workflow;job;os;version`, so a stuck clone affects one matrix entry only.
+This trap applies to a **git-clone** registry, a directory `registries/General/`. A depot that
+holds `General.toml` and a tarball has none. CI runners hold clones: `julia-actions/cache` keeps
+one clone per cache key. The key is `workflow;job;os;version`, so a stuck clone affects one matrix
+entry only.
 
 The two registry routes go stale independently. `JULIA_PKG_SERVER: ""` in a workflow forces the
 git clone. The default fetches the tarball from `pkg.julialang.org`, which can lag registration
@@ -186,12 +187,16 @@ git reset --hard origin/master
 
 ## Checking whether registration landed
 
-The local registry is compressed and TagBot lags, so neither is authoritative. A path under
-`~/.julia/registries/General/` does not exist, so an `ls` or `grep` there reads as "not
-registered". Read the local tarball, which can be behind:
+The local registry can be behind and TagBot lags, so neither is authoritative. A depot with a
+tarball registry has no `registries/General/`, so an `ls` or `grep` there reads as "not
+registered". The key `path` of `registries/General.toml` names the file that Pkg reads; a second
+`General.tar.*` file beside it is stale. Ask Pkg for the versions that the local depot knows:
 
 ```bash
-cd ~/.julia/registries && tar --zstd -xOf General.tar.zst <X>/<Package>/Versions.toml <X>/<Package>/Compat.toml
+julia --startup-file=no -e 'using Pkg
+  for reg in Pkg.Registry.reachable_registries(), (u, p) in reg.pkgs
+      p.name == "<Package>" && println(sort(collect(keys(Pkg.Registry.registry_info(reg, p).version_info))))
+  end'
 ```
 
 Check the General repository over HTTP:
