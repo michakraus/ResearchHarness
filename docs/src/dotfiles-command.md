@@ -135,6 +135,22 @@ merge request of the source's `origin`: `gh` names its branch for an `origin` on
 and `glab` for any other host. A request that is not open stops `dotfiles merge` before the
 merge. Any other argument is a branch name.
 
+`glab` first asks with its own login. When that login cannot read the merge request and the
+`origin` is an `https://` URL, the driver reads the password that git uses for the `origin`, with
+`git credential fill` in the source, and asks `glab` once more, in the source, with that password
+as `GITLAB_TOKEN` and the host of the `origin` as `GITLAB_HOST`. For a personal project that the
+GitLab group token of [The forge tokens](components/sandbox.md#the-forge-tokens) cannot read,
+that credential is a project access token of the project, in a credential helper of the source's
+own git configuration; the token needs the `read_api` scope (or `api`). The read sets
+`GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`, so git asks nothing in the terminal and a
+credential manager opens no dialog, and it never approves or rejects a credential. The password
+appears in no argument and on no output. When neither call answers, `dotfiles merge` stops with
+one line:
+
+```text
+dotfiles merge: merge request !<number> is not found, not open; nothing is merged. Neither glab nor the source's git credential reads it; merge its branch with dotfiles merge <branch>.
+```
+
 Then `dotfiles-merge <branch>` stops when standard input is not a terminal, when the host data
 gives no `signing_key`, when the source has local changes, untracked files included, and when its
 `HEAD` is not `main` at `origin/main`. It prints `git log --first-parent main..origin/<branch>`

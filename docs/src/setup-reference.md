@@ -1329,18 +1329,13 @@ On Linux, install it as the documentation of chezmoi shows for your distribution
 
 **`harness setup` does not do this step.** It logs in no account.
 
-In an SSH session on Linux, no Secret Service provider, such as GNOME Keyring, is available, so
-`gh` and `glab` cannot store their tokens in the system keyring. They keep them in files: `gh` in
-`~/.config/gh/hosts.yml`, and `glab` in `~/.config/glab-cli/config.yml`, when you answer no to
-its question about a keyring. The settings do not let a session read either file. `gh` and
-`glab` run outside the sandbox, so they still read their own files.
-
-Over SSH, `gh` logs in with a device code: it prints a code and a URL, which you open on another
-machine.
-
-```bash
-gh auth login --hostname github.com --git-protocol https
-```
+In an SSH session on Linux, no Secret Service provider, such as GNOME Keyring, is available. `gh`
+and git need no keyring: they reach the forges through the token store, one file for each token,
+which you write as [The forge tokens](components/sandbox.md#the-forge-tokens) says; `gh` holds no
+login of its own. `glab`'s login holds the group token (step 5 there). Over SSH, `glab` cannot
+store that token in the system keyring, so it keeps it in `~/.config/glab-cli/config.yml` when
+you answer no to its question about a keyring. The settings do not let a session read the store
+or that file. `gh`, git and `glab` run outside the sandbox, so they still read them.
 
 In Claude Code, `/login` prints a URL. Open it on another machine, and paste the code that it
 gives back into Claude Code.
