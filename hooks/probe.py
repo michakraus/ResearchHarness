@@ -3493,6 +3493,8 @@ def registry_cases():
                     "(cd x; julia -e 1) 2>&1",
                     "if true; then julia -e 1; fi",
                     "echo 1 | julia",
+                    "echo $(julia -e 1)",
+                    "> out julia -e 1",
                 )
             ],
             "newest",
@@ -3502,7 +3504,15 @@ def registry_cases():
             "a call that runs no Julia gives no warning",
             [
                 note_payload(c).encode("utf-8")
-                for c in ("ls", "grep -rn julia src", 'echo "julia -e 1"', "cat x > julia", "echo 'julia")
+                for c in (
+                    "ls",
+                    "grep -rn julia src",
+                    'echo "julia -e 1"',
+                    "cat x > julia",
+                    "> julia ls",
+                    "ls &> julia",
+                    "echo 'julia",
+                )
             ],
             "older",
             None,

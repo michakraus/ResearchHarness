@@ -195,7 +195,9 @@ registered". The key `path` of `registries/General.toml` names the file that Pkg
 ```bash
 julia --startup-file=no -e 'using Pkg
   for reg in Pkg.Registry.reachable_registries(), (u, p) in reg.pkgs
-      p.name == "<Package>" && println(sort(collect(keys(Pkg.Registry.registry_info(reg, p).version_info))))
+      p.name == "<Package>" || continue
+      info = applicable(Pkg.Registry.registry_info, p) ? Pkg.Registry.registry_info(p) : Pkg.Registry.registry_info(reg, p)
+      println(sort(collect(keys(info.version_info))))
   end'
 ```
 
@@ -214,11 +216,14 @@ so it sees what CI resolves; an existing depot can be ahead of the server:
 ```bash
 JULIA_DEPOT_PATH=$(mktemp -d) julia --startup-file=no -e 'using Pkg; Pkg.Registry.add("General")
   for reg in Pkg.Registry.reachable_registries(), (u, p) in reg.pkgs
-      p.name == "<Package>" && println(sort(collect(keys(Pkg.Registry.registry_info(reg, p).version_info))))
+      p.name == "<Package>" || continue
+      info = applicable(Pkg.Registry.registry_info, p) ? Pkg.Registry.registry_info(p) : Pkg.Registry.registry_info(reg, p)
+      println(sort(collect(keys(info.version_info))))
   end'
 ```
 
-`registry_info` takes `(registry, entry)`, not the entry alone.
+`registry_info` takes `(registry, entry)` in Julia 1.13 and the entry alone in Julia 1.10 to 1.12;
+the `applicable` test picks the form.
 
 ## Report
 

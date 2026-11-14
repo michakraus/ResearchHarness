@@ -55,7 +55,7 @@ def runs_julia(command: str) -> bool:
     start, target = True, False
     for kind, token in tokens:
         if kind == "op":
-            if set(token) & SEPARATORS or "(" in token or ")" in token:
+            if set(token) <= SEPARATORS or "(" in token or ")" in token:
                 start, target = True, False
             elif "<" in token or ">" in token:
                 target = True
