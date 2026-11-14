@@ -105,8 +105,8 @@ its report to `gate.md`:
    tests.
 2. **`named`**: the named mutants, with `mutate.jl --warm`. A mutant that survives fails the step.
 3. **`generated`**: a sweep of operator mutants over the diff. It reports, and never fails.
-4. **`dispatch`**: `dispatch-delta.jl` against the base: new ambiguities, piracies and abstract
-   fields fail.
+4. **`dispatch`**: `dispatch-delta.jl` against the base: new ambiguities, piracies, abstract
+   fields and stale explicit imports fail.
 5. **`format`**: JuliaFormatter on the changed files.
 
 A step that reports gives INFO, which counts as a pass. A step that gives no verdict, such as a

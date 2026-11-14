@@ -60,10 +60,13 @@ function fixture(name, base, head; project = "", headproject = project, sub = ""
     return dir
 end
 
-"Run the script with `args`, from `dir`; the exit code, stdout, stderr, the time and the run directory."
-function dd(args...; dir = ROOT)
+"""
+Run the script with `args`, from `dir`, with the variables `env` added; the exit code, stdout,
+stderr, the time and the run directory.
+"""
+function dd(args...; dir = ROOT, env = ())
     out, err = IOBuffer(), IOBuffer()
-    cmd = Cmd(`$(Base.julia_cmd()) --startup-file=no $SCRIPT $args`; dir)
+    cmd = addenv(Cmd(`$(Base.julia_cmd()) --startup-file=no $SCRIPT $args`; dir), env...)
     t = @elapsed p = run(pipeline(ignorestatus(cmd); stdout = out, stderr = err))
     o = String(take!(out))
     m = match(r"run directory (\S+)", o)
@@ -452,7 +455,7 @@ function sides(base, head; jet = Dict("base" => [], "head" => []))
 end
 side(s; deps = Dict("Foo" => "1.0.0")) = Dict("package" => "Fx", "side" => s, "julia" => "1.13.3",
     "tools" => Dict("Aqua" => "0.8.18"), "dependencies" => deps, "loaded" => [], "methods" => [], "ambiguities" => [],
-    "piracies" => [], "fields" => [])
+    "piracies" => [], "fields" => [], "stale" => Dict("imports" => [], "unknown" => []))
 const DONE = DD.End(0, 0, false)
 
 @testset "dependency drift is information" begin
@@ -619,6 +622,143 @@ end
     @test FA.code == 0 && startswith(verdict(FA.out), "Verdict: PASS — 0 FAIL, 0 UNKNOWN, ")
 end
 
+# One run without JET of a package whose head adds stale explicit imports: one used nowhere, one in
+# its extension, and four reached as `DDStale.<name>` from test/, docs/, scripts/ and ext/; it
+# removes one, keeps one of the base on another line, and both sides hold a module made by
+# include_string, which ExplicitImports cannot analyse. A second run has no ExplicitImports in its
+# environments.
+const STALE_PROJECT = """
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+
+[weakdeps]
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[extensions]
+DDStaleStatisticsExt = "Statistics"
+
+[extras]
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[targets]
+test = ["Statistics"]
+"""
+# The end of both sides: a module made by include_string, and a used import of a name that is not
+# public, which ExplicitImports reports and does not call stale.
+const STALE_TAIL = "include_string(@__MODULE__, \"module Dyn\\nusing LinearAlgebra: svd\\nend\")\n" *
+                   "using LinearAlgebra: chkstride1\ng(A) = chkstride1(A)"
+const STALE = fixture("DDStale",
+    ["src/DDStale.jl" => mod("DDStale", "using LinearAlgebra: norm, dot, det\nf(x) = norm(x)\n$STALE_TAIL"),
+     "ext/DDStaleStatisticsExt.jl" => mod("DDStaleStatisticsExt", "using DDStale, Statistics")],
+    ["src/DDStale.jl" => mod("DDStale",
+        "# the imports of the base, one line lower\nusing LinearAlgebra: norm, dot\n" *
+        "using LinearAlgebra: tr, diag, kron, lu, rank\nf(x) = norm(x)\n$STALE_TAIL"),
+     "ext/DDStaleStatisticsExt.jl" => mod("DDStaleStatisticsExt", "using DDStale, Statistics\nusing Statistics: median"),
+     "test/runtests.jl" => "using DDStale\nDDStale.diag([1 2; 3 4])\n# DDStale.trace and DDStale.tr_x are no use of tr\n",
+     "docs/src/index.md" => "# DDStale\n\n```@docs\nDDStale.kron\n```\n",
+     "scripts/demo.jl" => "using DDStale\nDDStale.lu([1.0 2.0; 3.0 4.0])\n",
+     "ext/DDStaleExtra.jl" => "DDStale.rank([1 2; 3 4])\n"];
+    project = STALE_PROJECT)
+const ST = dd(STALE, "HEAD~1", "--no-jet")
+const STALE_JSON = DD.JSON.parsefile(joinpath(ST.run, "head.json"))
+"A copy of the harness environment whose Project.toml lacks ExplicitImports."
+function env_without_explicit_imports()
+    dir = mktempdir(ROOT)
+    keep = filter(l -> !startswith(l, "ExplicitImports"), readlines(joinpath(DD.HARNESS_ENV, "Project.toml")))
+    write(joinpath(dir, "Project.toml"), join(keep, '\n') * '\n')
+    cp(joinpath(DD.HARNESS_ENV, "Manifest.toml"), joinpath(dir, "Manifest.toml"))
+    return dir
+end
+# the default environment of the Julia version can hold ExplicitImports too, so it is left out
+const SN = dd(STALE, "HEAD~1", "--no-jet";
+    env = ("RESEARCH_HARNESS_JULIA" => env_without_explicit_imports(), "JULIA_LOAD_PATH" => "@:@stdlib"))
+
+@testset "each side records its stale explicit imports" begin
+    sb = DD.JSON.parsefile(joinpath(ST.run, "base.json"))
+    rec(d) = sort!([(r["module"], r["name"], r["file"], r["line"], r["used"]) for r in d["stale"]["imports"]])
+    @test rec(sb) == [("DDStale", "det", "src/DDStale.jl", 2, []), ("DDStale", "dot", "src/DDStale.jl", 2, [])]
+    @test rec(STALE_JSON) == [("DDStale", "diag", "src/DDStale.jl", 4, ["test"]), ("DDStale", "dot", "src/DDStale.jl", 3, []),
+        ("DDStale", "kron", "src/DDStale.jl", 4, ["docs"]), ("DDStale", "lu", "src/DDStale.jl", 4, ["scripts"]),
+        ("DDStale", "rank", "src/DDStale.jl", 4, ["ext"]), ("DDStale", "tr", "src/DDStale.jl", 4, []),
+        ("DDStaleStatisticsExt", "median", "ext/DDStaleStatisticsExt.jl", 3, [])]
+    for d in (sb, STALE_JSON)
+        @test d["stale"]["unknown"] == [Dict("module" => "DDStale.Dyn", "reason" => "ExplicitImports cannot analyse it")]
+    end
+    # the API mode records none
+    @test !any(s -> haskey(DD.JSON.parsefile(joinpath(FA.run, "$s.json")), "stale"), ("base", "head"))
+    @test !occursin("stale import", FA.out) && !occursin("ExplicitImports", FA.out)
+end
+
+@testset "a new stale import used nowhere fails" begin
+    @test lines(ST.out, "FAIL: ") == ["FAIL: new stale import: DDStale: tr at src/DDStale.jl:4",
+        "FAIL: new stale import: DDStaleStatisticsExt: median at ext/DDStaleStatisticsExt.jl:3"]
+    @test ST.code == 1 && verdict(ST.out) == "Verdict: FAIL — 2 FAIL, 1 UNKNOWN, 6 INFO"
+end
+
+@testset "a new stale import reached from test/, docs/, scripts/ or ext/ is information" begin
+    @test lines(ST.out, "INFO: new stale import") == ["INFO: new stale import, used in test: DDStale: diag",
+        "INFO: new stale import, used in docs: DDStale: kron", "INFO: new stale import, used in scripts: DDStale: lu",
+        "INFO: new stale import, used in ext: DDStale: rank"]
+    t = mktempdir(ROOT)
+    files!(t, ["test/a.jl" => "P.a", "docs/b.md" => "P.a", "src/c.jl" => "P.b", "test/d.txt" => "P.b", "ext/e.jl" => "Q.P.c P.cc P.c! xP.c P.c_ P.c1"])
+    @test DD.reached_in(t, "P.a") == ("test", "docs")
+    # src/ and a file that is neither .jl nor .md are not searched; the match is word bounded
+    @test isempty(DD.reached_in(t, "P.b")) && isempty(DD.reached_in(t, "P.c"))
+    @test DD.reached_in(t, "P.cc") == ("ext",)
+end
+
+@testset "a stale import of the base, a removed one, and a module that cannot be analysed" begin
+    @test !any(l -> occursin(": dot", l), split(ST.out, '\n'))
+    @test lines(ST.out, "INFO: gone stale import: ") == ["INFO: gone stale import: DDStale: det"]
+    @test lines(ST.out, "UNKNOWN: ") == ["UNKNOWN: stale imports: DDStale.Dyn: ExplicitImports cannot analyse it"]
+end
+
+@testset "a missing ExplicitImports is one UNKNOWN line and gives no verdict" begin
+    @test only(lines(SN.out, "UNKNOWN: ")) == only(lines(SN.out, "UNKNOWN: stale imports: ExplicitImports does not load: "))
+    @test !occursin(r"(new|gone) stale import", SN.out)
+    @test SN.code == 3 && verdict(SN.out) == "Verdict: UNKNOWN — 0 FAIL, 1 UNKNOWN, 1 INFO"
+end
+
+module RaisingEI
+improper_explicit_imports(m; strict) = error("no file\nsecond line")
+end
+module NothingEI
+improper_explicit_imports(m; strict) = [m => (strict ? [] : nothing)]
+end
+
+@testset "a module that ExplicitImports raises on or returns nothing for is UNKNOWN" begin
+    # a raise leaves each root module, the package's and each extension's, without records
+    st = DD.stale_imports(RaisingEI, [DD.KeyContext, NothingEI], ROOT)
+    @test isempty(st.imports) && st.unknown == [Dict("module" => string(m), "reason" => "ExplicitImports raised: no file")
+                                                for m in (DD.KeyContext, NothingEI)]
+    @test DD.root_modules([Base, Base.Iterators, Core, DD.KeyContext]) == [Base, Core]
+    st = DD.stale_imports(NothingEI, [DD.KeyContext], ROOT)
+    @test isempty(st.imports) && st.unknown == [Dict("module" => string(DD.KeyContext), "reason" => "ExplicitImports cannot analyse it")]
+    st = DD.stale_imports("ArgumentError: Package ExplicitImports not found\nmore", [DD.KeyContext], ROOT)
+    @test st.unknown == [Dict("module" => "", "reason" => "ExplicitImports does not load: ArgumentError: Package ExplicitImports not found")]
+end
+
+@testset "an UNKNOWN module hides its own stale imports and those below it" begin
+    imp(m, n) = Dict("module" => m, "name" => n, "file" => "src/X.jl", "line" => 1, "used" => [])
+    st(imports, unknown = []) = Dict("imports" => imports, "unknown" => unknown)
+    head = st([imp("X", "a"), imp("X.Sub", "b"), imp("X.Sub.Deep", "c"), imp("X.Subway", "d")])
+    for base in (st([], [Dict("module" => "X.Sub", "reason" => "r")]), st([]))
+        u = isempty(base["unknown"])
+        @test DD.compare_stale(base, head) == [(u ? [] : ["UNKNOWN: stale imports: X.Sub: r"]);
+            "FAIL: new stale import: X: a at src/X.jl:1"; (u ? ["FAIL: new stale import: X.Sub: b at src/X.jl:1",
+                "FAIL: new stale import: X.Sub.Deep: c at src/X.jl:1"] : []); "FAIL: new stale import: X.Subway: d at src/X.jl:1"]
+    end
+    # the same reason on both sides is one line; the empty module hides every module
+    none = [Dict("module" => "", "reason" => "ExplicitImports does not load: e")]
+    @test DD.compare_stale(st([], none), st([imp("X", "a")], none)) == ["UNKNOWN: stale imports: ExplicitImports does not load: e"]
+    # only a missing ExplicitImports gives no verdict
+    for (unknown, status) in ((none, 3), ([Dict("module" => "X", "reason" => "r")], 0))
+        rd = sides(side("base"), merge(side("head"), Dict("stale" => st([], unknown))))
+        @test DD.analyse(rd, Dict("base" => DONE, "head" => DONE); timeout = 600, jet = true)[2] == status
+    end
+end
+
 # One run, without JET, of a package in a subdirectory of its repository, whose base holds an
 # own-own ambiguity in a submodule and a piracy of a function of Base.Iterators; the head imports
 # both functions into the root module, and extends a function of Statistics, which it adds.
@@ -638,6 +778,8 @@ s(x, y::Integer) = 2
 end
 using .Sub: s
 using Base.Iterators: cycle
+# a use of both imports, so that neither is stale
+uses() = (s, cycle)
 Base.Iterators.cycle(::Symbol) = 0
 Statistics.mean(::A) = 0"""
 const VIS = fixture("DDVis", ["src/DDVis.jl" => mod("DDVis", VIS_BASE)], ["src/DDVis.jl" => mod("DDVis", VIS_HEAD)];

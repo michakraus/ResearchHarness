@@ -1,5 +1,6 @@
 # The dispatch delta of a head against a base: what a branch adds to the method table, and the new
-# ambiguities, piracies and abstract fields, from both trees loaded side by side.
+# ambiguities, piracies, abstract fields and stale explicit imports, from both trees loaded side by
+# side.
 #
 #   julia --startup-file=no dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet] [--api]
 #
@@ -26,6 +27,9 @@
 #   FAIL: new abstract field: <type>.<field>::<field type>
 #                                                       a field of the module tree, not ext/, whose
 #                                                       type is not concrete up to type variables
+#   FAIL: new stale import: <module>: <name> at <file>:<line>
+#                                                       no file of test/, docs/, scripts/ or ext/
+#                                                       names <module>.<name>
 #   FAIL: the head does not load: <error>               also an extension whose triggers the test
 #                                                       environment provides and that does not load
 #   UNKNOWN: the base does not load: <error>
@@ -35,6 +39,10 @@
 #   UNKNOWN: <side> gave no result, exit code <n>       no JSON and no error file
 #   UNKNOWN: jet: <side> timed out after <n> s          leaves the exit code to the other analyses,
 #   UNKNOWN: jet: <side> ended with <signal or code>    as does a JET step that ends the side
+#   UNKNOWN: stale imports: <module>: <reason>          ExplicitImports cannot analyse the module or
+#                                                       raised on it, on either side; leaves the exit
+#                                                       code to the other analyses
+#   UNKNOWN: stale imports: ExplicitImports does not load: <error>
 #   INFO: added method: <key> at <file>:<line>          a new method of a generic that the base has,
 #     other: <key> at <file>:<line>                     with every other method of an own generic and
 #                                                       the intersecting ones of an external generic;
@@ -44,6 +52,10 @@
 #   INFO: new JET report: <type>: <message> in <key>
 #   INFO: gone piracy | gone own-own ambiguity | gone own-external ambiguity | gone JET report: ...
 #   INFO: gone abstract field: <type>.<field>::<field type>
+#   INFO: new stale import, used in <dirs>: <module>: <name>
+#                                                       a file of those directories names
+#                                                       <module>.<name>
+#   INFO: gone stale import: <module>: <name>
 #   INFO: dependency drift: <name> <base version> -> <head version>
 #   Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO
 #
@@ -56,8 +68,9 @@
 # base public name and of each base API method whose key it lacks. A base API method is covered
 # where an own method of the head takes its signature (`sig <: m.sig`); its key is evaluated in
 # the head's root module, with each leading qualifier that the root does not bind and that names a
-# loaded package replaced by that package. --api runs no JET, and prints these lines in place of
-# the comparison lines above; the lines of a side that gives no records stay:
+# loaded package replaced by that package. --api runs no JET, records no stale import, and prints
+# these lines in place of the comparison lines above; the lines of a side that gives no records
+# stay:
 #
 #   FAIL: gone public name: <module.>name            the head does not define it in that module
 #   FAIL: no longer public: <module.>name            the head defines it there, not public
@@ -86,8 +99,18 @@
 # a field whose abstract type changes, or whose struct moves to another module or renames a type
 # variable, reads as new, and its old record as gone.
 #
+# Each side also records the stale explicit imports of its own modules: the rows with `stale` of
+# ExplicitImports' improper_explicit_imports(<root>; strict = false), whose result for the root
+# module holds the modules below it and below each loaded extension. A module for which
+# `strict = true` returns `nothing`, as ExplicitImports cannot read part of it, gets no records. The
+# key of a stale import is its module and its name, so an import that moves to another line is not
+# new. A new one that a file of test/, docs/, scripts/ or ext/ of the side's tree names as
+# <module>.<name>, word bounded, in a .jl or .md file, is information: such a caller reaches the name
+# through the import, and the caller is what changes.
+#
 # Exit 0: PASS. 1: a FAIL line. 2: bad arguments. 3: no verdict — a base that does not load, a side
-# that does not resolve or that timed out, or an `UNKNOWN: key` line — and no FAIL line.
+# that does not resolve or that timed out, an `UNKNOWN: key` line, or a missing ExplicitImports —
+# and no FAIL line.
 
 module BaseTree
 include(joinpath(@__DIR__, "base-tree.jl"))
@@ -455,6 +478,74 @@ function cover(b, root, ownset, ms)
     return Dict("names" => ns, "methods" => mcs)
 end
 
+"The reason of the `UNKNOWN: stale imports:` line where ExplicitImports does not load; such a line gives no verdict."
+const NO_EXPLICIT_IMPORTS = "ExplicitImports does not load"
+
+"The directories of a tree where a name that a module imports can be reached as `<module>.<name>`."
+const REACH_DIRS = ("test", "docs", "scripts", "ext")
+
+"""
+The directories of `REACH_DIRS` under `tree` where a `.jl` or `.md` file holds the text `q`, word
+bounded: no letter, digit, `_` or `.` before it, and no letter, digit, `_` or `!` after it.
+"""
+function reached_in(tree, q)
+    re = Regex("(?<![\\w.])\\Q$q\\E(?![\\w!])")
+    filter(REACH_DIRS) do d
+        dir = joinpath(tree, d)
+        isdir(dir) || return false
+        any(walkdir(dir)) do (path, _, files)
+            any(files) do f
+                p = joinpath(path, f)
+                # a dangling link names no file
+                (endswith(f, ".jl") || endswith(f, ".md")) && isfile(p) && occursin(re, read(p, String))
+            end
+        end
+    end
+end
+
+"The modules of `own` that are the root of their tree, in their order: the package's root module and each extension."
+root_modules(own) = filter(m -> Base.moduleroot(m) === m, own)
+
+"""
+The stale explicit imports of the own modules, from the rows with `stale` of ExplicitImports'
+`improper_explicit_imports(first(roots); strict = false)`, as `(; imports, unknown)`. `roots` are
+the package's root module and then each loaded extension; the result for the root module holds the
+modules below it and below each loaded extension. `ei` is the loaded ExplicitImports, or the error
+text of its load. A record of `imports` holds the module, the name, the file relative to `tree` and
+the line of the import, and `used`, the directories of `REACH_DIRS` where `<module>.<name>` occurs.
+A record of `unknown` holds a module and the reason that it has no records: a module for which
+`strict = true` returns `nothing`, as ExplicitImports cannot read part of it and a used name may
+read as stale; each module of `roots` where the call raises; and the empty module, which stands
+for every module, where ExplicitImports does not load.
+"""
+function stale_imports(ei, roots, tree)
+    imports, unknown = Dict{String, Any}[], Dict{String, String}[]
+    if ei isa String
+        push!(unknown, Dict("module" => "", "reason" => "$NO_EXPLICIT_IMPORTS: $(first(split(ei, '\n')))"))
+        return (; imports, unknown)
+    end
+    lax, strict = try
+        ei.improper_explicit_imports(first(roots); strict = false), Dict(ei.improper_explicit_imports(first(roots); strict = true))
+    catch e
+        reason = "ExplicitImports raised: $(first(split(sprint(showerror, e), '\n')))"
+        append!(unknown, [Dict("module" => string(r), "reason" => reason) for r in roots])
+        return (; imports, unknown)
+    end
+    for (m, rows) in lax
+        if rows === nothing || get(strict, m, nothing) === nothing
+            push!(unknown, Dict("module" => string(m), "reason" => "ExplicitImports cannot analyse it"))
+            continue
+        end
+        for x in rows
+            x.stale || continue
+            file, line = rsplit(x.location, ':'; limit = 3)
+            push!(imports, Dict("module" => string(m), "name" => string(x.name), "file" => relfile(file, tree),
+                "line" => parse(Int, line), "used" => collect(String, reached_in(tree, "$m.$(x.name)"))))
+        end
+    end
+    return (; imports, unknown)
+end
+
 "Write `d` as JSON into `path` at once, so that a reader never sees part of it."
 function write_json(path, d)
     write(path * ".part", JSON.json(d))
@@ -468,9 +559,11 @@ two files uses, `manifest` says whether the side's tree held a `Manifest.toml` w
 record per public name of `public_bindings`. `fields` holds one record per field of the root
 module's tree whose type is not concrete up to type variables, by `concrete_field_violations` of
 concrete-fields.jl, with its type printed by `show`. With `basejson`, the path of the base's
-records, the file also holds the head's `cover` of them.
+records, the file also holds the head's `cover` of them. Where `ei`, the loaded ExplicitImports or
+the error text of its load, is no `nothing`, `stale` holds the `stale_imports` of the root module
+and of each extension.
 """
-function record(s, rundir, tree, name, root, tree_mods, own, aqua, manifest, basejson)
+function record(s, rundir, tree, name, root, tree_mods, own, aqua, manifest, basejson, ei)
     ownset = Set(own)
     pub = public_bindings(root)
     piracies = [where_is(m, root, tree) for mod in tree_mods for m in aqua.Piracy.hunt(mod)]
@@ -486,6 +579,10 @@ function record(s, rundir, tree, name, root, tree_mods, own, aqua, manifest, bas
         "fields" => [Dict("type" => r.type, "field" => string(r.field), "fieldtype" => sprint(show, r.fieldtype))
                      for r in ConcreteFields.concrete_field_violations(root)])
     basejson === nothing || (d["cover"] = cover(JSON.parsefile(basejson), root, ownset, own_methods(ownset)))
+    if ei !== nothing
+        st = stale_imports(ei, root_modules(own), tree)
+        d["stale"] = Dict("imports" => st.imports, "unknown" => st.unknown)
+    end
     write_json(joinpath(rundir, "$s.json"), d)
 end
 
@@ -508,10 +605,12 @@ end
 The work of one side, in its own process after `TestEnv.activate()`: load the package and the weak
 dependencies that its test environment provides, write the records, then run JET. `manifest` says
 whether the tree held a `Manifest.toml` before the activation; `basejson`, where it is no
-`nothing`, is the path of the base's records, which the head covers. Returns the process's exit
-code; a failed load writes `<side>.error`.
+`nothing`, is the path of the base's records, which the head covers. With `stale`, the records hold
+the stale explicit imports; a failed load of ExplicitImports leaves them one `unknown` record, with
+its error, for every module. Returns the process's exit code; a failed load of the package writes
+`<side>.error`.
 """
-function side(s, rundir, tree, name, jet, manifest, basejson = nothing)
+function side(s, rundir, tree, name, jet, manifest, basejson = nothing, stale = true)
     root = try
         Base.require(Main, Symbol(name))
     catch e
@@ -531,6 +630,11 @@ function side(s, rundir, tree, name, jet, manifest, basejson = nothing)
         end
     end
     aqua = Base.require(Main, :Aqua)
+    ei = !stale ? nothing : try
+        Base.require(Main, :ExplicitImports)
+    catch e
+        sprint(showerror, e)
+    end
     tree_mods, own = Base.invokelatest() do
         t, exts = module_tree(root), Module[]
         for x in keys(get(project, "extensions", Dict()))
@@ -539,7 +643,7 @@ function side(s, rundir, tree, name, jet, manifest, basejson = nothing)
         end
         t, [t; exts]
     end
-    Base.invokelatest(record, s, rundir, tree, name, root, tree_mods, own, aqua, manifest, basejson)
+    Base.invokelatest(record, s, rundir, tree, name, root, tree_mods, own, aqua, manifest, basejson, ei)
     jet || return 0
     j = Base.require(Main, :JET)
     reports = Base.invokelatest(jet_reports, j, root, own, tree)
@@ -549,9 +653,9 @@ end
 
 """
 The driver of a side: the harness environment last in LOAD_PATH, `TestEnv.activate()`, then
-`side`, with `basejson` for the head in `--api` mode.
+`side`, with `basejson` for the head in `--api` mode, and with `stale` outside it.
 """
-driver(s, rundir, tree, name, jet, basejson = nothing) = """
+driver(s, rundir, tree, name, jet, basejson = nothing, stale = true) = """
     $(repr(HARNESS_ENV)) in LOAD_PATH || push!(LOAD_PATH, $(repr(HARNESS_ENV)))
     manifest = isfile($(repr(joinpath(tree, "Manifest.toml"))))
     using TestEnv
@@ -564,7 +668,7 @@ driver(s, rundir, tree, name, jet, basejson = nothing) = """
     module DispatchDelta
     include($(repr(SCRIPT)))
     end
-    exit(DispatchDelta.side($(repr(s)), $(repr(rundir)), $(repr(tree)), $(repr(name)), $jet, manifest, $(repr(basejson))))
+    exit(DispatchDelta.side($(repr(s)), $(repr(rundir)), $(repr(tree)), $(repr(name)), $jet, manifest, $(repr(basejson)), $stale))
     """
 
 "How a side's process ended: its signal, its exit code, and whether the script killed it."
@@ -611,7 +715,7 @@ function run_sides(rundir, trees, name, timeout, jet; api = false)
     procs, ends = Dict{String, Base.Process}(), Dict{String, End}()
     function start(s, basejson = nothing)
         drv = joinpath(rundir, "$s-driver.jl")
-        write(drv, driver(s, rundir, trees[s], name, jet, basejson))
+        write(drv, driver(s, rundir, trees[s], name, jet, basejson, !api))
         cmd = Cmd(`$(Base.julia_cmd()) --startup-file=no --project=$(trees[s]) $drv`; detach = true)
         procs[s] = run(pipeline(ignorestatus(cmd); stdout = logs[s], stderr = logs[s]); wait = false)
     end
@@ -682,6 +786,25 @@ function compare(b, h)
         push!(out, "INFO: added method: $(m["key"]) at $(m["file"]):$(m["line"])")
         foreach(o -> push!(out, "  other: $(o["key"]) at $(o["file"]):$(o["line"])"), m["others"])
     end
+    return append!(out, compare_stale(b["stale"], h["stale"]))
+end
+
+"""
+The lines that compare the stale explicit imports of the two sides, keyed by module and name: one
+`UNKNOWN` line per module that either side could not analyse, and no other line for it or for a
+module below it; the empty module stands for every module.
+"""
+function compare_stale(b, h)
+    unk = sort!(unique([(u["module"], u["reason"]) for d in (b, h) for u in d["unknown"]]))
+    out = [isempty(m) ? "UNKNOWN: stale imports: $r" : "UNKNOWN: stale imports: $m: $r" for (m, r) in unk]
+    known(m) = !any(((u, _),) -> isempty(u) || m == u || startswith(m, u * "."), unk)
+    imp(d) = Dict((r["module"], r["name"]) => r for r in d["imports"] if known(r["module"]))
+    bi, hi = imp(b), imp(h)
+    for (k, r) in sort!([k => hi[k] for k in setdiff(keys(hi), keys(bi))]; by = first)
+        push!(out, isempty(r["used"]) ? "FAIL: new stale import: $(k[1]): $(k[2]) at $(r["file"]):$(r["line"])" :
+                   "INFO: new stale import, used in $(join(r["used"], ", ")): $(k[1]): $(k[2])")
+    end
+    append!(out, ["INFO: gone stale import: $m: $n" for (m, n) in sort!(collect(setdiff(keys(bi), keys(hi))))])
     return out
 end
 
@@ -775,7 +898,9 @@ function analyse(rundir, ends; timeout, jet, api = false)
     end
     jet || api || push!(out, "INFO: jet: not run (--no-jet)")
     f, u, i = (count(startswith(p), out) for p in ("FAIL: ", "UNKNOWN: ", "INFO: "))
-    status = f > 0 ? 1 : decisive || any(startswith("UNKNOWN: key: "), out) ? 3 : 0
+    status = f > 0 ? 1 :
+             decisive || any(l -> startswith(l, "UNKNOWN: key: ") || startswith(l, "UNKNOWN: stale imports: $NO_EXPLICIT_IMPORTS: "),
+                             out) ? 3 : 0
     push!(out, "Verdict: $(status == 0 ? "PASS" : status == 1 ? "FAIL" : "UNKNOWN") — $f FAIL, $u UNKNOWN, $i INFO")
     return out, status
 end

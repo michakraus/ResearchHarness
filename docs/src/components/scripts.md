@@ -224,7 +224,7 @@ repository calls it by name.
 ## `dispatch-delta.jl` and `dispatch-delta-test.jl`
 
 `dispatch-delta.jl` loads the base and the head of a package side by side and compares their
-method tables, ambiguities, piracies, abstract fields and JET reports.
+method tables, ambiguities, piracies, abstract fields, stale explicit imports and JET reports.
 
 ```bash
 julia --startup-file=no dispatch-delta.jl <package> <base> [--timeout <s>] [--no-jet] [--api]
@@ -242,8 +242,9 @@ once (with `--api`, one after the other), as `run-tests.jl` loads a driver: `--p
 the harness environment last in `LOAD_PATH`, then `TestEnv.activate()`. Each side writes
 `<side>.json`: the package, the side, the Julia version, whether its tree held a `Manifest.toml`,
 the versions of Aqua and the dependencies, the packages that the side has loaded, its public
-names, one record per own method, the ambiguities and piracies, and the abstract fields. Then it
-runs JET into `<side>-jet.json`. Its output goes to `<side>.log`.
+names, one record per own method, the ambiguities and piracies, the abstract fields, and, without
+`--api`, the stale explicit imports. Then it runs JET into `<side>-jet.json`. Its output goes to
+`<side>.log`.
 The script removes the base tree at its end and keeps the JSON files and the logs.
 
 The own methods of a side are the methods of the package's module tree and of each extension that
@@ -271,12 +272,26 @@ changes reads as new, as does a field whose struct moves to another module or re
 variable, and its old record reads as gone. No argument exempts a field, and a line names no file,
 because Julia records no location for a type.
 
+The stale explicit imports of a side are the rows with `stale` of ExplicitImports'
+`improper_explicit_imports(<root>; strict = false)`, whose result for the root module holds the
+modules below it and below each loaded extension. The record `stale` holds `imports`, one entry per
+stale import with its `module`, `name`, `file`, `line` and `used`, and `unknown`, one entry per
+module that has no records, with its `module` and `reason`. A module for which `strict = true`
+returns `nothing` is unknown, because ExplicitImports cannot read part of it and a used name may
+read as stale; so is each root module where the call raises, and every module, as the empty
+module, where ExplicitImports does not load. The key of an import is its module and its name, so an
+import that moves to another line is not new. `used` names each of `test/`, `docs/`, `scripts/` and
+`ext/` of the side's tree where a `.jl` or `.md` file holds `<module>.<name>`, word bounded: such a
+caller reaches the name through the import. The comparison leaves out each module that either side
+has as unknown, and each module below it.
+
 | line | means | exit |
 |:--|:--|:--|
 | `FAIL: new own-own ambiguity: <key> \| <key>` | `Test.detect_ambiguities` finds a new pair of own methods | 1 |
 | `FAIL: new own-external ambiguity: <own key> \| <key>` | a new pair of an own and another method | 1 |
 | `FAIL: new piracy: <key> at <file>:<line>` | Aqua's piracy hunt on the package's module tree, not on `ext/`; no argument exempts a piracy | 1 |
 | `FAIL: new abstract field: <type>.<field>::<field type>` | a field of the package's module tree, not of `ext/`, whose type is not concrete up to type variables and that the base lacks | 1 |
+| `FAIL: new stale import: <module>: <name> at <file>:<line>` | a stale import that the base lacks, and that no file of `test/`, `docs/`, `scripts/` or `ext/` names as `<module>.<name>` | 1 |
 | `FAIL: the head does not load: <error>` | with a `log:` line; also where an extension whose triggers the test environment provides does not load | 1 |
 | `UNKNOWN: the base does not load: <error>` | with a `log:` line | 3 |
 | `UNKNOWN: <side> does not resolve: <error>` | `TestEnv.activate()` failed | 3 |
@@ -285,17 +300,21 @@ because Julia records no location for a type.
 | `UNKNOWN: <side> gave no result, exit code <n>` | the side wrote no JSON and no error | 3 |
 | `UNKNOWN: jet: <side> timed out after <n> s` | the JET step was killed at its own limit | — |
 | `UNKNOWN: jet: <side> ended with <signal or exit code>` | the side ended in its JET step | — |
+| `UNKNOWN: stale imports: <module>: <reason>` | ExplicitImports cannot analyse the module, or raised on it, on either side | — |
+| `UNKNOWN: stale imports: ExplicitImports does not load: <error>` | no side records a stale import | 3 |
 | `INFO: added method: <key> at <file>:<line>` | a new method of a generic that has a method on the base, with one `  other:` line per other method: all of an own generic, the intersecting ones of an external generic | — |
 | `INFO: new JET report: <type>: <message> in <key>` | a JET report that the base lacks | — |
 | `INFO: gone …` | a piracy, an ambiguity or a JET report that the head removes | — |
 | `INFO: gone abstract field: <type>.<field>::<field type>` | an abstract field of the base that the head lacks | — |
+| `INFO: new stale import, used in <dirs>: <module>: <name>` | a new stale import that a file of those directories names as `<module>.<name>`; the caller changes, the import goes | — |
+| `INFO: gone stale import: <module>: <name>` | a stale import of the base that the head lacks | — |
 | `INFO: dependency drift: <name> <base> -> <head>` | a dependency or a tool of another version on each side | — |
 
 The last line is `Verdict: <PASS|FAIL|UNKNOWN> — <f> FAIL, <u> UNKNOWN, <i> INFO`. The exit status
 is 0 on PASS, 1 on a `FAIL:` line, 2 on bad arguments, and 3 when a side, or with `--api` a key,
-gave no verdict and no line failed. `--timeout` gives each side that many seconds to write its
-JSON, 600 by default, and the JET step as many again from that moment. `--no-jet` leaves out the
-JET step.
+gave no verdict, or ExplicitImports does not load, and no line failed. `--timeout` gives each side
+that many seconds to write its JSON, 600 by default, and the JET step as many again from that
+moment. `--no-jet` leaves out the JET step.
 
 Each side also records the public API of its package. `public` holds one record per public name,
 with its `module` (the path below the root module, `""` for the root), its `name` and its `kind`
@@ -318,7 +337,7 @@ package, such as a fallback of Base, is no cover. An `UndefVarError` of an own n
 leading qualifier of the key marks the key `removed`; any other error marks it `unknown`, as does
 an `UndefVarError` of a gensym name, which holds `#`. A key that is not a printed type is not
 evaluated, and is `unknown` too.
-`--api` runs no JET and prints no line of the default comparison:
+`--api` runs no JET, records no stale import, and prints no line of the default comparison:
 
 | line | means | exit |
 |:--|:--|:--|
@@ -341,7 +360,7 @@ point 3 on every branch.
 
 `dispatch-delta-test.jl` checks it on small packages that use the standard library only, which it
 builds with git under `tempdir()` (`julia --startup-file=no dispatch-delta-test.jl`, about
-5 minutes at a load average of 10).
+6 minutes at a load average of 10).
 
 ## `julia-methods.jl` and `julia-methods-test.jl`
 
