@@ -776,8 +776,11 @@ python3.14 ~/Research/Harness/scripts/probe-agentbox.py [--out DIR] [--timeout S
 ```
 
 By default it writes its report below `~/Research/.scratch/agentbox-probes/`, where a session
-reads it. No skill or agent calls it. *The probe battery* of [The srt settings](sandbox.md)
-describes the probes, the verdicts and the report.
+reads it. No skill or agent calls it. It runs each probe under `srt` with its own environment and
+three variables that `agentbox` exports too: `GH_CONFIG_DIR` and `GLAB_CONFIG_DIR`, the empty
+directories `gh` and `glab` below `<out>/run/<frontend>`, in place of the caller's values, and
+`GIT_TERMINAL_PROMPT=0`. *The probe battery* of [The srt settings](sandbox.md) describes the
+probes, the verdicts and the report.
 
 ## `julia-update.jl`, `julia-update-server` and `julia-update-test.jl`
 

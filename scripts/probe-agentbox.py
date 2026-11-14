@@ -15,11 +15,14 @@ for each frontend, it runs one listener probe per listener, at `/`, a second one
     ~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- \\
         /bin/sh -c <probe>
 
-from ~/Research, with the policy name antigravity for agy and the frontend's name otherwise.
-Unless --no-model is given, it then runs the frontend probes, each as
-`~/.local/bin/agentbox <frontend> <non-interactive form>`, killed with its process group after
---timeout seconds, 300 by default. Every other program that the script or a probe starts, except
-/bin/sh and the /usr/bin/true of X4 and X8, is found by name on the PATH.
+from ~/Research, with the policy name antigravity for agy and the frontend's name otherwise. Each
+runs with the script's environment and three variables that agentbox exports too: GH_CONFIG_DIR
+and GLAB_CONFIG_DIR, in place of the caller's, are the directories <out>/run/<frontend>/gh and
+<out>/run/<frontend>/glab, which the script makes empty outside srt before the frontend's first
+probe, and GIT_TERMINAL_PROMPT is 0. Unless --no-model is given, it then runs the frontend
+probes, each as `~/.local/bin/agentbox <frontend> <non-interactive form>`, killed with its process
+group after --timeout seconds, 300 by default. Every other program that the script or a probe
+starts, except /bin/sh and the /usr/bin/true of X4 and X8, is found by name on the PATH.
 
 A probe that the sandbox fails to stop changes nothing that outlives the run and prints no file's
 content: a read prints a count, an append opens the file and writes nothing, and a probe that
@@ -300,12 +303,15 @@ def tool(*argv: str, cwd: pathlib.Path | None = None) -> subprocess.CompletedPro
     )
 
 
-def run_limited(command: list[str], cwd: pathlib.Path, timeout: float) -> tuple[int | None, str, str]:
-    """(exit status, stdout, stderr) of `command`; past `timeout` seconds its process group is
-    killed and the status is None."""
+def run_limited(
+    command: list[str], cwd: pathlib.Path, timeout: float, env: Mapping[str, str] | None = None
+) -> tuple[int | None, str, str]:
+    """(exit status, stdout, stderr) of `command`, with the environment `env`, or the script's own
+    where it is None; past `timeout` seconds its process group is killed and the status is None."""
     with subprocess.Popen(
         command,
         cwd=cwd,
+        env=env,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -350,12 +356,24 @@ def error_head(text: str) -> str:
 
 
 def sandboxed(
-    srt: pathlib.Path, settings: pathlib.Path, cwd: pathlib.Path, command: str
+    srt: pathlib.Path, settings: pathlib.Path, cwd: pathlib.Path, env: Mapping[str, str], command: str
 ) -> tuple[int | None, str, str]:
-    """Run `command` with /bin/sh under srt with `settings`."""
+    """Run `command` with /bin/sh under srt with `settings` and the environment `env`."""
     return run_limited(
-        [str(srt), "--settings", str(settings), "--", "/bin/sh", "-c", command], cwd, SHELL_TIMEOUT
+        [str(srt), "--settings", str(settings), "--", "/bin/sh", "-c", command], cwd, SHELL_TIMEOUT, env
     )
+
+
+def forge_env(base: Mapping[str, str], configs: pathlib.Path) -> dict[str, str]:
+    """`base` with agentbox's variables of the forges: GH_CONFIG_DIR and GLAB_CONFIG_DIR are the
+    directories gh and glab below `configs`, made empty here, outside srt, in place of any value in
+    `base`, and GIT_TERMINAL_PROMPT is 0, so that git fails at once where it would prompt."""
+    dirs = {"GH_CONFIG_DIR": configs / "gh", "GLAB_CONFIG_DIR": configs / "glab"}
+    for path in dirs.values():
+        if path.exists():
+            shutil.rmtree(path)
+        path.mkdir(parents=True)
+    return {**base, **{k: str(p) for k, p in dirs.items()}, "GIT_TERMINAL_PROMPT": "0"}
 
 
 def q(path: pathlib.Path) -> str:
@@ -644,7 +662,8 @@ def battery(options: Options, home: pathlib.Path, out: pathlib.Path) -> list[Row
     kaimon = next((x.pid for x in loopback if x.host == LOOPBACK[0] and x.port == KAIMON_PORT), None)
     rows: list[Row] = []
     for frontend in options.frontends:
-        call = functools.partial(sandboxed, srt, settings_file(home, frontend), research)
+        env = forge_env(os.environ, run / frontend)
+        call = functools.partial(sandboxed, srt, settings_file(home, frontend), research, env)
         made = [listener_row(frontend, x, call) for x in loopback]
         made += [
             listener_row(frontend, x, call, route=OPENCODE_ROUTE) for x in loopback if x.command == "opencode"
