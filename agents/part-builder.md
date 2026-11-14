@@ -147,7 +147,8 @@ repository: `julia-branch-verifier` in `Packages/` and `Experiments/`, `python-b
 a Python repository, one with a `pyproject.toml` whose `Project.toml`, where it has one, names no
 package. Another repository has no verifier. Fix only the text it leaves. Where §L commits to the
 default branch without a pull request, return its paths and its verdict to your caller, which
-commits. Otherwise open the pull request with `gh pr create` and `--body-file`; where the branch
+commits. Otherwise stage by name the verifier's returned paths and those of your own text fixes,
+commit them, then open the pull request with `gh pr create` and `--body-file`; where the branch
 has an open pull request, push it and replace the body with `gh pr edit` instead. The body holds
 the critic's verdict and evidence table, the `KNOWN_ISSUES.md` entries of the branch, and,
 under `## Decisions taken without the user`, every `**Decided (…)**` line of the part's spec that

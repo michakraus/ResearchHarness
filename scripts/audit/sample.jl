@@ -122,6 +122,7 @@ function main(dir, seed, n)
                 judge = t in (
                     "julia-critic",
                     "julia-critic-high",
+                    "python-critic",
                     "part-critic",
                     "advisor",
                     "arbitrator",

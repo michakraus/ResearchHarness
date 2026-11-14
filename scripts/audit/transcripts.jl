@@ -52,6 +52,9 @@ const LOOP_TYPES = Set([
     "julia-pr-shepherd",
     "julia-branch-verifier",
     "julia-test-runner",
+    "python-builder",
+    "python-critic",
+    "python-branch-verifier",
 ])
 const TOP = 500
 const REWRITE = 100_000  # a cache write above this, after the cache expired, is a rewrite
