@@ -202,10 +202,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   the agent frontends*)
 - **a wrapper that hands a tool a token and removes only the other token variables:** the
   variables that choose the host or the transport still steer the token. gh sends `GH_TOKEN` to
-  the host of `GH_REPO`, and glab reads `GLAB_API_PROTOCOL`, `GLAB_SKIP_TLS_VERIFY` and
-  `GLAB_CA_CERT`. Read the tool's own list of environment variables (`gh help environment`,
-  `glab config --help`), remove each one that names a host, a protocol or a trust anchor, and
-  give each a case (E5n1 round 1a, *Sandbox the agent frontends*)
+  the host of `GH_REPO` when that host is a subdomain of `ghe.com` or `github.localhost`, and glab
+  reads `GLAB_API_PROTOCOL`, `GLAB_SKIP_TLS_VERIFY` and `GLAB_CA_CERT`. Read the tool's own list
+  of environment variables (`gh help environment`, `glab config --help`), remove each one that
+  names a host, a protocol or a trust anchor, and give each a case (E5n1 round 1a, *Sandbox the
+  agent frontends*)
 - **a decoded secret written into a line protocol:** a token that percent-decodes to a newline adds
   lines to git's credential reply, such as a second `host=`. Refuse a control character in each
   decoded field, and give the refusal a case with `%0A` (E5n1 round 1b, *Sandbox the agent
