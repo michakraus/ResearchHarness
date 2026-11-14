@@ -39,7 +39,8 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   dependent's `[compat]` entry, outside it, against an entry with two specifiers, and with no
   entry; `excluded` refuses a base or a dependent Project.toml that is not TOML, a base version
   that is no version number and a `[compat]` entry that is no version specifier; `row` on the five
-  rows, with the summary it appends and its exit status, on eight combinations that are none of
+  rows, with the summary it appends and its exit status, on a cancelled step in each of the four
+  places, on an excluded dependent with a cancelled step, on ten combinations that are none of
   them and on the two outcomes of a run without a setup step; `list` on a file of two dependents,
   on a missing file, on a file that is not TOML and on two entries that the JSON of the matrix
   cannot hold.
@@ -834,6 +835,35 @@ def script_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
         (("false", "failure", "skipped", "failure", "skipped"), both, 1),
         (("false", "failure", "", "failure", ""), both, 1),
         (("false", "success", "failure", "failure", "skipped"), default, 1),
+        # A cancelled step, as after the job's timeout: inconclusive, naming the step; an excluded
+        # dependent stays excluded.
+        (("true", "cancelled", "", "", ""), "excluded", 0),
+        (("false", "cancelled", "", "", ""), "inconclusive: the setup against the head was cancelled", 1),
+        (
+            ("false", "cancelled", "skipped", "skipped", "skipped"),
+            "inconclusive: the setup against the head was cancelled",
+            1,
+        ),
+        (
+            ("false", "success", "cancelled", "", ""),
+            "inconclusive: the test against the head was cancelled",
+            1,
+        ),
+        (
+            ("false", "failure", "skipped", "cancelled", "skipped"),
+            "inconclusive: the setup against the default branch was cancelled",
+            1,
+        ),
+        (
+            ("false", "success", "failure", "cancelled", ""),
+            "inconclusive: the setup against the default branch was cancelled",
+            1,
+        ),
+        (
+            ("false", "success", "failure", "success", "cancelled"),
+            "inconclusive: the test against the default branch was cancelled",
+            1,
+        ),
     ):
         summary = tmp / f"summary-{'-'.join(o or '0' for o in outcomes)}"
         p = julia_script(julia, "row", "Dep", *outcomes, env={"GITHUB_STEP_SUMMARY": str(summary)})
@@ -846,7 +876,7 @@ def script_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
             f"exit {status} -> {p.returncode}, {p.stdout.strip()!r}, {text!r} {p.stderr.strip()[-200:]}",
         )
     for outcomes, label in (
-        (("false", "cancelled", "", "", ""), "a head setup outcome that is neither success nor failure"),
+        (("false", "neutral", "", "", ""), "a head setup outcome that GitHub does not report"),
         (("", "", "", "", ""), "an empty excluded, as after a failed compat step"),
         (("yes", "success", "success", "", ""), "an excluded that is neither true nor false"),
         (("false", "success", "failure", "failure", "success"), "a main test after a failed main setup"),
@@ -854,6 +884,8 @@ def script_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
         (("false", "success", "success", "success", "success"), "a default-branch run after a green head"),
         (("false", "failure", "success", "success", "success"), "a head test after a failed head setup"),
         (("false", "cancelled", "failure", "success", "success"), "a head test after a cancelled setup"),
+        (("false", "success", "cancelled", "success", ""), "a main setup after a cancelled head test"),
+        (("false", "success", "success", "success", "cancelled"), "a main test cancelled after a green head"),
     ):
         p = julia_script(julia, "row", "Dep", *outcomes)
         check(
