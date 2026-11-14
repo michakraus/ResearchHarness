@@ -1197,9 +1197,9 @@ def network_cases(check: Check, root: pathlib.Path, home: pathlib.Path) -> None:
 def plan_wrapper_cases(check: Check, root: pathlib.Path) -> None:
     """`plan_files` plans the gh wrapper scripts/gh-token.py at ~/.local/bin/gh, mode 755, after the
     launcher, with one frontend chosen: on Linux as the last file, and on macOS before
-    scripts/sealed.py at ~/.local/bin/ghx, ~/.local/bin/glabx and ~/.local/bin/git-credential-sealed,
-    each mode 755, in that order, which are the last three files. With none it plans nothing on
-    either platform."""
+    scripts/sealed.py at ~/.local/bin/ghx, ~/.local/bin/glabx and
+    ~/.local/bin/git-credential-sealed, each mode 755, in that order, which are the last three
+    files. With none it plans nothing on either platform."""
     profile = profile_module.load(profile_module.DUMMY)
     home = pathlib.Path("/h")
     root.mkdir()

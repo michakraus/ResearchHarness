@@ -418,9 +418,16 @@ prevents accidents; Touch ID and the read denies of the identity are the boundar
    ```
 
 4. Give a repository that has a token of its own, for example the dotfiles, its helper in place
-   of a plain token file:
-   `git config credential.https://<host>.helper 'sealed <name> https://<host>'`. The helper line
-   names the URL, and the helper answers only for that host.
+   of a plain token file. git asks the helpers of `~/.gitconfig`, `forge.gitconfig` included,
+   before those of the repository, and stops at the first that answers. So in the repository, an
+   empty `helper` clears them first:
+
+   ```sh
+   git config credential.https://<host>.helper ''
+   git config --add credential.https://<host>.helper 'sealed <name> https://<host>'
+   ```
+
+   The helper line names the URL, and the helper answers only for that host.
 5. Keep glab's stored login as the group token of step 5 above; your broad GitLab access goes
    through `glabx`.
 
