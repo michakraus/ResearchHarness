@@ -12,7 +12,7 @@
   code other than 0 and 1, on an output that is not one JSON object per line, without a JSON
   package that loads, or after the limit of 60 s, the stage prints one
   `ast-grep: skipped —` line and the commit passes. The time box can keep the stdout and the
-  stderr of its command apart, and the matrix job of `julia.yml` installs ast-grep 0.51.1 and
+  stderr of its command apart, and the matrix job of `julia.yml` installs ast-grep 0.51.2 and
   builds the parser for `pre-commit-test.jl`, whose summary lists every test set. The entries of
   `build-part/edges.md` on `@allocated` readings and on `p.exitcode`, the comment case of its
   docstring entry, and the two sentences of `rules/julia-code.md` on an untagged `@show` and on a

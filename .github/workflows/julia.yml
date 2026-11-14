@@ -67,8 +67,8 @@ jobs:
       - name: Install ast-grep
         if: matrix.file == 'githooks/pre-commit-test.jl'
         env:
-          VERSION: 0.51.1
-          SHA256: 42514f77ae0c8a25d7d32154d31d3e7e16f3ab894f8ce76ce417de234ee49157
+          VERSION: 0.51.2
+          SHA256: 40604c21c38d4c7581c56bdddeef277c56bf3c0113620aa96e78ae87e82366df
         run: |
           curl -sSfL --retry 6 -o ast-grep.zip \
             "https://github.com/ast-grep/ast-grep/releases/download/${VERSION}/app-x86_64-unknown-linux-gnu.zip"
@@ -96,8 +96,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install ast-grep
         env:
-          VERSION: 0.51.1
-          SHA256: 42514f77ae0c8a25d7d32154d31d3e7e16f3ab894f8ce76ce417de234ee49157
+          VERSION: 0.51.2
+          SHA256: 40604c21c38d4c7581c56bdddeef277c56bf3c0113620aa96e78ae87e82366df
         run: |
           curl -sSfL --retry 6 -o ast-grep.zip \
             "https://github.com/ast-grep/ast-grep/releases/download/${VERSION}/app-x86_64-unknown-linux-gnu.zip"
