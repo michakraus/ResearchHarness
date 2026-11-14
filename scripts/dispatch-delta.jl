@@ -494,7 +494,11 @@ function reached_in(tree, q)
         dir = joinpath(tree, d)
         isdir(dir) || return false
         any(walkdir(dir)) do (path, _, files)
-            any(f -> endswith(f, ".jl") || endswith(f, ".md") ? occursin(re, read(joinpath(path, f), String)) : false, files)
+            any(files) do f
+                p = joinpath(path, f)
+                # a dangling link names no file
+                (endswith(f, ".jl") || endswith(f, ".md")) && isfile(p) && occursin(re, read(p, String))
+            end
         end
     end
 end

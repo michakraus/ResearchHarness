@@ -646,8 +646,8 @@ test = ["Statistics"]
 """
 # The end of both sides: a module made by include_string, and a used import of a name that is not
 # public, which ExplicitImports reports and does not call stale.
-const STALE_TAIL ="include_string(@__MODULE__, \"module Dyn\\nusing LinearAlgebra: svd\\nend\")\n" *
-                  "using LinearAlgebra: chkstride1\ng(A) = chkstride1(A)"
+const STALE_TAIL = "include_string(@__MODULE__, \"module Dyn\\nusing LinearAlgebra: svd\\nend\")\n" *
+                   "using LinearAlgebra: chkstride1\ng(A) = chkstride1(A)"
 const STALE = fixture("DDStale",
     ["src/DDStale.jl" => mod("DDStale", "using LinearAlgebra: norm, dot, det\nf(x) = norm(x)\n$STALE_TAIL"),
      "ext/DDStaleStatisticsExt.jl" => mod("DDStaleStatisticsExt", "using DDStale, Statistics")],
