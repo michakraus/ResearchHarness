@@ -149,12 +149,15 @@ package. Another repository has no verifier. Fix only the text it leaves. Where 
 default branch without a pull request, return its paths and its verdict to your caller, which
 commits. Otherwise stage by name the verifier's returned paths and those of your own text fixes,
 commit them, and push the branch with `git push -u origin <branch>`. Then open the pull request
-with `gh pr create` and `--body-file`; where the branch has an open pull request, replace its body
-with `gh pr edit` instead. The body holds the critic's verdict and evidence table, the
-`KNOWN_ISSUES.md` entries of the branch, and, under `## Decisions taken without the user`, every
-`**Decided (…)**` line of the part's spec that the user did not write, then each clause that the
-head does not meet as the spec writes it, with the reason. No local path and no closing
-keyword in it.
+with `gh pr create -R <owner>/<repo> --body-file <file>`; where the branch has an open pull
+request, replace its body with `gh pr edit <NN> -R <owner>/<repo> --body-file <file>` instead.
+Write the body with the Write tool under `~/Research/.scratch/builder/<worktree name>/`; keep the
+`--title` free of backticks and `$(`. The body holds, under `## Critic`, the critic's verdict and
+evidence table; the verifier's `## Pre-PR verification` block where a verifier ran; under
+`## Known issues added`, the entries of `git diff <base>..HEAD -- KNOWN_ISSUES.md` by ID, where
+the repository keeps one; and under `## Decisions taken without the user`, every `**Decided (…)**`
+line of the part's spec that the user did not write, then each clause that the head does not meet
+as the spec writes it, with the reason. No local path and no closing keyword in it.
 **After the critic's report, the code changes only for its findings**, and the text for step 8.
 
 **Run everything in the foreground.** Never set `run_in_background`, and never end your turn to
