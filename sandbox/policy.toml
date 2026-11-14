@@ -66,7 +66,8 @@ own = [
 read_files = []
 # Claude Code refreshes its sign-in token here (`/v1/oauth/token`).
 network = ["platform.claude.com"]
-mach_lookup = []
+# gh is a Go program, and Go checks a TLS certificate through this service on macOS.
+mach_lookup = ["com.apple.trustd.agent"]
 
 [frontend.opencode]
 state = ["~/.local/share/opencode", "~/.local/state/opencode", "~/.cache/opencode"]
@@ -83,7 +84,8 @@ read_files = [
     "~/.config/api-keys/tokenharbor-token",
 ]
 network = []
-mach_lookup = []
+# gh is a Go program, and Go checks a TLS certificate through this service on macOS.
+mach_lookup = ["com.apple.trustd.agent"]
 
 [frontend.omp]
 state = ["~/.omp"]
@@ -98,8 +100,9 @@ own = [
 read_files = []
 network = []
 # oh-my-pi's typo detection (`spelling.typoDetection`) asks the macOS spell service for each typed
-# word; with the language set to "automatic by language", the service is this one.
-mach_lookup = ["mul-xpc (Apple)_OpenStep"]
+# word; with the language set to "automatic by language", the service is the first one. gh is a Go
+# program, and Go checks a TLS certificate through the second one on macOS.
+mach_lookup = ["mul-xpc (Apple)_OpenStep", "com.apple.trustd.agent"]
 
 [frontend.antigravity]
 state = ["~/.gemini"]
@@ -109,6 +112,5 @@ read_files = []
 # agy refreshes its login token at the first host, checks its eligibility and calls its model at the
 # second, and reads the account at the third.
 network = ["oauth2.googleapis.com", "daily-cloudcode-pa.googleapis.com", "www.googleapis.com"]
-# agy is a Go program, and Go checks a TLS certificate through this service on macOS; srt allows it
-# otherwise only with `enableWeakerNetworkIsolation`, which would open it to every frontend.
+# agy and gh are Go programs, and Go checks a TLS certificate through this service on macOS.
 mach_lookup = ["com.apple.trustd.agent"]

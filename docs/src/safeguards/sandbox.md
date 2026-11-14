@@ -123,6 +123,13 @@ exports the one GitLab token as `GITLAB_TOKEN`. Each token reaches only its own 
 repositories on its forge, and the forge enforces that limit; the sandbox does not filter the
 operations ([The forge tokens](../components/sandbox.md#the-forge-tokens)).
 
+**No frontend can read the dotfiles token.** The token of the dotfiles,
+`~/.config/dotfiles-credentials`, is denied where the forge token store is: the settings template
+holds `Read(/{home}/.config/dotfiles-credentials/**)` in `permissions.deny` and the path in
+`denyRead` and in `credentials.files`, and the guard list of OpenCode, oh-my-pi and Antigravity
+denies it. No frontend's `own` names it, so each frontend's settings file denies its reads,
+although the files allow reads of `~/.config`.
+
 **A frontend can use every terminal of the user.** A frontend's terminal user interface puts its
 terminal, a `/dev/ttysNNN`, in raw mode, and of the terminal devices `srt` allows an ioctl only
 on `/dev/tty` by default. Each frontend's settings file therefore holds `"allowPty": true`, and
@@ -139,11 +146,11 @@ service in `allowMachLookup`, from the key `mach_lookup` of the policy file. A c
 oh-my-pi runs can reach it too: the service receives the words that it is sent and can write
 learned words to `~/Library/Spelling`, outside the sandbox.
 
-**`agy` can reach the trust service.** `agy` is a Go program, and Go checks a TLS certificate
-through `com.apple.trustd.agent`, so `antigravity`'s settings file adds that service. `srt` names
-it a possible path for data out of the sandbox, and allows it otherwise only with
-`enableWeakerNetworkIsolation`, for every frontend; the policy gives it to `antigravity` alone. A
-command that `agy` runs can reach it too. The files of `claude` and `opencode` add no service.
+**Every frontend can reach the trust service.** `gh` and `agy` are Go programs, and Go checks a TLS
+certificate through `com.apple.trustd.agent`. Every frontend runs `gh`, so each settings file adds
+that service, and without it every request of `gh` fails with `x509: OSStatus -26276`. `srt` names
+the service a possible path for data out of the sandbox, and allows it otherwise only with
+`enableWeakerNetworkIsolation`. A command that a frontend runs can reach it too.
 
 ## The daemon profiles
 

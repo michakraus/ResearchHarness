@@ -93,11 +93,12 @@ write learned words to `~/Library/Spelling`. The name holds the language of the 
 setting: `mul` is *automatic by language*, and a fixed language has another name, which needs its
 own entry.
 
-`antigravity`'s `mach_lookup` is `com.apple.trustd.agent`. `agy` is a Go program, and on macOS Go
-checks a TLS certificate through this service; without it every request of `agy` fails with
-`x509: OSStatus -26276`. `srt` allows the service otherwise only with its setting
-`enableWeakerNetworkIsolation`, which would open it to every frontend. `claude` and `opencode`
-have an empty `mach_lookup`.
+Every frontend's `mach_lookup` holds `com.apple.trustd.agent`, the trust service: it is the whole
+list of `claude`, `opencode` and `antigravity`, and follows the spell service in `omp`'s. `gh`,
+which every frontend runs, and `agy` are Go programs, and on macOS Go checks a TLS certificate
+through this service; without it every request of either fails with `x509: OSStatus -26276`.
+`srt` names the service a possible path for data out of the sandbox, and allows it otherwise only
+with its setting `enableWeakerNetworkIsolation`.
 
 `harness install` exits with status 2 on a policy file with an unknown key, a missing key or
 frontend, a value that is not a list of strings, a path that does not start with `~/`, a path
@@ -119,7 +120,7 @@ and no other:
 | `network.allowedDomains` | the template's, in order; then the frontend's `network` of the policy; then that of the overlay's `[frontend.<name>]` table; without each entry of the policy or the overlay whose host, its `:port` cut off, an entry of `deniedDomains` without a port matches |
 | `network.deniedDomains` | the template's, or `[]` where it has none; `srt` refuses a file without the key |
 | `network.allowLocalBinding` | the template's |
-| `network.allowMachLookup` | the frontend's `mach_lookup`; no such key where it is empty, so the files of `claude` and `opencode` do not have it |
+| `network.allowMachLookup` | the frontend's `mach_lookup`, in order, each name once; no such key where it is empty |
 | `filesystem.allowWrite` | the template's, without each entry at or below another frontend's `state` path; then the frontend's `state`; then the real path of `$TMPDIR`, where it is set and not empty |
 | `filesystem.denyWrite` | the template's, without the frontend's `own` and without each literal entry other than the home directory that lies strictly above a path of the frontend's `state`; then its `deny_write` |
 | `filesystem.denyRead` | the home directory; then the template's; then each path of `credentials.files`; without the frontend's `own`; each literal entry other than the home directory that lies strictly above a path of the frontend's `read_files` written as the entry followed by `/*`, in its place |
@@ -435,6 +436,13 @@ It runs four classes of probes for each chosen frontend:
 | read and write | R1–R9, W1–W14 | `/bin/sh -c` under `srt` | can a command read a secret, or write a hook, a launch agent, a shell start file or another frontend's state |
 | network and process | N1–N9, X1–X8 | `/bin/sh -c` under `srt` | which hosts it reaches; can it open an app, send an Apple Event, mount, submit a launchd job, signal a process outside or start a sandbox of its own |
 | frontend | F1–F7 | the frontend under `agentbox` | does it start, do its tools run inside the sandbox, does its own file tool read outside, does it reach Kaimon, and do its own gates hold |
+
+A probe under `srt` runs with the script's environment and three variables that `agentbox`
+exports too, so that `git`, `gh` and `glab` in a probe act as in a frontend: `GH_CONFIG_DIR` and
+`GLAB_CONFIG_DIR` are the directories `gh` and `glab` below `<out>/run/<frontend>`, in place of
+the caller's values, and `GIT_TERMINAL_PROMPT` is `0`. The script makes both directories empty,
+outside `srt`, before the first probe of the frontend, so no frontend's probe reads a file that
+another one's `gh` left.
 
 The script lists the listeners with `lsof -nP -iTCP -sTCP:LISTEN`, outside `srt`, before the other
 probes. It asks a listener on every interface (`*:<port>`) at `127.0.0.1:<port>`, and each

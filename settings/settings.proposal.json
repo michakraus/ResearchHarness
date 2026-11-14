@@ -384,6 +384,7 @@
       "Read(/{home}/.config/chezmoi/**)",
       "Read(/{home}/.config/gh/hosts.yml)",
       "Read(/{home}/.config/research-harness/forge/**)",
+      "Read(/{home}/.config/dotfiles-credentials/**)",
       "Read(/{home}/.config/glab-cli/config.yml)",
       "Read(/{home}/Library/Application Support/glab-cli/config.yml)",
       "Read(/{home}/.claude/.credentials.json)",
@@ -890,6 +891,7 @@
         "~/.local/share/opencode/auth.json",
         "~/.local/share/opencode/mcp-auth.json",
         "~/.config/research-harness/forge",
+        "~/.config/dotfiles-credentials",
         "~/**/.env",
         "~/**/.env.*",
         "~/.cache/gh",
@@ -976,6 +978,10 @@
         },
         {
           "path": "~/.config/research-harness/forge",
+          "mode": "deny"
+        },
+        {
+          "path": "~/.config/dotfiles-credentials",
           "mode": "deny"
         }
       ]

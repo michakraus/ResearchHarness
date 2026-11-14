@@ -58,7 +58,7 @@ from dataclasses import dataclass
 from typing import cast
 from unittest import mock
 
-from . import REPO, fsutil
+from . import REPO, fsutil, jsonio
 
 EVIDENCE = REPO / "skills" / "build-part" / "evidence.md"
 RUN_TESTS = REPO / "scripts" / "run-tests.jl"
@@ -118,6 +118,9 @@ exit "${{GH_STUB_STATUS:-0}}"
 #              `mount` show what `submit` and `mount` left
 #   git        answers ls-remote and push itself, and runs the real git (`git`) for the rest
 #   gh         prints a login; every other name exits 0
+#   env        a list of variable names: each stub also writes, per call, one JSON line to
+#              `<name>.env.log` with its arguments, the value of each variable (null where unset),
+#              and the sorted entries of each value that is a directory (null otherwise)
 PROBE_STUB = r"""#!{python}
 import json, os, pathlib, re, subprocess, sys, time
 here = pathlib.Path("{dir}")
@@ -126,6 +129,13 @@ args = sys.argv[1:]
 config = json.loads((here / "config.json").read_text())
 with (here / (name + ".log")).open("a") as f:
     f.write("\x1f".join([str(time.time()), os.getcwd(), *args]) + "\n")
+if config.get("env"):
+    def listing(value):
+        return sorted(os.listdir(value)) if value and os.path.isdir(value) else None
+    seen = {k: os.environ.get(k) for k in config["env"]}
+    dirs = {k: listing(v) for k, v in seen.items()}
+    with (here / (name + ".env.log")).open("a") as f:
+        f.write(json.dumps({"args": args, "env": seen, "dirs": dirs}) + "\n")
 def kept(file):
     p = here / file
     return p.read_text().splitlines() if p.exists() else []
@@ -777,6 +787,32 @@ def stub_dirs(home: pathlib.Path, name: str) -> set[str]:
     return {cwd for _, cwd, *_ in stub_log(home, name)}
 
 
+@dataclass(frozen=True)
+class EnvCall:
+    """One line of a stub's `<name>.env.log`: its arguments, the value of each variable that the
+    config's `env` names, and the entries of each value that is a directory."""
+
+    args: tuple[str, ...]
+    env: dict[str, str | None]
+    dirs: dict[str, list[str] | None]
+
+
+def env_calls(home: pathlib.Path, name: str) -> list[EnvCall]:
+    """The calls of the stub `name` in its `<name>.env.log`, in order."""
+    log = home.parent / "stubs" / f"{name}.env.log"
+    calls: list[EnvCall] = []
+    for k, line in enumerate(log.read_text().splitlines() if log.exists() else []):
+        value = jsonio.loads(line, where=f"{log}:{k + 1}")
+        calls.append(
+            EnvCall(
+                tuple(cast("list[str]", value["args"])),
+                cast("dict[str, str | None]", value["env"]),
+                cast("dict[str, list[str] | None]", value["dirs"]),
+            )
+        )
+    return calls
+
+
 def probe_rows(out: pathlib.Path) -> list[list[str]]:
     """The rows of report.tsv below `out`, without the header."""
     tsv = out / "report.tsv"
@@ -1097,6 +1133,56 @@ def probe_listeners(check: Callable[[object, str], None], tmp: pathlib.Path) -> 
         [g for g, _ in x5] == ["allowed"],
         f"X5 sends kill -0 to Kaimon on *:2828, not to the listener on [::1]:2828 -> {x5}",
     )
+
+
+def probe_environment(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """Every srt call, of a listener probe and of a shell probe, gets the battery's environment
+    with agentbox's forge variables: GH_CONFIG_DIR and GLAB_CONFIG_DIR are `<run>/<frontend>/gh`
+    and `<run>/<frontend>/glab`, in place of the caller's, GIT_TERMINAL_PROMPT is 0, and every other
+    variable of the caller stays; both directories exist and are empty at the frontend's first
+    probe, also where an earlier run with the same --out left a file in them."""
+    names = ("GH_CONFIG_DIR", "GLAB_CONFIG_DIR", "GIT_TERMINAL_PROMPT", "KEEP")
+    lsof = (
+        "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n"
+        "alpha 101 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7001 (LISTEN)\n"
+    )
+    home = probe_home(
+        tmp / "environment", {"srt": "allow", "lsof": lsof, "curl": {"7001": "401"}, "env": list(names)}
+    )
+    out = home / "out"
+    run = out.resolve() / "run"
+    for frontend, tool in (("claude", "gh"), ("agy", "glab")):
+        (run / frontend / tool).mkdir(parents=True)
+        (run / frontend / tool / "hosts.yml").write_text("left by an earlier run\n")
+    caller = {"GH_CONFIG_DIR": "/caller/gh", "GLAB_CONFIG_DIR": "/caller/glab", "GIT_TERMINAL_PROMPT": "1"}
+    probe_run(home, "--no-model", "claude", "agy", "--out", str(out), env={**caller, "KEEP": "1"})
+    by_frontend: dict[str, list[EnvCall]] = {"claude": [], "agy": []}
+    for call in env_calls(home, "srt"):
+        by_frontend["agy" if call.args[1].endswith("/antigravity.json") else "claude"].append(call)
+    for frontend, made in by_frontend.items():
+        want = {
+            "GH_CONFIG_DIR": str(run / frontend / "gh"),
+            "GLAB_CONFIG_DIR": str(run / frontend / "glab"),
+            "GIT_TERMINAL_PROMPT": "0",
+            "KEEP": "1",
+        }
+        wrong = [c.env for c in made if c.env != want]
+        check(
+            len(made) > 10 and not wrong,
+            f"{frontend}: each of its {len(made)} srt calls has GH_CONFIG_DIR and GLAB_CONFIG_DIR below "
+            f"<run>/{frontend}, GIT_TERMINAL_PROMPT=0 and the caller's KEEP -> {wrong[:1]}",
+        )
+        listener = [c for c in made if "http://127.0.0.1:7001/" in " ".join(c.args)]
+        check(
+            len(listener) == 1 and listener[0].env == want,
+            f"{frontend}: the listener probe's srt call has the same variables -> "
+            f"{[c.env for c in listener]}",
+        )
+        first = made[0].dirs if made else None
+        check(
+            first == {"GH_CONFIG_DIR": [], "GLAB_CONFIG_DIR": [], "GIT_TERMINAL_PROMPT": None, "KEEP": None},
+            f"{frontend}: both directories exist and are empty at its first probe -> {first}",
+        )
 
 
 def probe_routes(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
@@ -2043,6 +2129,7 @@ def probe_cases(check: Callable[[object, str], None]) -> None:
             probe_refuse_all,
             probe_allow_all,
             probe_listeners,
+            probe_environment,
             probe_routes,
             probe_summary,
             probe_model,

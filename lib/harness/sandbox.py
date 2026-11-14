@@ -472,8 +472,9 @@ FIXTURE_OMP = (
 )
 # The service of oh-my-pi's typo detection, which the shipped policy allows to omp alone.
 SHIPPED_SPELL = "mul-xpc (Apple)_OpenStep"
-# The service through which agy, a Go program, checks a TLS certificate, and agy's own hosts, which
-# the shipped policy gives to antigravity alone.
+# The service through which a Go program, gh in every frontend and agy in antigravity, checks a TLS
+# certificate, which the shipped policy gives to every frontend, and agy's own hosts, which it gives
+# to antigravity alone.
 SHIPPED_TRUST = "com.apple.trustd.agent"
 AGY_HOSTS = ("oauth2.googleapis.com", "daily-cloudcode-pa.googleapis.com", "www.googleapis.com")
 # The credential files that each frontend reads itself, as the shipped policy and template render
@@ -482,6 +483,8 @@ AGY_HOSTS = ("oauth2.googleapis.com", "daily-cloudcode-pa.googleapis.com", "www.
 SHIPPED_KAIMON = "/h/.config/kaimon/auth-token"
 # The forge token store, which every frontend reads: git and the gh wrapper read it inside srt.
 SHIPPED_FORGE = "/h/.config/research-harness/forge"
+# The token of the dotfiles, which no frontend reads.
+SHIPPED_DOTFILES = "/h/.config/dotfiles-credentials"
 SHIPPED_OWN = {
     "claude": (
         "/h/.claude.json",
@@ -564,7 +567,8 @@ def fixture_sandbox() -> dict[str, Any]:
 def selftest() -> tuple[int, int]:
     """The shipped policy, each refusal of `load_policy`, each rule of `srt_settings` on a fixture
     and on the settings template, the forge token store in the frontends' guard lists
-    (`forge_guard_cases`), the gh wrapper in `plan_files`, and sandbox/agentbox on scratch
+    (`forge_guard_cases`), the dotfiles token in every list that denies it
+    (`dotfiles_guard_cases`), the gh wrapper in `plan_files`, and sandbox/agentbox on scratch
     homes (`agentbox_cases`):
     (cases, wrong). The cases of `harness install` on scratch HOMEs, `install_file_cases`, run in
     the selftest of install.py."""
@@ -582,6 +586,7 @@ def selftest() -> tuple[int, int]:
         settings_cases(check, root)
         template_cases(check)
         forge_guard_cases(check)
+        dotfiles_guard_cases(check)
         mach_lookup_cases(check, root)
         plan_network_cases(check, root / "plan")
         plan_wrapper_cases(check, root / "wrapper")
@@ -644,9 +649,14 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
     services_of = {name: f.mach_lookup for name, f in policy.frontends.items()}
     check(
         services_of
-        == {"claude": (), "opencode": (), "omp": (SHIPPED_SPELL,), "antigravity": (SHIPPED_TRUST,)},
-        f"sandbox/policy.toml: omp looks up the spell service, antigravity the trust service, no other "
-        f"frontend a service: {services_of}",
+        == {
+            "claude": (SHIPPED_TRUST,),
+            "opencode": (SHIPPED_TRUST,),
+            "omp": (SHIPPED_SPELL, SHIPPED_TRUST),
+            "antigravity": (SHIPPED_TRUST,),
+        },
+        f"sandbox/policy.toml: every frontend looks up the trust service, omp the spell service first: "
+        f"{services_of}",
     )
 
     def refuses(change: Callable[[], object], error: type[Exception]) -> bool:
@@ -817,8 +827,8 @@ def policy_cases(check: Check, root: pathlib.Path) -> None:
 
 def mach_lookup_cases(check: Check, root: pathlib.Path) -> None:
     """`network.allowMachLookup`: the fixture's omp gets its `mach_lookup` in order, each once, and
-    a frontend with none gets no key; the shipped policy and template give omp the spell service
-    alone."""
+    a frontend with none gets no key; the shipped policy and template give every frontend the
+    trust service, and omp the spell service before it."""
     path = root / "mach-lookup-policy.toml"
     path.write_text(FIXTURE_POLICY)
     policy = load_policy(path)
@@ -852,11 +862,20 @@ def mach_lookup_cases(check: Check, root: pathlib.Path) -> None:
     }
     check(
         looked_up
-        == {"claude": None, "opencode": None, "omp": [SHIPPED_SPELL], "antigravity": [SHIPPED_TRUST]},
-        f"omp's file allows the lookup of the spell service alone, antigravity's of the trust service "
-        f"alone, no other frontend's file a service: "
-        f"{looked_up}",
+        == {
+            "claude": [SHIPPED_TRUST],
+            "opencode": [SHIPPED_TRUST],
+            "omp": [SHIPPED_SPELL, SHIPPED_TRUST],
+            "antigravity": [SHIPPED_TRUST],
+        },
+        f"omp's file allows the lookup of the spell service and then the trust service, every other "
+        f"frontend's file of the trust service alone: {looked_up}",
     )
+    for name, services_of in looked_up.items():
+        check(
+            isinstance(services_of, list) and SHIPPED_TRUST in services_of,
+            f"{name}: network.allowMachLookup holds {SHIPPED_TRUST}: {services_of}",
+        )
 
 
 def settings_cases(check: Check, root: pathlib.Path) -> None:
@@ -1385,6 +1404,49 @@ def forge_guard_cases(check: Check) -> None:
     for name, text in lists.items():
         deny = cast("dict[str, list[str]]", jsonio.loads(text, where=name))["deny"]
         check(path in deny, f"{name}: the rendered guard list denies {path}")
+
+
+def dotfiles_guard_cases(check: Check) -> None:
+    """The dotfiles token, which no frontend reads, in every list that denies the forge token store:
+    the settings template's `permissions.deny`, `sandbox.filesystem.denyRead` and
+    `sandbox.credentials.files`, the guard list of OpenCode, oh-my-pi and Antigravity rendered with
+    the dummy profile, and the `denyRead` of each frontend's srt settings from the template and the
+    shipped policy."""
+    template = cast("dict[str, Any]", jsonio.load(REPO / "settings" / "settings.proposal.json"))
+    rule = "Read(/{home}/.config/dotfiles-credentials/**)"
+    check(rule in template["permissions"]["deny"], f"the template's permissions.deny holds {rule}")
+    token = "~" + SHIPPED_DOTFILES[2:]
+    sandbox = template["sandbox"]
+    check(
+        token in sandbox["filesystem"]["denyRead"],
+        f"the template's sandbox.filesystem.denyRead holds {token}",
+    )
+    check(
+        {"path": token, "mode": "deny"} in sandbox["credentials"]["files"],
+        f"the template's sandbox.credentials.files names {token}, mode deny",
+    )
+    profile = profile_module.load(profile_module.DUMMY, home=profile_module.DUMMY_HOME)
+    path = f"{profile_module.DUMMY_HOME}/.config/dotfiles-credentials/**"
+    opencode = REPO / "adapters" / "opencode" / "plugins" / "guard-paths.json"
+    lists = {
+        "opencode": profile_module.render_file(opencode, profile),
+        "omp": frontends.adapter("omp").guard_paths(profile),
+        "antigravity": frontends.adapter("antigravity").guard_paths(profile),
+    }
+    for name, text in lists.items():
+        deny = cast("dict[str, list[str]]", jsonio.loads(text, where=name))["deny"]
+        check(path in deny, f"{name}: the rendered guard list denies {path}")
+    policy = load_policy(POLICY)
+    for name in frontends.FRONTENDS:
+        fs = cast(
+            "dict[str, list[str]]",
+            srt_settings(name, sandbox, policy, pathlib.Path("/h"), "/t")["filesystem"],
+        )
+        check(
+            SHIPPED_DOTFILES in fs["denyRead"] and SHIPPED_DOTFILES not in fs["allowRead"],
+            f"{name}: the dotfiles token is a read deny and no read allow: "
+            f"{[p for p in fs['denyRead'] if p.startswith('/h/.config/dot')]}",
+        )
 
 
 def template_cases(check: Check) -> None:
