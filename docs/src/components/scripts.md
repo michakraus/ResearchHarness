@@ -2,9 +2,11 @@
 
 The scripts are command-line tools in `scripts/` of this repository. Agents, skills, git hooks
 and people run them from the checkout, for example as
-`julia --startup-file=no ~/Research/Harness/scripts/run-tests.jl`. `harness install` does not copy
-them. `harness githooks --apply` copies one, `test-layout.jl`, into each repository. A file that
-ends in `-test.jl` holds the tests of the script beside it. `.githooks/pre-push` of this
+`julia --startup-file=no ~/Research/Harness/scripts/run-tests.jl`. `harness install` copies two
+of them into `~/.local/bin`: `gh-token.py` as `gh`, and on macOS `sealed.py` as `ghx`, `glabx` and
+`git-credential-sealed` ([The install](sandbox.md#the-install)); the other scripts run from the
+checkout. `harness githooks --apply` copies one, `test-layout.jl`, into each repository. A file
+that ends in `-test.jl` holds the tests of the script beside it. `.githooks/pre-push` of this
 repository runs these test files, as [Development](../development.md) describes.
 
 The Julia scripts load their packages from the environment that `harness install --apply` creates

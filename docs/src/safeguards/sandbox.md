@@ -130,6 +130,18 @@ holds `Read(/{home}/.config/dotfiles-credentials/**)` in `permissions.deny` and 
 denies it. No frontend's `own` names it, so each frontend's settings file denies its reads,
 although the files allow reads of `~/.config`.
 
+**No frontend can read the sealed secrets.** On macOS, your own broad forge tokens can be secrets
+in `~/.config/research-harness/sealed`, which `ghx`, `glabx` and `git-credential-sealed` decrypt
+with `age` and an `age-plugin-se` identity in the Secure Enclave
+([The sealed secrets](../components/sandbox.md#the-forge-tokens)). The directory is denied as the
+dotfiles token is: `Read(/{home}/.config/research-harness/sealed/**)` in `permissions.deny`, the
+path in `denyRead` and in `credentials.files`, the guard list of OpenCode, oh-my-pi and
+Antigravity, and each frontend's settings file, because no frontend's `own` names it. The
+template's `permissions.deny` also refuses `ghx`, `glabx` and `git-credential-sealed` as commands,
+which prevents accidents and is no boundary. The boundary is Touch ID: each decryption asks for
+it, and the route is yours alone. A Touch ID prompt that you did not start comes from a session,
+and you refuse it.
+
 **A frontend can use every terminal of the user.** A frontend's terminal user interface puts its
 terminal, a `/dev/ttysNNN`, in raw mode, and of the terminal devices `srt` allows an ioctl only
 on `/dev/tty` by default. Each frontend's settings file therefore holds `"allowPty": true`, and
