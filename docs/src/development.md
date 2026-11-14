@@ -25,7 +25,8 @@ With no argument, `harness test` runs every part. Part names select those parts,
 `--changed BASE` selects the parts that own a path of `git diff --name-status BASE...HEAD`; both
 paths of a rename count. The table `OWNERS` of `lib/harness/testrun.py` gives the owners: a
 module's own file, an adapter's directory, `hooks/` for the probe's groups, `docs/` for `docs`,
-`docs/src/dependencies.md` also for `doctor:minimum`, and `changelog.d/` for `changelog`. The
+`docs/src/dependencies.md` also for `doctor:minimum`, `ast-grep/` for `docs`, whose cases read
+the rule files (the rule tests run in the Julia workflow), and `changelog.d/` for `changelog`. The
 directories of `omp`, `opencode` and `antigravity` also select the probe group of the same name,
 which loads their guard files. A path that no part owns selects every part. `docs` and `sweep` run
 in every selection, and `--changed` prints on stderr which path selects which parts. `--changed`
