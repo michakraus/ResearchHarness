@@ -200,6 +200,30 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   own, such as Git Credential Manager without `GCM_INTERACTIVE=never`. A set but empty
   `GIT_ASKPASS` stops the three askpass routes (git `prompt.c`); test each route (E5m, *Sandbox
   the agent frontends*)
+- **a wrapper that hands a tool a token and removes only the other token variables:** the
+  variables that choose the host or the transport still steer the token. gh sends `GH_TOKEN` to
+  the host of `GH_REPO`, and glab reads `GLAB_API_PROTOCOL`, `GLAB_SKIP_TLS_VERIFY` and
+  `GLAB_CA_CERT`. Read the tool's own list of environment variables (`gh help environment`,
+  `glab config --help`), remove each one that names a host, a protocol or a trust anchor, and
+  give each a case (E5n1 round 1a, *Sandbox the agent frontends*)
+- **a decoded secret written into a line protocol:** a token that percent-decodes to a newline adds
+  lines to git's credential reply, such as a second `host=`. Refuse a control character in each
+  decoded field, and give the refusal a case with `%0A` (E5n1 round 1b, *Sandbox the agent
+  frontends*)
+- **a name pattern tested only with names that start outside its class:** `../x` and `-x` fail
+  `match` and `fullmatch` alike, so a mutant that drops the anchor at the end survives, and `a.b`
+  then reads `a.b.age`. Give the refusals a name that starts inside the class and leaves it later
+  (E5n1 round 1a, *Sandbox the agent frontends*)
+- **a time limit tested with a short real limit against a stub that sleeps:** the verdict depends
+  on the machine's load, and the mutant that drops the limit is killed only by the outer guard of
+  the case. Give the code a seam for the wait, let the case inject one that raises the expiry and
+  records the `timeout` it gets, and assert the kill on that record (E5n1 round 1, *Sandbox the
+  agent frontends*)
+- **a signal disposition tested only through a signal sent at the right moment:** an inherited
+  `SIG_IGN` and a handler restored after a child are process state, so a stub can read them with
+  `signal.getsignal` and a case can compare them before and after, with no race. Start one case
+  with the signal ignored, before the `exec`, and assert each branch on that state (E5n1 verify 2,
+  arbitrator, *Sandbox the agent frontends*)
 
 ## A numerical method
 
