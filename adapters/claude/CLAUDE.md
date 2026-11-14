@@ -28,6 +28,11 @@ Do not use `ExitWorktree` with `remove`: the harness cannot inspect a hook-made
 worktree and asks for `discard_changes`. Leave one with `ExitWorktree` and `keep`. **An isolated
 sub-agent's worktree stays after it returns**, and the caller removes it.
 
+**Remove a worktree yourself; do not hand the command to the user.** Run `git worktree remove
+<path>` as a Bash call of its own, from the main checkout, with `git` as the whole command: it
+runs outside the sandbox and succeeds. Claude Code's own note that `.git/worktrees` is read-only in
+the sandbox holds only for a sandboxed `git`, such as one after `cd … &&` or with `-C`.
+
 **A new clone under `~/Research` is untrusted until the user adds its entry.** Claude Code keys
 workspace trust on the repository root, a trusted parent does not cover it, and a session cannot
 write `~/.claude.json`. After a `git clone` or a `gh repo clone`, put this command in the report,
