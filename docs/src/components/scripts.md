@@ -707,6 +707,67 @@ file that it cannot read or whose line holds no password, and when the `PATH` ho
 wrapper. It uses the standard library only, and runs on Python 3.9 or later, the `python3` of
 macOS. The `gh_token` cases of `lib/harness/script_cases.py` run it with a stub gh in scratch homes.
 
+## `sealed.py`
+
+`sealed.py` runs gh, glab and git with the user's own broad tokens, which only the user's Touch ID
+decrypts. It is one script with three names, and the base name of the path that it runs as
+chooses what it does:
+
+```bash
+ghx <the arguments of gh>
+glabx <the arguments of glab>
+git-credential-sealed <name> https://<host> <action>
+```
+
+A secret is the file `~/.config/research-harness/sealed/<name>.age`. The first `age` on the `PATH`
+decrypts it with `age -d -i ~/.config/research-harness/sealed/identity.txt <file>`. The identity
+is one of `age-plugin-se` in the Secure Enclave, so each decryption asks for Touch ID. The plain
+text is the one line `https://<user>:<token>@<host>` of git's `credential-store`, with the user and
+the token percent-decoded. The decryption has a time limit of 120 s; past it the script stops
+`age`. A Ctrl-C reaches `age`, gh and glab, and the script waits for them.
+
+- **`ghx`** decrypts the secret `github`, whose host must be `github.com`. It runs the real gh
+  with the same arguments: the first `gh` on the `PATH` that is an executable file and does not
+  start with `#!`, so the wrapper `~/.local/bin/gh`, a script, is skipped. gh gets `GH_TOKEN`, the
+  secret's token, and a new empty `GH_CONFIG_DIR`, which ghx removes when gh ends. `GITHUB_TOKEN`,
+  `GH_HOST`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` are removed, so the token reaches
+  only `github.com`.
+- **`glabx`** decrypts the secret `gitlab` and runs the first `glab` on the `PATH` with the same
+  arguments. glab gets `GITLAB_TOKEN`, the token, `GITLAB_HOST`, the secret's host, and a new empty
+  `GLAB_CONFIG_DIR`, which glabx removes when glab ends. `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`,
+  `GITLAB_URI`, `GL_HOST`, `GITLAB_API_HOST` and `GITLAB_REPO` are removed: glab sends a token
+  from the environment also to the host of `GITLAB_REPO` and to each host of its configuration.
+- **`git-credential-sealed`** is a git credential helper. git runs it for the line
+  `credential.https://<host>.helper = sealed <name> https://<host>`, and appends the action. For
+  `get` it reads the request on stdin. Only where the request's protocol is `https` and its host
+  is the URL's host, compared without case, does it decrypt the secret `<name>`. The secret's host
+  must be the URL's host too. It then writes `username=<user>` and `password=<token>` on stdout.
+  For any other action, or another protocol or host, it reads stdin, decrypts nothing and writes
+  nothing, with exit status 0. So git can neither store nor erase a sealed secret, and a git
+  operation on another remote asks for no Touch ID.
+
+`ghx` and `glabx` exit with the status of gh and glab, or with 128 and the signal's number where a
+signal ends it. Each refusal exits with status 2 and one line `sealed: …` on stderr that names its
+cause, and runs no gh or glab:
+
+| cause | the line names |
+|:--|:--|
+| the secret file does not exist | the file |
+| no `age` on the `PATH` | `age` and the file |
+| `age` fails, or runs past the time limit | `age`, its status or the limit, and the file |
+| the plain text is not one line `https://<user>:<token>@<host>` | the file |
+| the secret names another host than `github.com` for `ghx`, or than the URL's for the helper | the host |
+| no `gh` but `#!` scripts, or no `glab`, on the `PATH` | the program |
+| the helper gets other than 3 arguments | the count |
+| a name that is not letters, digits and `-`, or that starts with `-` | the name |
+| a URL other than `https://<host>`, with no user, path, query or fragment | the URL |
+| a base name that is none of the three | the base name |
+
+The token is in no argument, file or message. The script uses the standard library only, and runs
+on Python 3.9 or later, the `python3` of macOS. The `sealed` cases of `lib/harness/script_cases.py`
+run it with a stub `age`, gh and glab in scratch homes; no case runs a real `age` or asks for Touch
+ID.
+
 ## The audit scripts
 
 The scripts in `scripts/audit/` measure the harness over a window of time: where the tokens go,
