@@ -24,9 +24,7 @@ feature. When a feature lands, its row and its marks go in the same change.
 
 | feature | state | described in |
 |:--|:--|:--|
-| **Rules of medium risk**{#medium-risk-rules} | planned | [Static checks](agentic/static-checks.md#planned-checks) |
 | **Checks that load the code**{#checks-that-load-code} | planned | [Static checks](agentic/static-checks.md#planned-checks) |
-| **A catalogue of defensive Julia**{#defensive-julia} | planned | [Static checks](agentic/static-checks.md#planned-checks) |
 
 ## Tests and CI
 
