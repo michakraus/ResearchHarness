@@ -4,4 +4,5 @@
   above, that `docstring-comment` cannot be silenced, and that `line-citation-comment` is silenced
   only from the line above, as `components/other.md` says. The comment of `mask` in
   `scripts/parts-table.awk` gives its example cell without the name of a task file that the
-  public repository does not hold; K73 keeps the other two such citations.
+  public repository does not hold. K73 keeps the one such citation that is left, in
+  `adapters/opencode/opencode.jsonc`.
