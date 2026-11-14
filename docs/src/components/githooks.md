@@ -372,7 +372,9 @@ The row is one of five:
 - *known red*: the tests fail against both. The pull request does not cause it.
 - *inconclusive*: the setup or the tests fail against the head. The setup against the default
   branch fails too, for example on the registry or a download. The row names which setup failed:
-  the default branch's alone, or the head's and the default branch's.
+  the default branch's alone, or the head's and the default branch's. A setup or a test step that
+  GitHub cancels, for example at the timeout of the job, also makes the row inconclusive. The row
+  then names the cancelled step.
 
 A regression and an inconclusive row fail the job. An inconclusive row asks a person to read the
 log or to run the job again. A step that fails before the row also fails the job. Two examples
