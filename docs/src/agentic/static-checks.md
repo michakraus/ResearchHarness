@@ -96,7 +96,9 @@ grammar. The harness has ten such rules, each with a test of positive and negati
 | `float-accumulator` | `warning` | an accumulator started from a `Float64` literal in generic code |
 | `catch-variable-unused` | `warning` | a `catch e` whose body neither uses `e` nor rethrows |
 
-A hit on a line can be silenced with `# ast-grep-ignore: <rule-id>` on that line.
+A hit can be silenced with `# ast-grep-ignore: <rule-id>` at the end of its line or on the line
+above, with two exceptions: `docstring-comment` cannot be silenced, and `line-citation-comment` is
+silenced only from the line above.
 [Jobs and configuration](../components/other.md#research-sgconfig-yml) describes the configuration
 and each rule. The pre-commit hook runs the rules on every commit, as
 [stage 2.7](../components/githooks.md#pre-commit-pre-commit-jl-and-pre-commit-test-jl). A hit of a
