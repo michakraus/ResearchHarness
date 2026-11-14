@@ -319,15 +319,14 @@ The scripts use them as follows. `dispatch-delta.jl` uses Aqua's piracy hunt, JE
 `report_package` and ExplicitImports' `improper_explicit_imports` on each side, and pins Aqua to
 one version because the piracy hunt is internal API. A side loads each one from the first
 environment of its load path that names it: the package's test environment, then the default
-environment `@v#.#`, then the harness environment. The pin holds only where neither of the first two names the package; each side records the Aqua
-version that it loaded.
-`explicit-imports.jl` uses ExplicitImports. `gate.jl`, `mutate.jl`, `fatou-lsp.jl` and
-`dispatch-delta.jl` use JSON for their reports and messages. `harness format`, the
-installed pre-commit hook and the format step of `gate.jl` use JuliaFormatter. `mutants.jl` uses JuliaSyntax to make the mutants,
-and `mutate.jl` uses it to read the names in a mutant. `run-tests.jl` and `mutate-worker.jl` use
-TestEnv to run a package's test files in its test environment, and `dispatch-delta.jl` uses it to
-load each side in its test environment. `verify-workflows.jl` uses YAML
-to read the workflows.
+environment `@v#.#`, then the harness environment. The pin holds only where neither of the first
+two names the package; each side records the Aqua version that it loaded. `explicit-imports.jl` uses
+ExplicitImports. `gate.jl`, `mutate.jl`, `fatou-lsp.jl` and `dispatch-delta.jl` use JSON for their
+reports and messages. `harness format`, the installed pre-commit hook and the format step of
+`gate.jl` use JuliaFormatter. `mutants.jl` uses JuliaSyntax to make the mutants, and `mutate.jl`
+uses it to read the names in a mutant. `run-tests.jl` and `mutate-worker.jl` use TestEnv to run a
+package's test files in its test environment, and `dispatch-delta.jl` uses it to load each side in
+its test environment. `verify-workflows.jl` uses YAML to read the workflows.
 
 The harness needs these packages because each does a task that Julia's standard library does not
 do. A copy of their code in the harness would be larger and less correct.
@@ -335,12 +334,12 @@ do. A copy of their code in the harness would be larger and less correct.
 Call sites: Aqua and JET, `scripts/dispatch-delta.jl`; ExplicitImports,
 `githooks/explicit-imports.jl` and `scripts/dispatch-delta.jl`; JSON, `scripts/gate.jl`,
 `scripts/mutate.jl`, `scripts/fatou-lsp.jl` and `scripts/dispatch-delta.jl`; JuliaFormatter,
-`harness format` (`githooks/format-tree.jl`), the installed pre-commit hook (`githooks/pre-commit.jl`) and
-`scripts/gate.jl`; JuliaSyntax, `scripts/mutate.jl` and
+`harness format` (`githooks/format-tree.jl`), the installed pre-commit hook
+(`githooks/pre-commit.jl`) and `scripts/gate.jl`; JuliaSyntax, `scripts/mutate.jl` and
 `scripts/mutants.jl`; TestEnv, `scripts/run-tests.jl`, `scripts/mutate-worker.jl` and
-`scripts/dispatch-delta.jl`; YAML, `harness ci-protection` through
-`githooks/verify-workflows.jl`. `harness install` instantiates all eight with `Project.toml`, only
-where `[setup]` chooses the component `julia`.
+`scripts/dispatch-delta.jl`; YAML, `harness ci-protection` through `githooks/verify-workflows.jl`.
+`harness install` instantiates all eight with `Project.toml`, only where `[setup]` chooses the
+component `julia`.
 
 ### fatou
 
