@@ -93,7 +93,7 @@ grammar. The harness has ten such rules, each with a test of positive and negati
 | `test-throws-bare-type` | `error` | `@test_throws` with a bare type in `test/`, which passes on any exception of that type |
 | `catch-binds-type-name` | `error` | `catch MethodError`, which binds a variable of that name and catches every exception |
 | `unspecialised-callable` | `warning` | a `::Function` or `::Base.Callable` argument that the method only passes on or stores, so Julia does not specialise on it |
-| `float-accumulator` | `warning` | an accumulator started from a float literal in generic code |
+| `float-accumulator` | `warning` | an accumulator started from a `Float64` literal in generic code |
 | `catch-variable-unused` | `warning` | a `catch e` whose body neither uses `e` nor rethrows |
 
 A hit on a line can be silenced with `# ast-grep-ignore: <rule-id>` on that line.
@@ -101,9 +101,9 @@ A hit on a line can be silenced with `# ast-grep-ignore: <rule-id>` on that line
 and each rule. The pre-commit hook runs the rules on every commit, as
 [stage 2.7](../components/githooks.md#pre-commit-pre-commit-jl-and-pre-commit-test-jl). A hit of a
 rule of severity `error` on a line that the commit adds blocks the commit; every other hit only
-warns. The ast-grep
-rules take the place of their prose in the rule `julia-code` and in the edge catalogue
-([A check in place of a rule](#a-check-in-place-of-a-rule)). The harness CI runs the rule tests.
+warns. The ast-grep rules take the place of their prose in the rule `julia-code` and in the edge
+catalogue ([A check in place of a rule](#a-check-in-place-of-a-rule)). The harness CI runs the
+rule tests.
 
 ## Planned checks
 
