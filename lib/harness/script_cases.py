@@ -43,9 +43,10 @@ runs them.
   that logs its arguments and prints a set plain text, a stub gh and glab that log their arguments
   and token variables, and the interpreter as `python3` on the PATH: ghx runs the first gh that is
   no `#!` script, glabx the first glab, each with the secret's token, without the caller's other
-  token and host variables, and with an empty configuration directory that is gone after the run;
-  the helper decrypts and answers only `get` for its URL's host; each refusal exits 2 with one
-  line `sealed: …` and no token; a Ctrl-C reaches `age` and gh, and `age` past the time limit stops.
+  token, host and transport variables, and with an empty configuration directory that is gone
+  after the run; the helper decrypts and answers only `get` for its URL's host; each refusal exits
+  2 with one line `sealed: …` and no token; a Ctrl-C reaches `age` and gh; and at an injected expiry of the
+  time limit the script kills `age`.
 """
 
 import importlib.util
@@ -56,6 +57,7 @@ import re
 import secrets
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -120,27 +122,35 @@ SEALED_DIR = pathlib.PurePosixPath(".config", "research-harness", "sealed")
 SEALED_REFUSED = 2
 SEALED_STUB_EXIT = 3
 SEALED_INTERRUPTED = 130
-# The time limit that the case of the sleeping `age` sets, and how long that `age` sleeps.
-SEALED_LIMIT = 1
-SEALED_SLEEP = 20
+# The seconds after which a run of a sealed case counts as a hang: a guard only, far above any
+# correct run, which no check compares with a time.
+SEALED_HANG = 60
 # The least time limit of the script itself, the time of a Touch ID prompt.
 SEALED_TOUCH_ID = 60
-# The variables that the stub gh and glab log.
-SEALED_VARS = (
-    "GH_TOKEN",
-    "GITHUB_TOKEN",
-    "GH_HOST",
-    "GH_ENTERPRISE_TOKEN",
-    "GITHUB_ENTERPRISE_TOKEN",
-    "GH_CONFIG_DIR",
-    "GITLAB_TOKEN",
-    "GITLAB_HOST",
+# The variables of the caller that ghx and glabx remove.
+SEALED_GH_REMOVED = ("GITHUB_TOKEN", "GH_HOST", "GH_REPO", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+SEALED_GLAB_REMOVED = (
     "GITLAB_ACCESS_TOKEN",
     "OAUTH_TOKEN",
     "GITLAB_URI",
     "GL_HOST",
     "GITLAB_API_HOST",
     "GITLAB_REPO",
+    "GLAB_API_PROTOCOL",
+    "API_PROTOCOL",
+    "GLAB_SKIP_TLS_VERIFY",
+    "SKIP_TLS_VERIFY",
+    "GLAB_CA_CERT",
+    "CA_CERT",
+)
+# The variables that the stub gh and glab log.
+SEALED_VARS = (
+    "GH_TOKEN",
+    *SEALED_GH_REMOVED,
+    "GH_CONFIG_DIR",
+    "GITLAB_TOKEN",
+    "GITLAB_HOST",
+    *SEALED_GLAB_REMOVED,
     "GLAB_CONFIG_DIR",
 )
 # The stub of gh and glab in the sealed cases, a Python file with `{names}` and `{log}` set: it
@@ -170,14 +180,15 @@ if os.environ.get("SEALED_STUB_INTERRUPT"):
 sys.exit(int(os.environ.get("SEALED_STUB_STATUS", "0")))
 """
 # The stub `age` of the sealed cases, with `{root}` set: it appends each argument and END to
-# age.log, then, where age.sleep exists, writes its process id to age.pid and sleeps; where
-# age.interrupt exists, sends SIGINT to its process group; else prints age.out and exits with
-# age.status, else 0. It names /bin/cat and /bin/sleep, so that its PATH needs no system directory.
+# age.log, then, where age.block exists, blocks until it is killed; where age.interrupt exists,
+# sends SIGINT to its process group, which ends it, and exits 0 with no output where it does not;
+# else prints age.out and exits with age.status, else 0. It names /bin/cat and /bin/sleep, so that
+# its PATH needs no system directory.
 SEALED_AGE = """\
 #!/bin/sh
 {{ for a in "$@"; do printf 'ARG=%s\\n' "$a"; done; echo END; }} >> '{root}/age.log'
-if [ -f '{root}/age.sleep' ]; then echo $$ > '{root}/age.pid'; exec /bin/sleep {sleep}; fi
-if [ -f '{root}/age.interrupt' ]; then /bin/sleep 1; kill -INT 0; /bin/sleep 5; fi
+if [ -f '{root}/age.block' ]; then exec /bin/sleep 3600; fi
+if [ -f '{root}/age.interrupt' ]; then kill -INT 0; exit 0; fi
 /bin/cat '{root}/age.out'
 if [ -f '{root}/age.status' ]; then exit "$(/bin/cat '{root}/age.status')"; fi
 exit 0
@@ -2203,9 +2214,10 @@ def gh_token_cases(check: Callable[[object, str], None]) -> None:
 
 @dataclass(frozen=True)
 class SealedRun:
-    """A run of scripts/sealed.py: its exit status (None past the case's time limit), stdout and
-    stderr; the argument lists of the stub `age`; the runs of the stub gh or glab, each the list of
-    its log lines; and whether the `#!` gh before the real one ran."""
+    """A run of scripts/sealed.py: its exit status (None for a hang), stdout and stderr, each
+    decoded with a replacement for a byte that is no UTF-8; the argument lists of the stub `age`;
+    the runs of the stub gh or glab, each the list of its log lines; whether the `#!` gh before the
+    real one ran; and whether the run read all of stdin."""
 
     status: int | None
     stdout: str
@@ -2213,6 +2225,7 @@ class SealedRun:
     age: list[list[str]]
     runs: list[list[str]]
     wrapper_ran: bool
+    read_stdin: bool
 
     def var(self, name: str) -> str | None:
         """The value of `name` that the one run of the stub saw, None where unset."""
@@ -2231,10 +2244,12 @@ class SealedRun:
 @dataclass(frozen=True)
 class SealedHome:
     """A scratch home below `root` for scripts/sealed.py: its sealed directory with identity.txt and
-    a `<name>.age` of each of github, gitlab and dotfiles; bin/ with ghx, glabx and
-    git-credential-sealed, links to the script; py/python3, a link to this interpreter; wrapper/gh,
-    a `#!` script that logs a run; real/gh, a link to this interpreter that runs work/api, the stub
-    SEALED_STUB; stubs/ with the stub `age` and glab; work/, the working directory; tmp/, TMPDIR."""
+    a `<name>.age` of each of github, gitlab and dotfiles, and a directory folder.age; bin/ with
+    ghx, glabx and git-credential-sealed, links to the script; py/python3, a link to this
+    interpreter; wrapper/gh, a `#!` script that logs a run; real/gh, a link to this interpreter that
+    runs work/api, the stub SEALED_STUB; stubs/ with the stub `age` and glab; empty/ with an empty
+    executable gh and glab, and broken/ with an empty executable age, which no system can run;
+    work/, the working directory; tmp/, TMPDIR."""
 
     root: pathlib.Path
 
@@ -2243,16 +2258,20 @@ class SealedHome:
         """A fresh home below `root`."""
         sealed = root / "home" / SEALED_DIR
         sealed.mkdir(parents=True)
-        # -x.age, and x.age above the sealed directory, so that a name -x or ../x is refused for
-        # its form, not for a missing file.
+        (sealed / "folder.age").mkdir()
+        # -x.age, a.b.age, and x.age above the sealed directory, so that a name -x, a.b or ../x is
+        # refused for its form, not for a missing file.
         for path in [
             *(sealed / n for n in ("identity.txt", "github.age", "gitlab.age", "dotfiles.age")),
             sealed / "-x.age",
+            sealed / "a.b.age",
             sealed.parent / "x.age",
         ]:
             fsutil.write_private(path, b"sealed\n")
-        for directory in ("bin", "py", "wrapper", "real", "stubs", "work", "tmp"):
+        for directory in ("bin", "py", "wrapper", "real", "stubs", "empty", "broken", "work", "tmp"):
             (root / directory).mkdir()
+        for path in (root / "empty" / "gh", root / "empty" / "glab", root / "broken" / "age"):
+            fsutil.write_private(path, b"", 0o755)
         for name in ("ghx", "glabx", "git-credential-sealed"):
             (root / "bin" / name).symlink_to(SEALED)
         (root / "py" / "python3").symlink_to(sys.executable)
@@ -2262,7 +2281,7 @@ class SealedHome:
             (root / "wrapper" / "gh", f"#!/bin/sh\necho run >> '{root}/wrapper.log'\nexit 97\n"),
             (root / "work" / "api", stub),
             (root / "stubs" / "glab", f"#!{sys.executable}\n{stub}"),
-            (root / "stubs" / "age", SEALED_AGE.format(root=root, sleep=SEALED_SLEEP)),
+            (root / "stubs" / "age", SEALED_AGE.format(root=root)),
         ]:
             path.write_text(text)
             path.chmod(0o755)
@@ -2272,11 +2291,12 @@ class SealedHome:
         """The PATH of the directories `dirs` below the root."""
         return ":".join(str(self.root / d) for d in dirs)
 
-    def age(self, out: str, status: int = 0, *, sleep: bool = False, interrupt: bool = False) -> None:
-        """Set what the stub `age` does: print `out` and exit `status`, or sleep, or send SIGINT."""
-        (self.root / "age.out").write_text(out)
+    def age(self, out: str | bytes, status: int = 0, *, block: bool = False, interrupt: bool = False) -> None:
+        """Set what the stub `age` does: print `out` and exit `status`, or block until it is killed,
+        or send SIGINT."""
+        (self.root / "age.out").write_bytes(out.encode() if isinstance(out, str) else out)
         (self.root / "age.status").write_text(f"{status}\n")
-        for name, on in (("age.sleep", sleep), ("age.interrupt", interrupt)):
+        for name, on in (("age.block", block), ("age.interrupt", interrupt)):
             if on:
                 (self.root / name).write_text("")
             else:
@@ -2286,14 +2306,14 @@ class SealedHome:
         self,
         name: str,
         *args: str,
-        stdin: str = "",
+        stdin: str | bytes = "",
         variables: dict[str, str] | None = None,
         path: str | None = None,
         program: list[str] | None = None,
     ) -> SealedRun:
-        """bin/`name` with `args` and `stdin` in work/, through its shebang, with the scratch HOME,
-        TMPDIR tmp/, the PATH `path`, else py/, wrapper/, real/ and stubs/, and `variables`; or
-        `program` with the same environment."""
+        """bin/`name` with `args` and `stdin`, from a file, in work/, through its shebang, with the
+        scratch HOME, TMPDIR tmp/, the PATH `path`, else py/, wrapper/, real/ and stubs/, and
+        `variables`; or `program` with the same environment."""
         for log in ("age.log", "stub.log", "wrapper.log"):
             (self.root / log).unlink(missing_ok=True)
         env = {
@@ -2302,24 +2322,33 @@ class SealedHome:
             "PATH": path if path is not None else self.path("py", "wrapper", "real", "stubs"),
             **(variables or {}),
         }
-        try:
-            p = subprocess.run(
-                program or [str(self.root / "bin" / name), *args],
-                input=stdin,
-                cwd=self.root / "work",
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False,
-                # A process group of its own, which a stub's SIGINT reaches and this one does not.
-                start_new_session=True,
-            )
-            status, stdout, stderr = p.returncode, p.stdout, p.stderr
-        except subprocess.TimeoutExpired:
-            status, stdout, stderr = None, "", "TIMEOUT"
-        except OSError as e:  # a program that cannot start, as a link to a missing script
-            status, stdout, stderr = None, "", f"{e.__class__.__name__}: {e}"
+        given = self.root / "stdin"
+        given.write_bytes(stdin.encode() if isinstance(stdin, str) else stdin)
+        # The run starts with SIGINT's default action, as from a terminal: a runner in the
+        # background may ignore SIGINT, and exec keeps an ignored signal ignored.
+        default = (
+            "import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); "
+            "os.execv(sys.argv[1], sys.argv[1:])"
+        )
+        with given.open("rb") as f:
+            try:
+                p = subprocess.run(
+                    [sys.executable, "-c", default, *(program or [str(self.root / "bin" / name), *args])],
+                    stdin=f,
+                    cwd=self.root / "work",
+                    env=env,
+                    capture_output=True,
+                    timeout=SEALED_HANG,
+                    check=False,
+                    # A process group of its own, which a stub's SIGINT reaches and this one does not.
+                    start_new_session=True,
+                )
+                status = p.returncode
+                stdout, stderr = p.stdout.decode(errors="replace"), p.stderr.decode(errors="replace")
+            except subprocess.TimeoutExpired:
+                status, stdout, stderr = None, "", f"HANG: no end within {SEALED_HANG} s"
+            # The run shares the file's offset, so the offset tells how much of stdin it read.
+            read_stdin = os.lseek(f.fileno(), 0, os.SEEK_CUR) == given.stat().st_size
 
         def blocks(log: pathlib.Path) -> list[list[str]]:
             found: list[list[str]] = [[]]
@@ -2337,6 +2366,7 @@ class SealedHome:
             age=[[a.removeprefix("ARG=") for a in b] for b in blocks(self.root / "age.log")],
             runs=blocks(self.root / "stub.log"),
             wrapper_ran=(self.root / "wrapper.log").exists(),
+            read_stdin=read_stdin,
         )
 
     def secret(self, name: str) -> list[str]:
@@ -2360,6 +2390,7 @@ def sealed_ghx_cases(check: Callable[[object, str], None], tmp: pathlib.Path) ->
         "GH_TOKEN": "old",
         "GITHUB_TOKEN": "old",
         "GH_HOST": "example.org",
+        "GH_REPO": "github.localhost/x/y",
         "GH_ENTERPRISE_TOKEN": "old",
         "GITHUB_ENTERPRISE_TOKEN": "old",
         "GH_CONFIG_DIR": "/caller",
@@ -2371,8 +2402,7 @@ def sealed_ghx_cases(check: Callable[[object, str], None], tmp: pathlib.Path) ->
         and seen.age == [home.secret("github")]
         and seen.argv() == ["api", "user"]
         and seen.var("GH_TOKEN") == "t+k"
-        and all(seen.var(k) is None for k in ("GITHUB_TOKEN", "GH_HOST", "GH_ENTERPRISE_TOKEN"))
-        and seen.var("GITHUB_ENTERPRISE_TOKEN") is None
+        and all(seen.var(k) is None for k in SEALED_GH_REMOVED)
         and seen.var("GH_CONFIG_DIR") not in (None, "/caller")
         and seen.empty("GH_CONFIG_DIR")
         and not home.left(),
@@ -2415,16 +2445,14 @@ def sealed_glabx_cases(check: Callable[[object, str], None], tmp: pathlib.Path) 
         "GITLAB_API_HOST": "x",
         "GITLAB_REPO": "x/y",
         "GLAB_CONFIG_DIR": "/caller",
+        "GLAB_API_PROTOCOL": "http",
+        "API_PROTOCOL": "http",
+        "GLAB_SKIP_TLS_VERIFY": "true",
+        "SKIP_TLS_VERIFY": "true",
+        "GLAB_CA_CERT": "/caller/ca.pem",
+        "CA_CERT": "/caller/ca.pem",
     }
     seen = home.run("glabx", "mr", "list", variables=caller)
-    removed = (
-        "GITLAB_ACCESS_TOKEN",
-        "OAUTH_TOKEN",
-        "GITLAB_URI",
-        "GL_HOST",
-        "GITLAB_API_HOST",
-        "GITLAB_REPO",
-    )
     check(
         seen.status == 0
         and len(seen.runs) == 1
@@ -2432,12 +2460,12 @@ def sealed_glabx_cases(check: Callable[[object, str], None], tmp: pathlib.Path) 
         and seen.argv()[1:] == ["mr", "list"]
         and seen.var("GITLAB_TOKEN") == "tok"
         and seen.var("GITLAB_HOST") == "gitlab.example.org"
-        and all(seen.var(k) is None for k in removed)
+        and all(seen.var(k) is None for k in SEALED_GLAB_REMOVED)
         and seen.var("GLAB_CONFIG_DIR") not in (None, "/caller")
         and seen.empty("GLAB_CONFIG_DIR")
         and not home.left(),
         f"sealed.py as glabx: age decrypts gitlab.age, glab runs once with `mr list`, GITLAB_TOKEN tok, "
-        f"GITLAB_HOST gitlab.example.org, none of the six other variables, and an empty GLAB_CONFIG_DIR "
+        f"GITLAB_HOST gitlab.example.org, none of the twelve other variables, and an empty GLAB_CONFIG_DIR "
         f"gone after the run: {seen.status}, {seen.age}, {seen.runs}, {home.left()}, {seen.stderr!r}",
     )
 
@@ -2445,7 +2473,8 @@ def sealed_glabx_cases(check: Callable[[object, str], None], tmp: pathlib.Path) 
 def sealed_helper_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """git-credential-sealed: `get` for its URL's protocol and host, the host compared without case,
     decrypts the secret and writes exactly its user and password; another host, another protocol,
-    and every other action write nothing, exit 0, and run no `age`."""
+    and every other action read stdin, write nothing, exit 0, and run no `age`; a request byte that
+    is no UTF-8 raises nothing."""
     home = SealedHome.fresh(tmp / "helper")
     home.age("https://oauth2:tok@gitlab.example.org\n")
     url = "https://gitlab.example.org"
@@ -2479,9 +2508,19 @@ def sealed_helper_cases(check: Callable[[object, str], None], tmp: pathlib.Path)
         stdin = request(protocol, host) + ("username=oauth2\npassword=new\n" if action == "store" else "")
         seen = home.run("git-credential-sealed", "dotfiles", url, action, stdin=stdin)
         check(
-            seen.status == 0 and not seen.stdout and not seen.age and not seen.stderr,
-            f"sealed.py as git-credential-sealed, {label}: nothing written, exit 0, and no age: "
-            f"{seen.status}, {seen.stdout!r}, {seen.age}, {seen.stderr!r}",
+            seen.status == 0 and not seen.stdout and not seen.age and not seen.stderr and seen.read_stdin,
+            f"sealed.py as git-credential-sealed, {label}: stdin read, nothing written, exit 0, and no "
+            f"age: {seen.status}, {seen.read_stdin}, {seen.stdout!r}, {seen.age}, {seen.stderr!r}",
+        )
+    # A byte that is no UTF-8 in git's request, as a path may hold, under a UTF-8 locale.
+    utf8 = {"LC_ALL": "en_US.UTF-8"}
+    odd = b"protocol=https\nhost=gitlab.example.org\npath=me/\xff.git\n\n"
+    for action, out in [("get", "username=oauth2\npassword=tok\n"), ("store", "")]:
+        seen = home.run("git-credential-sealed", "dotfiles", url, action, stdin=odd, variables=utf8)
+        check(
+            seen.status == 0 and seen.stdout == out and not seen.stderr,
+            f"sealed.py as git-credential-sealed, {action} with a path that is no UTF-8: exit 0 and "
+            f"{out!r} on stdout: {seen.status}, {seen.stdout!r}, {seen.stderr!r}",
         )
     # A blank line ends git's request: a host after it is no part of it.
     seen = home.run(
@@ -2505,7 +2544,7 @@ def sealed_refusal_cases(check: Callable[[object, str], None], tmp: pathlib.Path
     get = "protocol=https\nhost=gitlab.example.org\n\n"
     sealed = home.root / "home" / SEALED_DIR
     helper = ("git-credential-sealed", "dotfiles", url, "get")
-    rows: list[tuple[tuple[str, ...], str, str, dict[str, object], str]] = [
+    rows: list[tuple[tuple[str, ...], str | bytes, str, dict[str, object], str]] = [
         (
             ("ghx", "api", "user"),
             f"https://x:{token}@github.com\n",
@@ -2542,13 +2581,54 @@ def sealed_refusal_cases(check: Callable[[object, str], None], tmp: pathlib.Path
             ("ghx", "api", "user"),
             f"https://x:{token}@github.com\n",
             "gh",
-            {"path": ("py", "wrapper", "stubs")},
+            {"path": ("py", "wrapper", "stubs"), "no age": True},
             "no gh but a #! script",
         ),
-        (("glabx", "mr", "list"), good, "glab", {"path": ("py", "real")}, "no glab"),
+        (("glabx", "mr", "list"), good, "glab", {"path": ("py", "real"), "no age": True}, "no glab"),
+        *(
+            (
+                args,
+                out,
+                str(home.root / "empty" / args[0].removesuffix("x")),
+                {"path": ("py", "empty", "real", "stubs")},
+                f"{args[0]}, an empty executable {args[0].removesuffix('x')} first on the PATH",
+            )
+            for args, out in [
+                (("ghx", "api", "user"), f"https://x:{token}@github.com\n"),
+                (("glabx", "mr", "list"), good),
+            ]
+        ),
+        (
+            ("ghx", "api", "user"),
+            f"https://x:{token}@github.com\n",
+            str(home.root / "broken" / "age"),
+            {"path": ("py", "broken", "real", "stubs")},
+            "ghx, an empty executable age first on the PATH",
+        ),
+        (
+            ("git-credential-sealed", "folder", url, "get"),
+            good,
+            "folder.age",
+            {},
+            "the helper, a secret that is a directory",
+        ),
+        (helper, b"https://oauth2:\xff@gitlab.example.org\n", "dotfiles.age", {}, "age prints no UTF-8"),
+        *(
+            (helper, line, "dotfiles.age", {}, f"the helper, a secret {line!r}")
+            for line in (
+                f"https://oauth2:{token}@gitlab.example.org/some/path?q=1\n",
+                f"https://oauth2:{token}@gitlab.example.org/\n",
+                f"https://oauth2:{token}@gitlab.example.org?q=1\n",
+                f"https://oauth2:{token}@gitlab.example.org?\n",
+                f"https://oauth2:{token}@gitlab.example.org#x\n",
+                f"https://oauth2:{token}%0Ahost=evil.example.org@gitlab.example.org\n",
+                f"https://oauth2%0D:{token}@gitlab.example.org\n",
+            )
+        ),
         (("git-credential-sealed",), good, "3", {}, "the helper with no name"),
         (("git-credential-sealed", "../x", url, "get"), good, "../x", {}, "the helper, the name ../x"),
         (("git-credential-sealed", "-x", url, "get"), good, "-x", {}, "the helper, a name -x"),
+        (("git-credential-sealed", "a.b", url, "get"), good, "a.b", {}, "the helper, a name a.b"),
         (("git-credential-sealed", "dotfiles", url), good, "3", {}, "the helper with no action"),
         (("git-credential-sealed", "dotfiles", url, "get", "x"), good, "3", {}, "the helper with four words"),
         (
@@ -2583,7 +2663,7 @@ def sealed_refusal_cases(check: Callable[[object, str], None], tmp: pathlib.Path
             {},
             "the helper, a secret of another host",
         ),
-        (helper, good, "age", {"interrupt": True}, "a Ctrl-C that ends age"),
+        (helper, good, "age exits 130", {"interrupt": True}, "a Ctrl-C that ends age"),
     ]
     for args, out, named, how, label in rows:
         name, *rest = args
@@ -2609,9 +2689,12 @@ def sealed_refusal_cases(check: Callable[[object, str], None], tmp: pathlib.Path
             and not seen.wrapper_ran
             and token not in seen.stdout + seen.stderr
             and not seen.stdout
-            and "Traceback" not in seen.stderr,
+            and "Traceback" not in seen.stderr
+            # The program lookup comes first, so a missing program asks for no Touch ID.
+            and not (how.get("no age") and seen.age),
             f"sealed.py, {label}: exit 2, one line `sealed: …` that names {named}, no gh or glab, no token "
-            f"and nothing on stdout: {seen.status}, {len(seen.runs)}, {seen.stdout!r}, {seen.stderr!r}",
+            f"and nothing on stdout: {seen.status}, {len(seen.runs)}, {seen.age}, {seen.stdout!r}, "
+            f"{seen.stderr!r}",
         )
     other = home.root / "bin" / "sealed"
     other.symlink_to(SEALED)
@@ -2664,42 +2747,84 @@ def sealed_path_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -
 
 
 def sealed_limit_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
-    """The time limit of the decryption is at least 60 s, time for a Touch ID prompt. A stub `age`
-    that sleeps past the time limit, which the case sets to SEALED_LIMIT: the script stops it,
-    exits 2 with one line that names the limit, and runs no gh."""
+    """The time limit of the decryption is at least 60 s, time for a Touch ID prompt. The case
+    injects the wait for `age`, the module's `wait`, with a fake that logs each call's timeout,
+    raises TimeoutExpired where it gets one, logs a kill of `age`, and kills `age` itself where no
+    kill came before the wait with no timeout; the stub `age` blocks until it is killed. The
+    script waits with its TIMEOUT, kills `age`, waits for its end and reads no more output, exits 2
+    with one line that names the limit, and runs no gh. The module's own `wait` passes its timeout
+    to `communicate`, which a recording object shows. No real timer runs out."""
     limit = re.search(r"^TIMEOUT = (\d+)$", SEALED.read_text(), re.MULTILINE)
     check(
         limit is not None and int(limit.group(1)) >= SEALED_TOUCH_ID,
         f"sealed.py's TIMEOUT is at least {SEALED_TOUCH_ID} s: {limit and limit.group(1)}",
     )
     home = SealedHome.fresh(tmp / "limit")
-    home.age("https://x:tok@github.com\n", sleep=True)
-    code = (
-        "import importlib.util, sys\n"
-        f"spec = importlib.util.spec_from_file_location('sealed', {str(SEALED)!r})\n"
-        "module = importlib.util.module_from_spec(spec)\n"
-        "sys.modules['sealed'] = module\n"
-        "spec.loader.exec_module(module)\n"
-        f"module.TIMEOUT = {SEALED_LIMIT}\n"
-        "module.main(['ghx', 'api', 'user'])\n"
-    )
-    seen = home.run("ghx", program=[sys.executable, "-c", code])
-    pid = (home.root / "age.pid").read_text().strip() if (home.root / "age.pid").exists() else ""
+    home.age("https://x:tok@github.com\n", block=True)
+    events = home.root / "wait.log"
+    code = f"""\
+import importlib.util, pathlib, subprocess, sys
+spec = importlib.util.spec_from_file_location("sealed", {str(SEALED)!r})
+module = importlib.util.module_from_spec(spec)
+sys.modules["sealed"] = module
+spec.loader.exec_module(module)
+events = []
+real = module.wait
+
+
+class Recorded:
+    def communicate(self, timeout=None):
+        events.append(f"communicate {{timeout}}")
+        return b"", b""
+
+
+real(Recorded(), 7)
+
+def fake(p, timeout):
+    events.append(f"wait {{timeout}}")
+    if timeout is not None:
+        kill = p.kill
+
+        def logged():
+            events.append("kill")
+            kill()
+
+        p.kill = logged
+        raise subprocess.TimeoutExpired(p.args, timeout)
+    if "kill" not in events:
+        p.kill()
     try:
-        os.kill(int(pid), 0)
-        alive = True
-    except ValueError, ProcessLookupError:
-        alive = False
+        return real(p, None)
+    finally:
+        events.append(f"returncode {{p.returncode}}, output read {{p.stdout.closed}}")
+
+module.wait = fake
+try:
+    module.main(["ghx", "api", "user"])
+finally:
+    pathlib.Path({str(events)!r}).write_text("\\n".join(events))
+"""
+    seen = home.run("ghx", program=[sys.executable, "-c", code])
+    timeout = limit.group(1) if limit else "?"
+    logged = events.read_text().splitlines() if events.exists() else []
     check(
         seen.status == SEALED_REFUSED
         and seen.stderr.count("\n") == 1
         and seen.stderr.startswith("sealed: ")
-        and f"{SEALED_LIMIT} s" in seen.stderr
+        and f"{timeout} s" in seen.stderr
         and not seen.runs
-        and bool(pid)
-        and not alive,
-        f"sealed.py with an age past its time limit: exit 2, one line that names the limit, age stopped, "
-        f"no gh: {seen.status}, {pid}, {alive}, {len(seen.runs)}, {seen.stderr!r}",
+        and logged
+        == [
+            "communicate 7",
+            f"wait {timeout}",
+            "kill",
+            "wait None",
+            f"returncode {-signal.SIGKILL}, output read False",
+        ],
+        f"sealed.py with an age past its time limit: wait passes its timeout to communicate; the wait "
+        f"with TIMEOUT, then the kill of age, then the wait for its end, which reads no output; exit 2, "
+        f"one line that names the limit, and no gh: {logged}, {seen.status}, {len(seen.runs)}, "
+        f"{seen.stderr!r}",
     )
 
 

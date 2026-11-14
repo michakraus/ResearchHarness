@@ -18,12 +18,17 @@ script waits for them.
   same arguments: the first `gh` on the PATH that is an executable file and does not start with
   `#!`, so that the wrapper ~/.local/bin/gh, a script, is skipped. gh gets GH_TOKEN, the secret's
   token, and a new empty GH_CONFIG_DIR, which ghx removes when gh ends; GITHUB_TOKEN, GH_HOST,
-  GH_ENTERPRISE_TOKEN and GITHUB_ENTERPRISE_TOKEN are removed, so the token reaches only github.com.
+  GH_REPO, GH_ENTERPRISE_TOKEN and GITHUB_ENTERPRISE_TOKEN are removed, so that no variable of the
+  caller chooses the host: gh sends GH_TOKEN to github.com, a subdomain of ghe.com and
+  github.localhost, and only an argument or a git remote of the working directory chooses among
+  them.
 - glabx decrypts the secret `gitlab` and runs the first `glab` on the PATH with the same arguments,
   GITLAB_TOKEN the token, GITLAB_HOST the secret's host, and a new empty GLAB_CONFIG_DIR, which it
-  removes when glab ends; GITLAB_ACCESS_TOKEN, OAUTH_TOKEN, GITLAB_URI, GL_HOST, GITLAB_API_HOST and
+  removes when glab ends. GITLAB_ACCESS_TOKEN, OAUTH_TOKEN, GITLAB_URI, GL_HOST, GITLAB_API_HOST and
   GITLAB_REPO are removed, since glab sends an environment token to the host of GITLAB_REPO and of
-  its configuration too.
+  its configuration too; GLAB_API_PROTOCOL, API_PROTOCOL, GLAB_SKIP_TLS_VERIFY, SKIP_TLS_VERIFY,
+  GLAB_CA_CERT and CA_CERT are removed, so that no variable of the caller sends the token in clear
+  text, without a TLS check, or under a CA of its choice.
 - git-credential-sealed is a git credential helper: git runs it for the line
   `credential.https://<host>.helper = sealed <name> https://<host>` and appends the action. For
   `get` it reads the request on stdin; only where the request's protocol is `https` and its host is
@@ -34,12 +39,13 @@ script waits for them.
 
 ghx and glabx exit with the status of gh and glab, 128 and the signal's number where a signal ends
 it. Every refusal exits 2 with one line `sealed: …` on stderr that names its cause, and runs no gh
-or glab: a secret file that does not exist; no `age` on the PATH; an `age` that fails or runs past
-the time limit; a plain text that is not one such line; a secret of another host; no gh or glab on
-the PATH; helper arguments that are not exactly a name of letters, digits and `-`, not starting
-with `-`, a URL `https://<host>` with no user, path, query or fragment, and an action; and a base
-name that is none of the three. The token is in no argument, file or message. The standard library
-only, and Python 3.9 or later, the python3 of macOS.
+or glab: a secret that is no file; no `age` on the PATH; an `age` that does not start, fails, runs
+past the time limit or prints no UTF-8; a plain text that is not one such line, with no path,
+query or fragment and no control character in the user or the token; a secret of another host; no
+gh or glab on the PATH, or one that does not start; helper arguments that are not exactly a name of
+letters, digits and `-`, not starting with `-`, a URL `https://<host>` with no user, path, query or
+fragment, and an action; and a base name that is none of the three. The token is in no argument,
+file or message. The standard library only, and Python 3.9 or later, the python3 of macOS.
 """
 
 from __future__ import annotations
@@ -52,7 +58,9 @@ import signal
 import subprocess
 import sys
 import tempfile
+import types
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import dataclass
 
 SEALED = pathlib.Path(".config", "research-harness", "sealed")
@@ -68,7 +76,7 @@ HELPER_WORDS = 3
 REFUSED = 2
 # The exit status of a program that a signal ends is this plus the signal's number.
 SIGNALLED = 128
-GH_REMOVED = ("GITHUB_TOKEN", "GH_HOST", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+GH_REMOVED = ("GITHUB_TOKEN", "GH_HOST", "GH_REPO", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
 GLAB_REMOVED = (
     "GITLAB_ACCESS_TOKEN",
     "OAUTH_TOKEN",
@@ -76,6 +84,12 @@ GLAB_REMOVED = (
     "GL_HOST",
     "GITLAB_API_HOST",
     "GITLAB_REPO",
+    "GLAB_API_PROTOCOL",
+    "API_PROTOCOL",
+    "GLAB_SKIP_TLS_VERIFY",
+    "SKIP_TLS_VERIFY",
+    "GLAB_CA_CERT",
+    "CA_CERT",
 )
 
 
@@ -100,7 +114,8 @@ def status_of(code: int) -> int:
 
 def parse(text: str, path: pathlib.Path) -> Secret:
     """The secret of the plain text `text` of the file `path`: exactly one line
-    `https://<user>:<token>@<host>`. The message of a refusal names the file, not the text."""
+    `https://<user>:<token>@<host>`, with no path, query or fragment, and no control character in
+    the decoded user or token. The message of a refusal names the file, not the text."""
     refused = RefusedError(f"{path} holds no one line https://<user>:<token>@<host>")
     lines = text.splitlines()
     if len(lines) != 1:
@@ -113,7 +128,39 @@ def parse(text: str, path: pathlib.Path) -> Secret:
     host = url.netloc.rpartition("@")[2].lower()
     if url.scheme != HTTPS or not url.username or not url.password or not hostname:
         raise refused
-    return Secret(urllib.parse.unquote(url.username), urllib.parse.unquote(url.password), host)
+    if url.path or url.query or url.fragment or lines[0].endswith(("?", "#")):
+        raise refused
+    user, token = urllib.parse.unquote(url.username), urllib.parse.unquote(url.password)
+    # A control character, as a decoded newline, would add a line to git's credential reply.
+    if not (user + token).isprintable():
+        raise refused
+    return Secret(user, token, host)
+
+
+def held(_signum: int, _frame: types.FrameType | None) -> None:
+    """A SIGINT handler that does nothing, so that the script waits for its child, which a Ctrl-C
+    reaches in the same process group. Unlike SIG_IGN, exec resets a handler to the default
+    action, so the child starts with that action."""
+
+
+def hold_interrupt() -> signal.Handlers | int | Callable[[int, types.FrameType | None], object] | None:
+    """Hold SIGINT before a child starts, so that a Ctrl-C at any time after, the start and the
+    wait included, does not end the script; a caller that ignores SIGINT keeps it ignored, for the
+    child too. The previous handler."""
+    previous = signal.getsignal(signal.SIGINT)
+    if previous is not signal.SIG_IGN:
+        signal.signal(signal.SIGINT, held)
+    return previous
+
+
+def wait(p: subprocess.Popen[bytes], timeout: float | None) -> tuple[bytes, bytes]:
+    """The stdout and stderr of `p` once it ends, past `timeout` seconds TimeoutExpired. With no
+    `timeout`, after a kill, only the end of `p`, and no output: a child of `p` that keeps a pipe
+    open would keep the script waiting."""
+    if timeout is None:
+        p.wait()  # no timeout: `p` is killed
+        return b"", b""
+    return p.communicate(timeout=timeout)
 
 
 def decrypt(name: str) -> Secret:
@@ -121,30 +168,39 @@ def decrypt(name: str) -> Secret:
     sealed = pathlib.Path.home() / SEALED
     path = sealed / f"{name}.age"
     if not path.is_file():
-        raise RefusedError(f"{path} does not exist")
+        raise RefusedError(f"{path} is no file")
     age = shutil.which("age")
     if age is None:
         raise RefusedError(f"no age on the PATH to decrypt {path}")
     command = [age, "-d", "-i", str(sealed / IDENTITY), str(path)]
-    # age gets no stdin: the helper reads git's request from it. The time limit is communicate's.
-    with subprocess.Popen(  # no timeout: communicate has it
-        command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-    ) as p:
-        # Ctrl-C reaches age, in the same process group, which decides; the script waits for it.
-        previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    previous = hold_interrupt()
+    try:
+        # age gets no stdin: the helper reads git's request from it. The time limit is wait's.
         try:
-            out, err = p.communicate(timeout=TIMEOUT)
-        except subprocess.TimeoutExpired:
-            p.kill()
-            p.communicate()
-            raise RefusedError(f"age takes more than {TIMEOUT} s to decrypt {path}; stopped it") from None
-        finally:
-            # gh and glab start with the default action again, so that a Ctrl-C ends them.
-            signal.signal(signal.SIGINT, previous)
+            p = subprocess.Popen(  # no timeout: wait has it
+                command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+        except OSError as e:
+            raise RefusedError(f"{age} does not start to decrypt {path}: {e.strerror}") from None
+        with p:
+            try:
+                out, err = wait(p, TIMEOUT)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                wait(p, None)
+                raise RefusedError(f"age takes more than {TIMEOUT} s to decrypt {path}; stopped it") from None
+    finally:
+        # The script's own SIGINT handler again; run holds SIGINT once more for gh or glab.
+        signal.signal(signal.SIGINT, previous)
     if p.returncode != 0:
-        last = next((line.strip() for line in reversed(err.splitlines()) if line.strip()), "")
+        lines = err.decode(errors="replace").splitlines()
+        last = next((line.strip() for line in reversed(lines) if line.strip()), "")
         raise RefusedError(f"age exits {status_of(p.returncode)} on {path}" + (f": {last}" if last else ""))
-    return parse(out, path)
+    try:
+        text = out.decode()
+    except UnicodeDecodeError:
+        raise RefusedError(f"{path} holds no UTF-8 text") from None
+    return parse(text, path)
 
 
 def program(name: str, *, skip_scripts: bool) -> pathlib.Path:
@@ -162,14 +218,18 @@ def program(name: str, *, skip_scripts: bool) -> pathlib.Path:
             except OSError:
                 continue
         return candidate
-    raise RefusedError(f"no {name} on the PATH" + (" but #! scripts" if skip_scripts else ""))
+    raise RefusedError(f"no {name} on the PATH" + (" that is no #! script" if skip_scripts else ""))
 
 
 def run(path: pathlib.Path, args: list[str], env: dict[str, str]) -> int:
-    """The exit status of `path` with `args` and `env`, as a shell reports it."""
-    with subprocess.Popen([str(path), *args], env=env) as p:  # no timeout: gh runs as long as its command
-        # Ctrl-C reaches the program, in the same process group, which decides; the script waits.
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    """The exit status of `path` with `args` and `env`, as a shell reports it; a Ctrl-C reaches
+    the program, which decides, and the script waits. A program that does not start is refused."""
+    hold_interrupt()
+    try:
+        p = subprocess.Popen([str(path), *args], env=env)  # no timeout: gh runs as long as its command
+    except OSError as e:
+        raise RefusedError(f"{path} does not start: {e.strerror}") from None
+    with p:
         status = p.wait()
     return status_of(status)
 
@@ -229,8 +289,10 @@ def helper(args: list[str]) -> int:
         raise RefusedError(f"the name {name} is not letters, digits and -, not starting with -")
     host = url_host(url)
     request: dict[str, str] = {}
-    for line in sys.stdin:
-        key, _, value = line.rstrip("\n").partition("=")
+    # Bytes, so that a byte that is no UTF-8, as a path may hold, raises nothing; in a host it
+    # matches no host.
+    for line in sys.stdin.buffer:
+        key, _, value = line.decode(errors="surrogateescape").rstrip("\n").partition("=")
         if not key:
             break
         request.setdefault(key, value)

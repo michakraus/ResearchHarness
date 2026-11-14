@@ -980,3 +980,13 @@
   `SPANS` from another part's **Files**. The fix waits for the next change to the plan tooling.
 - kind: defect
 - found: 2026-11-13, a false `SPANS` of the spec gate on a part whose entry shares a section
+
+### K163 · The script case `probe_timeout` passes or fails on measured wall-clock time.
+
+- location: `lib/harness/script_cases.py:1483`
+- evidence: the case checks `took < 10`, the seconds between the stub `agentbox` starts of F1 and
+  F2 after F1 runs past `--timeout 2`, with the message `F1 past --timeout 2 is timeout within 10
+  s`. A loaded machine or a slow runner that takes 10 s or more between the two starts fails the
+  case although the probe is right.
+- kind: defect
+- found: 2026-11-14, the planning of part E5n1

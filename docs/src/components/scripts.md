@@ -730,13 +730,18 @@ the token percent-decoded. The decryption has a time limit of 120 s; past it the
   with the same arguments: the first `gh` on the `PATH` that is an executable file and does not
   start with `#!`, so the wrapper `~/.local/bin/gh`, a script, is skipped. gh gets `GH_TOKEN`, the
   secret's token, and a new empty `GH_CONFIG_DIR`, which ghx removes when gh ends. `GITHUB_TOKEN`,
-  `GH_HOST`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` are removed, so the token reaches
-  only `github.com`.
+  `GH_HOST`, `GH_REPO`, `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` are removed, so no
+  variable of the caller chooses the host. gh sends `GH_TOKEN` to `github.com`, to a subdomain of
+  `ghe.com` and to `github.localhost`; only an argument or a git remote of the working directory
+  chooses among them.
 - **`glabx`** decrypts the secret `gitlab` and runs the first `glab` on the `PATH` with the same
   arguments. glab gets `GITLAB_TOKEN`, the token, `GITLAB_HOST`, the secret's host, and a new empty
   `GLAB_CONFIG_DIR`, which glabx removes when glab ends. `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`,
   `GITLAB_URI`, `GL_HOST`, `GITLAB_API_HOST` and `GITLAB_REPO` are removed: glab sends a token
   from the environment also to the host of `GITLAB_REPO` and to each host of its configuration.
+  `GLAB_API_PROTOCOL`, `API_PROTOCOL`, `GLAB_SKIP_TLS_VERIFY`, `SKIP_TLS_VERIFY`, `GLAB_CA_CERT`
+  and `CA_CERT` are removed too, so no variable of the caller sends the token in clear text,
+  without a TLS check, or under a CA of its choice.
 - **`git-credential-sealed`** is a git credential helper. git runs it for the line
   `credential.https://<host>.helper = sealed <name> https://<host>`, and appends the action. For
   `get` it reads the request on stdin. Only where the request's protocol is `https` and its host
@@ -752,12 +757,14 @@ cause, and runs no gh or glab:
 
 | cause | the line names |
 |:--|:--|
-| the secret file does not exist | the file |
+| the secret is no file | the file |
 | no `age` on the `PATH` | `age` and the file |
-| `age` fails, or runs past the time limit | `age`, its status or the limit, and the file |
-| the plain text is not one line `https://<user>:<token>@<host>` | the file |
+| `age` does not start, fails, or runs past the time limit | `age`, its status or the limit, and the file |
+| `age` prints no UTF-8 | the file |
+| the plain text is not one line `https://<user>:<token>@<host>`, with no path, query or fragment and no control character in the user or the token | the file |
 | the secret names another host than `github.com` for `ghx`, or than the URL's for the helper | the host |
-| no `gh` but `#!` scripts, or no `glab`, on the `PATH` | the program |
+| no `gh` that is no `#!` script, or no `glab`, on the `PATH` | the program |
+| the `gh` or `glab` that the script finds does not start | its path |
 | the helper gets other than 3 arguments | the count |
 | a name that is not letters, digits and `-`, or that starts with `-` | the name |
 | a URL other than `https://<host>`, with no user, path, query or fragment | the URL |
