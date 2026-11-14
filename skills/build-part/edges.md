@@ -225,6 +225,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `signal.getsignal` and a case can compare them before and after, with no race. Start one case
   with the signal ignored, before the `exec`, and assert each branch on that state (E5n1 verify 2,
   arbitrator, *Sandbox the agent frontends*)
+- **a value that a repository adds to a list that git reads from every configuration scope:** git
+  asks the credential helpers in configuration order, the system and global ones first, and stops
+  once a helper gives a username and a password, so a helper set with `git config` in a repository
+  never runs where a global helper such as Git Credential Manager answers. An empty `helper` line
+  resets the list: write it first, and check the order with a probe that has a global helper
+  (git 2.54.0; E5n2 finish, verifier, *Sandbox the agent frontends*)
 
 ## A numerical method
 
