@@ -1,5 +1,5 @@
 - **On macOS, `harness install` puts `scripts/sealed.py` on the `PATH` as `ghx`, `glabx` and
-  `git-credential-sealed`, and no session can read or run the sealed secrets.** The three names go
+  `git-credential-sealed`, and no session can read the sealed secrets.** The three names go
   to `~/.local/bin` beside the gh wrapper, mode 755. The settings template denies
   `~/.config/research-harness/sealed` to Claude Code's read tools, its sandbox and
   `credentials.files`, and so to every frontend's srt file and to the guard lists of OpenCode,

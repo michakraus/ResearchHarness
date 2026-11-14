@@ -190,7 +190,8 @@ writes Claude Code's override beside the settings files:
 ~/.config/research-harness/sandbox/claude-inner-off.json   {"sandbox": {"enabled": false}}
 ```
 
-A launcher, a wrapper or a copy of `sealed.py` whose mode differs from 755 is a change, as a file whose bytes differ is.
+A launcher, a wrapper or a copy of `sealed.py` whose mode differs from 755 is a change, as a file
+whose bytes differ is.
 
 The install writes nothing through a symlink. So where `~/.local/bin` is a symlink and a frontend
 is chosen, `harness install --apply` exits with status 2, writes nothing, and names the path and

@@ -51,9 +51,9 @@ With at least one frontend chosen, `plan_files` also plans the launcher sandbox/
 wrapper scripts/gh-token.py at `~/.local/bin/gh`, mode 755, which runs gh with the token of the
 repository's owner, on macOS only scripts/sealed.py at `~/.local/bin/ghx`, `~/.local/bin/glabx`
 and `~/.local/bin/git-credential-sealed`, each mode 755, which run gh and glab, and answer git as
-a credential helper, with the user's own secrets that Touch ID decrypts, and, with `claude` chosen, Claude
-Code's override `claude-inner-off.json` in the same directory as the files, which the launcher
-passes to Claude Code to turn its own sandbox off.
+a credential helper, with the user's own secrets that Touch ID decrypts, and, with `claude`
+chosen, Claude Code's override `claude-inner-off.json` in the same directory as the files, which
+the launcher passes to Claude Code to turn its own sandbox off.
 
 The module has no subcommand; its cases run in `harness test`.
 """

@@ -115,7 +115,7 @@ On macOS, `age` and `age-plugin-se` are optional, and you install them yourself,
 `brew install age age-plugin-se`; `harness setup` does not. They are for the sealed secrets:
 `ghx`, `glabx` and `git-credential-sealed` decrypt your own broad forge tokens with `age` and an
 `age-plugin-se` identity in the Secure Enclave, so each decryption asks for Touch ID. Without
-them these three commands refuse to run, and nothing else changes
+them each run of these three commands that reads a secret refuses, and nothing else changes
 ([The sealed secrets](components/sandbox.md#the-forge-tokens)).
 
 ## What each tool does

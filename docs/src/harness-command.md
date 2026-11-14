@@ -223,8 +223,7 @@ chosen frontend it also writes the `srt` settings,
 `~/.config/research-harness/sandbox/<frontend>.json`; with any frontend chosen, the launcher
 `~/.local/bin/agentbox` and the gh wrapper `~/.local/bin/gh`, and on macOS `scripts/sealed.py` as
 `~/.local/bin/ghx`, `~/.local/bin/glabx` and `~/.local/bin/git-credential-sealed`; and with
-`claude` chosen, Claude
-Code's override `~/.config/research-harness/sandbox/claude-inner-off.json`
+`claude` chosen, Claude Code's override `~/.config/research-harness/sandbox/claude-inner-off.json`
 ([The srt settings](components/sandbox.md)). Where the forge token store
 `~/.config/research-harness/forge/` exists, it writes its git configuration
 `~/.config/research-harness/forge.gitconfig`, and prints a notice while `~/.gitconfig` does not
@@ -1754,16 +1753,17 @@ file per chosen frontend below `~/.config/research-harness/sandbox/`, Claude Cod
 when `claude` is chosen, the launcher `sandbox/agentbox` at `~/.local/bin/agentbox`, the gh
 wrapper `scripts/gh-token.py` at `~/.local/bin/gh`, and on macOS `scripts/sealed.py` at
 `~/.local/bin/ghx`, `~/.local/bin/glabx` and `~/.local/bin/git-credential-sealed` (`plan_files`).
-Each frontend's `allowedDomains` adds its `network` of the policy and of the overlay's frontend table to the
-template's. The module exits with status 2 on a policy file that breaks its schema, and on a
-frontend's `network` entry that covers a `fetch` host. Its cases check the shipped policy, each
-refusal, each rendering rule on a fixture and on the settings template, the forge token store in
-the template and in each frontend's file (`forge_template_cases`) and in the frontends' guard lists
-(`forge_guard_cases`), the frontend hosts of
-`plan_files` with overlays (`plan_network_cases`), the wrapper and the three names of
-`sealed.py` in the plan on Linux and macOS (`plan_wrapper_cases`), the sealed secrets in every
-list that denies them (`sealed_guard_cases`), and the launcher on scratch homes with a stub `srt` (`agentbox_cases`,
-with the variables of the forges in `forge_cases`). Its `install_file_cases`, which the cases of
+Each frontend's `allowedDomains` adds its `network` of the policy and of the overlay's frontend
+table to the template's. The module exits with status 2 on a policy file that breaks its schema,
+and on a frontend's `network` entry that covers a `fetch` host. Its cases check the shipped
+policy, each refusal, each rendering rule on a fixture and on the settings template, the forge
+token store in the template and in each frontend's file (`forge_template_cases`) and in the
+frontends' guard lists (`forge_guard_cases`), the frontend hosts of `plan_files` with overlays
+(`plan_network_cases`), the wrapper and the three names of `sealed.py` in the plan on Linux and
+macOS (`plan_wrapper_cases`), the dotfiles token in every list that denies it
+(`dotfiles_guard_cases`), the sealed secrets in the same lists (`sealed_guard_cases`), and the
+launcher on scratch homes with a stub `srt` (`agentbox_cases`, with the variables of the forges
+in `forge_cases`). Its `install_file_cases`, which the cases of
 `install.py` run, check the install on scratch homes. [The srt settings](components/sandbox.md)
 describes the files.
 
