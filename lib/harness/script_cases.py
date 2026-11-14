@@ -7,7 +7,8 @@ runs them.
   a temporary file that no one can remove; each copy leaves them out, keeps `env.ts`, and
   carries `--inplace`, so that rsync writes no temporary `.env.ts.XXXXXX`.
 - scripts/spec-gate.py on a fixture task file: a part whose **Files** span two repositories is
-  SPANS, and one whose files lie in its repository is not.
+  SPANS, and one whose files lie in its repository, or whose other path has a glob for its
+  repository, is not.
 - scripts/spec-bundle.py on a fixture task file: the bundle holds the part's sections, its
   T-number row, §V, §L without the handovers filed below it, and what §L's *also reads* lines
   name; it leaves out the other parts and the state cell's narration; a name that matches nothing
@@ -388,6 +389,8 @@ SPEC_PARTS = [
     ("G", "Example", "direct", "`src/G.jl`, `Tasks/plan.md`", "PASS"),
     ("H", "Harness", "reviewed", "`scripts/x.py`, `CHANGELOG.md`", "EXEMPT"),
     ("I", "Harness", "reviewed", "`scripts/x.py`, `Tasks/plan.md`", "SPANS Harness-Tasks"),
+    ("J", "Example", "build", "`src/J.jl`, `~/Research/**/.githooks`", "PASS"),
+    ("K", "Example", "build", "`src/K.jl`, `~/Research/Packages/*/src/x.jl`", "PASS"),
 ]
 
 

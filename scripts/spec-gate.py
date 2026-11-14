@@ -21,7 +21,9 @@ of its sections that lies in another repository of the tree (`Tasks/…`, `Harne
 `Packages/<Other>/…`, `~/.claude/…`) is SPANS <repositories>. An isolated builder cannot write
 outside its own worktree, so such a file is a dispatcher step of its own, named in the part. A
 `direct` part runs in the main session or a workflow, with no isolated builder, and is not checked
-for it. A section that several parts name gives each of them its **Files**.
+for it. A section that several parts name gives each of them its **Files**. A path whose
+repository segment is a glob, such as `~/Research/**/.githooks`, names no repository and counts
+as the part's own.
 
 One line per part: PASS, MISSING <labels>, INVALID <n> errors, UNMEASURED <devices>,
 SPANS <repositories>, or EXEMPT <why>. A section key
@@ -47,6 +49,7 @@ TREES = ("Packages", "Experiments", "Papers", "Books", "Projects")
 # A **Files** label, up to the next numbered or bold label, or the next heading.
 FILES = re.compile(r"\*\*Files[:.]?\*\*:?(.*?)(?=\n\s*\d+\.\s+\*\*|\n\s*\*\*|\n#|\Z)", re.DOTALL)
 PATH = re.compile(r"`([^`\s]*/[^`\s]*)`")
+GLOB = re.compile(r"[*?\[]")
 LABELS = ("Decided at the edges", "Tests catch")
 CLOSED = re.compile(r"merged|declined|done|PR #")
 HEADING = re.compile(r"^(#{2,4})\s+§?([0-9A-Z][0-9A-Za-z.]*)")
@@ -107,8 +110,9 @@ def home(repository):
     return first
 
 
-def repository_of(path, own):
-    """The repository key of a path in a part's **Files**; `own` for a path inside the part's own."""
+def repository_of(path: str, own: str) -> str:
+    """The repository key of a path in a part's **Files**; `own` for a path inside the part's own,
+    and for a glob, such as `~/Research/**/.githooks`, whose repository segment names none."""
     expanded = os.path.expanduser(path)
     if os.path.isabs(expanded):
         rel = os.path.relpath(expanded, RESEARCH)
@@ -122,7 +126,8 @@ def repository_of(path, own):
         if not os.path.isdir(os.path.join(RESEARCH, first)) or os.path.exists(os.path.join(own_dir, first)):
             return own
     segments = rel.split("/")
-    return "/".join(segments[:2]) if segments[0] in TREES and len(segments) > 2 else segments[0]
+    key = "/".join(segments[:2]) if segments[0] in TREES and len(segments) > 2 else segments[0]
+    return own if GLOB.search(key) else key
 
 
 def spans(body, own):
