@@ -78,6 +78,8 @@ OWNERS = [
     (r"docs/src/dependencies\.md", ["docs", "doctor:minimum"]),
     (r"docs/.+", ["docs"]),
     (r"changelog\.d/.+", ["changelog"]),
+    # The docs map ast-grep/ to a component page; its rule tests run in the Julia workflow.
+    (r"ast-grep/.+", ["docs"]),
 ]
 
 
@@ -616,6 +618,8 @@ def selftest():
         ("docs/src/dependencies.md", ["docs", "doctor:minimum"]),
         ("docs/src/development.md", ["docs"]),
         ("changelog.d/topic.md", ["changelog"]),
+        ("ast-grep/rules/parse-error.yml", ["docs"]),
+        ("ast-grep/rule-tests/scope/Project.toml", ["docs"]),
         ("launchagents/claude-autocommit", ["autocommit", "units"]),
         ("launchagents/kaimon.plist", ["autocommit", "units"]),
         ("lib/harness/cli.py", []),
