@@ -155,7 +155,8 @@ SEALED_VARS = (
 )
 # The stub of gh and glab in the sealed cases, a Python file with `{names}` and `{log}` set: it
 # appends each word of its argv, the value of each variable of `{names}`, `<unset>` where unset,
-# `EMPTY=<name>` for each of them that is an empty directory, then END, to `{log}`. With
+# `EMPTY=<name>` for each of them that is an empty directory, `SIGINT_IGNORED=True` where it starts
+# with SIGINT ignored, else `SIGINT_IGNORED=False`, then END, to `{log}`. With
 # SEALED_STUB_INTERRUPT set it sends SIGINT to its process group: where it inherits SIGINT's default
 # action, Python raises KeyboardInterrupt, and the stub ends by the signal with no traceback; where
 # its caller passes SIGINT on ignored, it sleeps and exits 0. It exits with $SEALED_STUB_STATUS.
@@ -167,6 +168,7 @@ for k in {names!r}:
     lines.append(k + "=" + ("<unset>" if v is None else v))
     if v and pathlib.Path(v).is_dir() and not any(pathlib.Path(v).iterdir()):
         lines.append("EMPTY=" + k)
+lines.append("SIGINT_IGNORED=" + str(signal.getsignal(signal.SIGINT) is signal.SIG_IGN))
 with pathlib.Path({log!r}).open("a") as f:
     f.write("\\n".join([*lines, "END"]) + "\\n")
 if os.environ.get("SEALED_STUB_INTERRUPT"):
@@ -2383,7 +2385,8 @@ def sealed_ghx_cases(check: Callable[[object, str], None], tmp: pathlib.Path) ->
     """ghx: the stub `age` decrypts github.age, and the real gh, the first gh on the PATH that is no
     `#!` script, runs once with the same arguments, GH_TOKEN the percent-decoded password, none of
     the caller's other token and host variables, and an empty GH_CONFIG_DIR that is gone after the
-    run; ghx exits with gh's status, and with 130 where a Ctrl-C ends gh."""
+    run; gh starts with SIGINT ignored where ghx does, else not; ghx exits with gh's status, and
+    with 130 where a Ctrl-C ends gh."""
     home = SealedHome.fresh(tmp / "ghx")
     home.age("https://x-access-token:t%2Bk@github.com\n")
     caller = {
@@ -2405,10 +2408,25 @@ def sealed_ghx_cases(check: Callable[[object, str], None], tmp: pathlib.Path) ->
         and all(seen.var(k) is None for k in SEALED_GH_REMOVED)
         and seen.var("GH_CONFIG_DIR") not in (None, "/caller")
         and seen.empty("GH_CONFIG_DIR")
+        and seen.var("SIGINT_IGNORED") == "False"
         and not home.left(),
         f"sealed.py as ghx: age decrypts github.age, the real gh runs once with `api user`, GH_TOKEN "
-        f"t+k, none of the caller's variables, and an empty GH_CONFIG_DIR gone after the run: "
+        f"t+k, none of the caller's variables, an empty GH_CONFIG_DIR gone after the run, and SIGINT "
+        f"not ignored: "
         f"{seen.status}, {seen.age}, {seen.wrapper_ran}, {seen.runs}, {home.left()}, {seen.stderr!r}",
+    )
+    # A caller that ignores SIGINT, as a script's `&` does for its command: ghx keeps it ignored for gh.
+    ignore = (
+        "import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_IGN); "
+        "os.execv(sys.argv[1], sys.argv[1:])"
+    )
+    seen = home.run(
+        "ghx", program=[sys.executable, "-c", ignore, str(home.root / "bin" / "ghx"), "api", "user"]
+    )
+    check(
+        seen.status == 0 and len(seen.runs) == 1 and seen.var("SIGINT_IGNORED") == "True",
+        f"sealed.py as ghx, started with SIGINT ignored, runs gh once with SIGINT still ignored: "
+        f"{seen.status}, {seen.runs}, {seen.stderr!r}",
     )
     home.age("https://x-access-token:tok@GitHub.com\n")
     seen = home.run("ghx", "api", "user")
@@ -2752,8 +2770,9 @@ def sealed_limit_cases(check: Callable[[object, str], None], tmp: pathlib.Path) 
     raises TimeoutExpired where it gets one, logs a kill of `age`, and kills `age` itself where no
     kill came before the wait with no timeout; the stub `age` blocks until it is killed. The
     script waits with its TIMEOUT, kills `age`, waits for its end and reads no more output, exits 2
-    with one line that names the limit, and runs no gh. The module's own `wait` passes its timeout
-    to `communicate`, which a recording object shows. No real timer runs out."""
+    with one line that names the limit, and runs no gh. SIGINT is held during each wait, and the
+    refusal leaves the SIGINT handler that the script had before. The module's own `wait` passes its
+    timeout to `communicate`, which a recording object shows. No real timer runs out."""
     limit = re.search(r"^TIMEOUT = (\d+)$", SEALED.read_text(), re.MULTILINE)
     check(
         limit is not None and int(limit.group(1)) >= SEALED_TOUCH_ID,
@@ -2763,7 +2782,7 @@ def sealed_limit_cases(check: Callable[[object, str], None], tmp: pathlib.Path) 
     home.age("https://x:tok@github.com\n", block=True)
     events = home.root / "wait.log"
     code = f"""\
-import importlib.util, pathlib, subprocess, sys
+import importlib.util, pathlib, signal, subprocess, sys
 spec = importlib.util.spec_from_file_location("sealed", {str(SEALED)!r})
 module = importlib.util.module_from_spec(spec)
 sys.modules["sealed"] = module
@@ -2781,7 +2800,7 @@ class Recorded:
 real(Recorded(), 7)
 
 def fake(p, timeout):
-    events.append(f"wait {{timeout}}")
+    events.append(f"wait {{timeout}}, held {{signal.getsignal(signal.SIGINT) is module.held}}")
     if timeout is not None:
         kill = p.kill
 
@@ -2799,9 +2818,11 @@ def fake(p, timeout):
         events.append(f"returncode {{p.returncode}}, output read {{p.stdout.closed}}")
 
 module.wait = fake
+before = signal.getsignal(signal.SIGINT)
 try:
     module.main(["ghx", "api", "user"])
 finally:
+    events.append(f"SIGINT restored {{signal.getsignal(signal.SIGINT) is before}}")
     pathlib.Path({str(events)!r}).write_text("\\n".join(events))
 """
     seen = home.run("ghx", program=[sys.executable, "-c", code])
@@ -2816,14 +2837,16 @@ finally:
         and logged
         == [
             "communicate 7",
-            f"wait {timeout}",
+            f"wait {timeout}, held True",
             "kill",
-            "wait None",
+            "wait None, held True",
             f"returncode {-signal.SIGKILL}, output read False",
+            "SIGINT restored True",
         ],
         f"sealed.py with an age past its time limit: wait passes its timeout to communicate; the wait "
-        f"with TIMEOUT, then the kill of age, then the wait for its end, which reads no output; exit 2, "
-        f"one line that names the limit, and no gh: {logged}, {seen.status}, {len(seen.runs)}, "
+        f"with TIMEOUT, then the kill of age, then the wait for its end, which reads no output, each "
+        f"with SIGINT held; the SIGINT handler of before the run after it; exit 2, one line that names "
+        f"the limit, and no gh: {logged}, {seen.status}, {len(seen.runs)}, "
         f"{seen.stderr!r}",
     )
 
