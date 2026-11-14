@@ -980,3 +980,22 @@
   `SPANS` from another part's **Files**. The fix waits for the next change to the plan tooling.
 - kind: defect
 - found: 2026-11-13, a false `SPANS` of the spec gate on a part whose entry shares a section
+
+### K163 · The script case `probe_timeout` passes or fails on measured wall-clock time.
+
+- location: `lib/harness/script_cases.py:1485`
+- evidence: the case checks `took < 10`, the seconds between the stub `agentbox` starts of F1 and
+  F2 after F1 runs past `--timeout 2`, with the message `F1 past --timeout 2 is timeout within 10
+  s`. A loaded machine or a slow runner that takes 10 s or more between the two starts fails the
+  case although the probe is right.
+- kind: defect
+- found: 2026-11-14, the planning of part E5n1
+
+### K164 · The page *Scripts* says that `harness install` copies none of the scripts, but it installs `scripts/gh-token.py`.
+
+- location: `docs/src/components/scripts.md:5`
+- evidence: lines 5-6 of the page say "`harness install` does not copy them". The docstring of
+  `lib/harness/install.py` (line 28) lists `scripts/gh-token.py -> ~/.local/bin/gh, mode 755`, and
+  the docstring of `plan_files` in `lib/harness/sandbox.py` (lines 377-378) plans the same file.
+- kind: docs
+- found: 2026-11-14, the build of part E5n1
