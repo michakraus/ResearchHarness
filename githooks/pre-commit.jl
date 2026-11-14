@@ -123,8 +123,8 @@ Stage 0. A commit that touches test/ — any file, a deletion too — must leave
 layout of the test convention. `test-layout.jl` is installed beside this program by harness
 githooks; a missing copy blocks rather than skips, because a stage that skips itself reports
 "clean" when it checked nothing. It checks the working tree, not the index: a staged `.jl` file
-with unstaged changes is refused before any stage runs (see `unstaged`), and a file of another
-type is checked as it is on disk.
+with unstaged changes is refused before any stage runs (see `unstaged`), and every other file
+that it reads, staged or not, is checked as it is on disk.
 
 The script goes into a module of its own and its `violations` runs here: its command-line block
 calls `exit`, and runs only when the script is the program file.

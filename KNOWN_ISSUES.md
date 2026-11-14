@@ -597,8 +597,10 @@
   each stage reads the staged text of every staged `.jl` file. The refusal costs the user a
   workflow: a `.jl` file cannot be committed in part, with `git add -p` or `git commit -p`, while
   the rest of its edits stay on disk. It leaves three cases open. `load` loads the whole package
-  from disk, so an unstaged edit of a `.jl` file that the commit does not stage still changes its
-  verdict. A file of another type below `test/` is checked by `test_layout` as it is on disk. A
+  from disk, and `test_layout` reads every file below `test/`, the `.jl` files of `src/` and the
+  pages of `docs/src/` on disk, so an unstaged edit of a file that the commit does not stage, or
+  a file that is not tracked, still changes their verdict. A staged file of another type below
+  `test/` is checked by `test_layout` as it is on disk. A
   `.jl` file that becomes a symlink to a file that is not tracked passes the formatting and load
   stages on that file, and a fresh checkout has the symlink without its target, so the package
   can fail to load there. The full fix, which may deserve doing later, checks a copy of the
