@@ -69,9 +69,10 @@ case "$subcommand" in
                 answer=$(glab mr view "$1" -R "$project" -F json --jq "$query") || answer=""
                 if [ -z "$answer" ] && [[ "$project" == https://* ]]; then
                     # The password that git uses for the origin, read only: no terminal prompt,
-                    # no credential manager dialog, and no approve or reject.
+                    # no askpass program (an empty GIT_ASKPASS also overrides core.askPass and
+                    # SSH_ASKPASS), no credential manager dialog, and no approve or reject.
                     token=$(printf 'url=%s\n\n' "$project" |
-                        GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git -C "$DOTFILES_SOURCE" credential fill 2>/dev/null |
+                        GIT_ASKPASS="" GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git -C "$DOTFILES_SOURCE" credential fill 2>/dev/null |
                         sed -n 's/^password=//p') || token=""
                     # glab sends a token of the environment only to the host of GITLAB_HOST, and
                     # needs a remote of its working directory on that host: the source's origin.
@@ -79,6 +80,8 @@ case "$subcommand" in
                         answer=$(cd "$DOTFILES_SOURCE" &&
                             GITLAB_TOKEN=$token GITLAB_HOST=$host glab mr view "$1" -R "$project" -F json --jq "$query") || answer=""
                     fi
+                    # A token that the caller exports would carry the password to dotfiles-merge.
+                    unset token
                 fi
             fi
             read -r state branch <<<"$answer"

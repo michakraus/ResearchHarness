@@ -952,17 +952,6 @@
 - kind: defect
 - found: 2026-11-12, the planning of part E5k
 
-### K160 · The committed `opencode.jsonc` holds two `ask` rules of `bash` that `harness permissions` does not generate from the settings template.
-
-- location: `adapters/opencode/opencode.jsonc:260`
-- evidence: `python3.14 bin/harness permissions` prints `adapters/opencode/opencode.jsonc REPLACE`
-  with the two lines `-      "git push * :**": "ask",` and `-      "git -C * push * :**": "ask",`,
-  and `1 change(s) to make.`; `grep -n 'push \* :' settings/settings.proposal.json` finds nothing.
-  Either the template lacks the two asks, or the committed file keeps two rules that the template
-  dropped.
-- kind: defect
-- found: 2026-11-13, the fix round 1 of part E5c
-
 ### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
 
 - location: `hooks/probe.py:1745`

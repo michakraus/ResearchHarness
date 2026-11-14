@@ -142,10 +142,11 @@ as `GITLAB_TOKEN` and the host of the `origin` as `GITLAB_HOST`. For a personal 
 GitLab group token of [The forge tokens](components/sandbox.md#the-forge-tokens) cannot read,
 that credential is a project access token of the project, in a credential helper of the source's
 own git configuration; the token needs the `read_api` scope (or `api`). The read sets
-`GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`, so git asks nothing in the terminal and a
-credential manager opens no dialog, and it never approves or rejects a credential. The password
-appears in no argument and on no output. When neither call answers, `dotfiles merge` stops with
-one line:
+`GIT_ASKPASS` to the empty string, `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`: git runs
+no askpass program, whether the caller's `GIT_ASKPASS` or `SSH_ASKPASS` or a `core.askPass`
+names one, asks nothing in the terminal, and a credential manager opens no dialog. The read never
+approves or rejects a credential. The password appears in no argument, on no output and in no
+environment of `dotfiles-merge`. When neither call answers, `dotfiles merge` stops with one line:
 
 ```text
 dotfiles merge: merge request !<number> is not found, not open; nothing is merged. Neither glab nor the source's git credential reads it; merge its branch with dotfiles merge <branch>.
@@ -177,9 +178,11 @@ host without `dotfiles-merge`, when the request is not open or not found, when t
 such branch, when the merge, its signature or its check fails, when the push is refused, and when
 you quit the review early; 2 on a usage error.
 
-**Reads:** `~/.config/git/allowed_signers`, and the `signing_key` and `sk_provider` of the host
-data, which chezmoi writes into the script when it applies it. **Writes:** the source, the branch
-`main` of its `origin`, and, after the second `y`, the files that chezmoi applies.
+**Reads:** `~/.config/git/allowed_signers`, the `signing_key` and `sk_provider` of the host
+data, which chezmoi writes into the script when it applies it, and, for a merge request that
+`glab`'s own login cannot read, the source's git credential for its `origin`. **Writes:** the
+source, the branch `main` of its `origin`, and, after the second `y`, the files that chezmoi
+applies.
 
 **Where to run it:** in your own terminal, on the template host only, after you read the pull
 request or the merge request. A signing key in hardware asks for a touch: touch it only during a

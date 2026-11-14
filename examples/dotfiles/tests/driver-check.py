@@ -6,23 +6,27 @@ directory:
 
 Each case copies the driver into a scratch bin directory under $TMPDIR beside stubs of
 dotfiles-update, dotfiles-check, dotfiles-merge and dotfiles-absorb, which print their name and
-arguments, and puts stubs of gh, glab and git first on the PATH. The stubs of gh and glab log their
-arguments and answer with the state and source branch in $GH_ANSWER or $GLAB_ANSWER, and exit 1
-when the answer is empty, as gh and glab do for a number they cannot read. Under GITLAB_TOKEN=KEY
-the stub of glab answers $GLAB_TOKEN_ANSWER instead, and it logs its working directory, its
-GITLAB_HOST and whether its GITLAB_TOKEN is KEY. The stub of git logs each `credential` call and
-runs the real git. A scratch HOME holds a git repository at ~/.local/share/chezmoi whose origin
-each case sets, with a repo-local credential helper for https://git.example.org that returns the
-password in $HELPER_PASSWORD: an origin on github.com asks gh, any other host asks glab. The
-driver runs in a directory outside the source, with no system or global git configuration.
+arguments (dotfiles-merge also logs the `token` of its environment), and puts stubs of gh, glab
+and git first on the PATH. The stubs of gh and glab log their arguments and answer with the state
+and source branch in $GH_ANSWER or $GLAB_ANSWER, and exit 1 when the answer is empty, as gh and
+glab do for a number they cannot read. Under GITLAB_TOKEN=KEY the stub of glab answers
+$GLAB_TOKEN_ANSWER instead, and it logs its working directory, its GITLAB_HOST and whether its
+GITLAB_TOKEN is KEY. The stub of git logs each `credential` call and runs the real git. A scratch
+HOME holds a git repository at ~/.local/share/chezmoi whose origin each case sets, with a
+repo-local credential helper for https://git.example.org that returns the password in
+$HELPER_PASSWORD: an origin on github.com asks gh, any other host asks glab. The driver runs in a
+directory outside the source, with no system or global git configuration.
 
 The cases of the fallback to the source's git credential: glab's own login answers, so glab runs
 once and no credential is read; the credential answers, so glab runs a second time with the
 password as GITLAB_TOKEN, the host as GITLAB_HOST and the source as its directory, and the
-password is in no output, no argument and no file; the second answer is not open; and no answer,
-for each of three reasons (glab answers neither call, the helper returns no password, the origin
-is an SSH address), stops with one line that names `dotfiles merge <branch>`. It also runs
-`bash -n` and `shellcheck -S warning` on the driver. It exits 0 when every check passes.
+password is in no output, no argument and no file, nor, for a caller that exports `token`, in the
+environment of dotfiles-merge; an askpass program of the caller's GIT_ASKPASS or SSH_ASKPASS or of
+the source's core.askPass is not run when the helper returns no password; the second answer is not
+open; and no answer, for each of four reasons (glab answers neither call, the helper returns no
+password, the origin is an SSH address, the origin is an http:// URL), stops with one line that
+names `dotfiles merge <branch>`. It also runs `bash -n` and `shellcheck -S warning` on the
+driver. It exits 0 when every check passes.
 """
 
 import os
@@ -93,6 +97,18 @@ cat > /dev/null
 [ -z "$HELPER_PASSWORD" ] || printf 'username=me\\npassword=%s\\n' "$HELPER_PASSWORD"
 """
 
+# An askpass program: it logs each prompt that git gives it to askpass.log and answers nothing.
+ASKPASS = """#!/bin/bash
+echo "$1" >> "$HOME/askpass.log"
+"""
+
+# The stub of dotfiles-merge: it prints its name and arguments, and logs the value of `token` in
+# its environment to merge.env.
+MERGE = """#!/bin/bash
+echo "dotfiles-merge $*"
+echo "token=${token-}" >> "$HOME/merge.env"
+"""
+
 # The password that the helper returns and the stub of glab expects in GITLAB_TOKEN.
 KEY = "test-token"
 
@@ -110,8 +126,10 @@ class Scratch:
             d.mkdir()
         shutil.copy(DRIVER, self.bin_dir / "dotfiles")
         (self.bin_dir / "dotfiles").chmod(0o755)
-        for name in ("dotfiles-update", "dotfiles-check", "dotfiles-merge", "dotfiles-absorb"):
+        for name in ("dotfiles-update", "dotfiles-check", "dotfiles-absorb"):
             executable(self.bin_dir / name, f'#!/bin/bash\necho "{name} $*"\n')
+        executable(self.bin_dir / "dotfiles-merge", MERGE)
+        executable(tmp / "askpass", ASKPASS)
         executable(self.stubs / "glab", GLAB)
         executable(self.stubs / "gh", answering("gh", "GH_ANSWER"))
         executable(self.stubs / "git", GIT_STUB.format(git=GIT))
@@ -142,11 +160,12 @@ class Scratch:
         """The paths below the scratch directory whose bytes hold KEY."""
         return [p for p in self.tmp.rglob("*") if p.is_file() and KEY.encode() in p.read_bytes()]
 
-    def run(self, *args, glab="", gh="", keyed="", helper=""):
+    def run(self, *args, glab="", gh="", keyed="", helper="", extra=None):
         """The driver run in a directory outside the source, with the stubs first on the PATH, no
         system or global git configuration, and no GITLAB_TOKEN or GITLAB_HOST of the caller.
-        `glab` is glab's answer under its own login, `keyed` its answer under GITLAB_TOKEN=KEY, and
-        `helper` the password that the source's credential helper returns."""
+        `glab` is glab's answer under its own login, `keyed` its answer under GITLAB_TOKEN=KEY,
+        `helper` the password that the source's credential helper returns, and `extra` more
+        variables of the caller's environment."""
         env = {
             k: v
             for k, v in os.environ.items()
@@ -172,6 +191,7 @@ class Scratch:
             HELPER_PASSWORD=helper,
             GH_ANSWER=gh,
         )
+        env.update(extra or {})
         return subprocess.run(
             [str(self.bin_dir / "dotfiles"), *args],
             cwd=self.elsewhere,
@@ -257,6 +277,41 @@ def fallback_cases(s):
         KEY not in p.stdout + p.stderr + glab + credential and not s.holds_key(),
         f"the password is in no output, no argument of glab or git and no file: {s.holds_key()}",
     )
+    s.log("merge.env")
+
+    p = s.run("merge", "31", keyed="opened feature-x", helper=KEY, extra={"token": "caller"})
+    merge_env = s.log("merge.env")
+    check(
+        p.stdout.endswith("dotfiles-merge feature-x\n") and KEY not in merge_env,
+        f"a caller that exports token: the password is not in dotfiles-merge's environment: {merge_env!r}",
+    )
+    for log in ("glab", "glab.env", "git-credential.log", "helper.env"):
+        s.log(log)
+
+    # The helper returns no password, so git would ask for one: an askpass program of the caller's
+    # GIT_ASKPASS, of the source's core.askPass or of the caller's SSH_ASKPASS is never run.
+    askpass = str(s.tmp / "askpass")
+    for label, extra, config in (
+        ("GIT_ASKPASS", {"GIT_ASKPASS": askpass}, False),
+        ("SSH_ASKPASS", {"SSH_ASKPASS": askpass}, False),
+        ("core.askPass", {}, True),
+    ):
+        if config:
+            subprocess.run(
+                [GIT, "-C", str(s.source), "config", "core.askPass", askpass], check=True, timeout=60
+            )
+        p = s.run("merge", "34", keyed="opened feature-x", helper="", extra=extra)
+        if config:
+            subprocess.run(
+                [GIT, "-C", str(s.source), "config", "--unset", "core.askPass"], check=True, timeout=60
+            )
+        prompts = s.log("askpass")
+        check(
+            p.returncode == 1 and "not found" in p.stderr and prompts == "",
+            f"an askpass program of {label} is not run when the helper returns no password: {prompts!r}",
+        )
+        for log in ("glab", "glab.env", "git-credential.log", "helper.env", "merge.env"):
+            s.log(log)
 
     hint = "dotfiles merge <branch>"
     p = s.run("merge", "32", keyed="merged feature-y", helper=KEY)
