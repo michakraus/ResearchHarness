@@ -2643,9 +2643,7 @@ def sealed_path_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -
         ),
     ]:
         (home.root / directory).mkdir()
-        gh = home.root / directory / "gh"
-        gh.write_text(text)
-        gh.chmod(mode)
+        fsutil.write_private(home.root / directory / "gh", text.encode(), mode)
         seen = home.run("ghx", "api", "user", path=home.path("py", directory, "real", "stubs"))
         check(
             seen.status == 0
