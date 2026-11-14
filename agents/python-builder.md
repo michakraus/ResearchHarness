@@ -191,10 +191,11 @@ makes false. Commit, fill *Blocking defects answered*, and return with `Verdict:
 ### `Round: finish`
 
 You also get the passing critic's verdict, evidence table and *Other defects*, and the suite's
-counts. **After a PASS the code does not change.** Run step 9 over the whole branch: it fixes text
-only, and a false line whose fix needs a change of code goes to your caller under *Question for
-the dispatcher*. An other defect of the passing critic that your branch causes and that is text
-only you fix too.
+counts. **After a PASS the code does not change.** An other defect of the passing critic that your
+branch causes and that is text only you fix; one in code goes to your caller under *Question for
+the dispatcher*. Record every other one as *`Round: fix <N>`* says; an earlier round may have
+recorded it already. Then run step 9 over the whole branch: it fixes text only, and a false line
+whose fix needs a change of code goes to your caller under *Question for the dispatcher*.
 Where you changed a file, run the gate of step 7 again and commit.
 
 **Then delegate to `python-branch-verifier`, in the foreground: `run_in_background: false`.** Give
