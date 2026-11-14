@@ -56,8 +56,14 @@ JuliaFormatter from the harness's Julia environment, which pins 2.14, and refuse
 release with one line that names its version, marking every staged file; JuliaFormatter 2.14
 supports Julia 1.10 and later. Stage 1 has no time limit (K130 of `KNOWN_ISSUES.md`). Stage 0 reads
 `.githooks/test-layout.jl`, which `harness githooks` installs beside the hook; a missing copy
-blocks the commit. Every stage reads the working tree, not the index (K128). The lint only
-warns, because `fatou lint` reports false positives; without `fatou` on the `PATH`, or with a
+blocks the commit. Every stage reads the working tree, not the index (K128), so a staged `.jl`
+file that also has changes that are not staged, one that `git diff --name-only` lists, refuses
+the commit before any stage runs: the hook prints one line per such file and asks you to stage
+the rest of the file or to move the unstaged edits aside. The listing runs with literal paths,
+with no external diff program or textconv driver, and without `GIT_DIFF_OPTS`,
+`GIT_ICASE_PATHSPECS` and `GIT_GLOB_PATHSPECS`. An unstaged change in a file that the commit
+does not stage refuses nothing. The lint only warns, because `fatou lint` reports false
+positives; without `fatou` on the `PATH`, or with a
 `fatou` that cannot start, the stage prints one line and is skipped. The staged paths reach
 `fatou` after `--`. A finding is a line of the form `<path>:<line>:<col>: …`; a non-zero exit of
 `fatou` with no such line is a failure of `fatou`, which the stage reports with its exit status
@@ -89,7 +95,8 @@ commit when a line of the hit is one that the commit adds: the stage prints
 not block an unrelated commit; a pure rename adds no line. The stage takes the added lines from
 the hunks of `git diff --cached -U0 -M`, with literal paths and with options that keep an
 external diff program, a textconv driver, a `-diff` attribute and `diff.interHunkContext` from
-changing the hunks, and it scans the working tree. The diff runs without the variables
+changing the hunks, and it scans the working tree, which holds the staged text of each staged
+`.jl` file, since a partly staged one is refused before. The diff runs without the variables
 `GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS` and `GIT_GLOB_PATHSPECS`. A hit of severity `warning` or
 `hint` never blocks: after the hits of severity `error`, the stage prints
 `ast-grep: <n> hit(s) of severity warning or hint — advisory` and one line per hit. A hit of
@@ -120,11 +127,14 @@ with no `.jl` file and no `test/` path passes; without `julia`, any other commit
 that became a symlink too, is refused; a missing `fatou`, a `fatou` that cannot start, a `fatou`
 that fails, and the findings of `fatou`, give their lines, and the staged paths reach `fatou`
 after `--`; a commit of one `.jl` file starts `julia` from the `PATH` once; an interrupted commit
-stops its load test. For the ast-grep stage, a hit on a line that a commit adds, also on the last
-line of a hunk or inside a hit that spans lines, is refused with its line; a hit on lines that a
-commit does not add, also after a rename or a deletion, warns; the added lines do not change
-with an external diff program, a textconv driver, a `-diff` attribute, `diff.interHunkContext`,
-`GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS`, `GIT_GLOB_PATHSPECS` or glob characters in a path; a
+stops its load test; a partly staged `.jl` file is refused with its name, also under
+`GIT_GLOB_PATHSPECS`, and a fully staged one passes, also beside an unstaged edit of another
+file or of a path that its name, read as a glob, matches. For the ast-grep stage, a hit on a
+line that a commit adds, also on the last line of a hunk or inside a hit that spans lines, is
+refused with its line; a hit on lines that a commit does not add, also after a rename or a
+deletion, warns; the added lines do not change with an external diff program, a textconv
+driver, a `-diff` attribute, `diff.interHunkContext`, `GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS`,
+`GIT_GLOB_PATHSPECS` or glob characters in a path; a
 hit of severity `warning` or `hint` warns on an added line; a `parse-error` hit and a silenced
 hit are not printed; an interrupt while JSON loads is no skip; and each case of a skip gives its
 one line. Each fixture of the stage holds an `sgconfig.yml` that names the rules of the tree

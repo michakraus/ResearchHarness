@@ -590,27 +590,27 @@
 
 ### K128 · The stages of the Julia packages' pre-commit hook read the working tree, not the staged content.
 
-- location: `githooks/pre-commit.jl:180`
-- evidence: `formatting`, `nfc`, `test_layout` and `load` read the files on disk. A file that is
-  staged and then edited again is judged on its later text: a formatted staged version with an
-  unformatted edit on top is refused, and an unformatted staged version with a formatted edit on
-  top passes. `ast_grep` scans the files on disk and takes the added lines from the index, so in
-  a partly staged file a line can move between the two: with `@show x` staged as an added line 4
-  of a file under `src/` and two unstaged comment lines above it, the stage reads the hit on line
-  6 as advisory and the commit passes, and an unstaged hit can block a commit. A fix checks a copy
-  of the index, for example from `git checkout-index` into a temporary directory, for every stage.
-  A cheaper mitigation refuses a commit in which a staged `.jl` file is partly staged, that is,
-  one that `git diff --name-only` also lists with changes that are not staged; it leaves the
-  symlink case below. The shell hook that `pre-commit.jl` replaced read the working tree the same
-  way. A `.jl` file that becomes a symlink to a file that is not tracked passes the formatting and
-  load stages on that file, and a fresh checkout has the symlink without its target, so the
-  package can fail to load there.
+- location: `githooks/pre-commit.jl:203`
+- evidence: `formatting`, `lint`, `nfc`, `ast_grep`, `test_layout` and `load` read the files on
+  disk. The hook refuses a commit in which a staged `.jl` file also has changes that are not
+  staged, that is, one that `git diff --name-only` lists, before any stage runs (`unstaged`), so
+  each stage reads the staged text of every staged `.jl` file. The refusal costs the user a
+  workflow: a `.jl` file cannot be committed in part, with `git add -p` or `git commit -p`, while
+  the rest of its edits stay on disk. It leaves three cases open. `load` loads the whole package
+  from disk, so an unstaged edit of a `.jl` file that the commit does not stage still changes its
+  verdict. A file of another type below `test/` is checked by `test_layout` as it is on disk. A
+  `.jl` file that becomes a symlink to a file that is not tracked passes the formatting and load
+  stages on that file, and a fresh checkout has the symlink without its target, so the package
+  can fail to load there. The full fix, which may deserve doing later, checks a copy of the
+  index, for example from `git checkout-index` into a temporary directory, in every stage; it
+  removes the refusal and closes the three cases. The shell hook that `pre-commit.jl` replaced
+  read the working tree the same way.
 - kind: defect
 - found: 2026-10-31, a review of the hook rollout's pull requests
 
 ### K130 · The formatting stage of the Julia packages' pre-commit hook has no time limit.
 
-- location: `githooks/pre-commit.jl:154`
+- location: `githooks/pre-commit.jl:177`
 - evidence: `formatted` calls JuliaFormatter's `format` in the hook's own process, one staged
   file at a time, with no limit. The lint stage and the load test run in `run_boxed`, with a
   limit of 60 s and 600 s; a staged file on which `format` does not end holds the commit until
@@ -623,7 +623,7 @@
 
 ### K131 · The time box of the Julia packages' pre-commit hook does not cap the output that it captures.
 
-- location: `githooks/pre-commit.jl:72`
+- location: `githooks/pre-commit.jl:93`
 - evidence: `run_boxed` reads the whole output of the lint stage and of the load test into one
   string, `read(out, String)`, and the stdout and the stderr of the ast-grep stage into two, and
   its limit is one of time only: 60 s for `fatou lint` and `ast-grep`, and 600 s for the load. A
@@ -637,7 +637,7 @@
 
 ### K132 · The time box of the Julia packages' pre-commit hook has no bound for a process in uninterruptible I/O.
 
-- location: `githooks/pre-commit.jl:82`
+- location: `githooks/pre-commit.jl:103`
 - evidence: `run_boxed` sends the group SIGTERM at the limit and SIGKILL 5 s later, and waits
   for the program with `wait(p)`, which has no limit of its own. A process in uninterruptible
   I/O, such as a read from a network file system that does not answer, does not end on SIGKILL
@@ -674,7 +674,7 @@
 
 ### K135 · The Julia packages' pre-commit and pre-push hooks can signal a freed group ID.
 
-- location: `githooks/pre-commit.jl:86`
+- location: `githooks/pre-commit.jl:107`
 - evidence: `run_boxed` closes its `stop` timer after the program and the output reader end. A
   timer that fires before `close` still runs its callback: Julia's `_trywait`
   (`base/asyncevent.jl:164` on 1.13.3) returns `true` for a timer that is set, also when it is
@@ -683,7 +683,7 @@
   another group, and starts a SIGKILL timer that nothing closes. A probe of 300 runs, each with
   the limit at the program's end time, found no late signal, so the race is not seen to happen.
   The SIGKILL timers have the same race: `close(killer[])` of `run_boxed`
-  (`githooks/pre-commit.jl:91`) and `close(killer)` of `run_suite` in `pre-push`
+  (`githooks/pre-commit.jl:112`) and `close(killer)` of `run_suite` in `pre-push`
   (`githooks/pre-push.jl:124`) do not stop a callback that is already queued, so its SIGKILL can
   reach the group ID after the box or the wait has ended. The wait of `run_suite` also checks the
   group with `group_alive`, by default `kill(-group, 0)` (`githooks/pre-push.jl:117`), and its
@@ -873,7 +873,7 @@
 
 ### K154 · With `GIT_GLOB_PATHSPECS=1`, `GIT_LITERAL_PATHSPECS=1` or `GIT_NOGLOB_PATHSPECS=1`, the Julia packages' pre-commit hook lists no staged `.jl` file below the repository's root.
 
-- location: `githooks/pre-commit.jl:525`
+- location: `githooks/pre-commit.jl:550`
 - evidence: `main` takes the staged files from `staged("--diff-filter=ACMRT", "--", "*.jl")`.
   Under `GIT_GLOB_PATHSPECS=1`, git reads `*.jl` as a glob in which `*` matches no `/`: with
   `src/Fixture.jl` and `top.jl` staged, `git diff --cached --name-only --diff-filter=ACMRT --
