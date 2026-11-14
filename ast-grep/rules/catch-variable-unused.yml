@@ -17,7 +17,7 @@ rule:
     - has:
         kind: identifier
         pattern: $E
-        not: { regex: '^[A-Z][A-Za-z0-9]*(Error|Exception)$' }
+        not: { regex: '^([A-Z][A-Za-z0-9]*)?(Error|Exception)$' }
     - has:
         kind: block
         all:

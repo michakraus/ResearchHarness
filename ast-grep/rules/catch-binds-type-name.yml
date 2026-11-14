@@ -1,7 +1,7 @@
 # `catch MethodError` does not catch a MethodError: Julia reads the name after `catch` on the same
 # line as the exception variable, so the clause binds a variable named MethodError, catches every
 # exception, and shadows the type inside its body. The rule finds a catch clause whose variable is
-# a capitalised name that ends in Error or Exception.
+# Error, Exception, or a capitalised name that ends in Error or Exception.
 id: catch-binds-type-name
 language: julia
 severity: error
@@ -12,4 +12,4 @@ files:
   - "**/test/**/*.jl"
 rule:
   kind: catch_clause
-  has: { kind: identifier, regex: '^[A-Z][A-Za-z0-9]*(Error|Exception)$' }
+  has: { kind: identifier, regex: '^([A-Z][A-Za-z0-9]*)?(Error|Exception)$' }

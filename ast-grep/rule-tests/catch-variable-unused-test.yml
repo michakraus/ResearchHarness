@@ -10,6 +10,7 @@ valid:
   - "try\n    f()\ncatch ArgumentError\n    return false\nend"
   - "try\n    f()\ncatch InterruptException\n    nothing\nend"
   - "try\n    f()\ncatch Float64Error\n    nothing\nend"
+  - "try\n    f()\ncatch Exception\n    nothing\nend"
   - "try\n    f()\ncatch e\nend"
   - "try\n    f()\ncatch\n    nothing\nend"
 invalid:

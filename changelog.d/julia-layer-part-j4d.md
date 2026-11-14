@@ -1,7 +1,7 @@
 - **Two ast-grep rules for a `catch` in Julia: `catch-binds-type-name` blocks,
   `catch-variable-unused` only warns.** `catch MethodError` binds a variable named `MethodError`
-  and catches every exception; `catch-binds-type-name` finds a `catch` whose variable is a
-  capitalised name that ends in `Error` or `Exception`, and its severity is `error`, so the
+  and catches every exception; `catch-binds-type-name` finds a `catch` whose variable is `Error`,
+  `Exception`, or a capitalised name that ends in one of them, and its severity is `error`, so the
   pre-commit stage refuses a hit on an added line. `catch-variable-unused` finds a `catch e` whose
   body never names `e` and calls neither `rethrow` nor `throw`; its severity is `warning`. The
   two rules never hit one clause, and both scan `src/`, `ext/` and `test/`. Over `src/`, `ext/`

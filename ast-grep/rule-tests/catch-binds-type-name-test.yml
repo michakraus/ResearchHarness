@@ -16,3 +16,4 @@ invalid:
   - "try\n    f()\ncatch InterruptException\n    cleanup()\n    rethrow()\nend"
   - "x = try f() catch DomainError; 0.0 end"
   - "try\n    f()\ncatch Float64Error\nend"
+  - "try\n    f()\ncatch Exception\n    nothing\nend"

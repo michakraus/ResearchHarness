@@ -420,11 +420,12 @@ pattern, and is not a hit; nor is a string, a pattern or an exception value such
 
 ## `rules/catch-binds-type-name.yml`
 
-The rule `catch-binds-type-name` finds a `catch` whose exception variable is a capitalised name
-that ends in `Error` or `Exception`, such as `catch MethodError`. Julia reads the name after
-`catch` on the same line as the exception variable, so the clause binds a variable named
-`MethodError` and catches every exception. Write `catch e`, test `e isa MethodError`, and rethrow
-the rest.
+The rule `catch-binds-type-name` finds a `catch` whose exception variable is `Error`,
+`Exception`, or a capitalised name that ends in `Error` or `Exception`, such as
+`catch MethodError`: the identifier matches `^([A-Z][A-Za-z0-9]*)?(Error|Exception)$`. Julia
+reads the name after `catch` on the same line as the exception variable, so the clause binds a
+variable named `MethodError` and catches every exception. Write `catch e`, test
+`e isa MethodError`, and rethrow the rest.
 
 A lower-case name, such as `catch err`, and a short capital name, such as `catch E`, are not hits;
 nor is a name that only holds the suffix, such as `MethodErrorFlag`, or a type name on the line
@@ -476,6 +477,10 @@ makes it no hit, and so does a call of `rethrow` or `throw`. An empty `catch e` 
 with no variable are not hits. A variable that `catch-binds-type-name` matches is left to that
 rule, so the two rules never hit one clause. The rule has the `files:` globs `**/src/**/*.jl`,
 `**/ext/**/*.jl` and `**/test/**/*.jl`.
+
+The rule has two limits. A qualified call such as `Base.rethrow()` does not count as a rethrow,
+so such a clause with an unused `e` is a false hit. A `rethrow` in a nested `catch` and a field
+access such as `x.e` count as a rethrow and as a use, so an unused `e` beside them is no hit.
 
 ## The rule tests
 
