@@ -36,8 +36,8 @@ function clean(s) { gsub(/\*\*/, "", s); gsub(/`/, "", s); gsub(BAR, "|", s)
                     return trim(s) }
 
 # Hide a "|" that sits inside a code span, so it is not read as a column break.
-# `Tasks/Rewrite the reduced basis packages.md` writes a cell as ``max|r|``, and
-# a plain split on "|" shifts every later column of that row by two.
+# A cell such as ``max|r|`` holds two of them, and a plain split on "|" shifts
+# every later column of that row by two.
 function mask(s,   i, c, incode, out) {
     if (index(s, "`") == 0) return s
     incode = 0
