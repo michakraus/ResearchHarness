@@ -94,8 +94,8 @@ git switch -c <topic>/part-<x>
 **Your working directory is pinned to the worktree.** A `cd` has no effect, so give every path
 outside it in full.
 
-Leave the worktree in place when you finish. The branch is under review, and the user removes it
-when the pull request merges.
+Leave the worktree in place when you finish. The branch is under review, and your caller removes
+it when the pull request merges.
 
 ## Build to the `Done when`
 
