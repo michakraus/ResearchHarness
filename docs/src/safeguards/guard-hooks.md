@@ -580,10 +580,37 @@ The install gives this hook to Claude Code only. Antigravity's `PreToolUse` payl
 and the workspace paths, and no transcript; the guard extension of oh-my-pi and the plugins of
 OpenCode do not read the context size.
 
+## `registry-copies.py`
+
+This hook warns after a `Bash` call that runs Julia when the depot holds a stale copy of the
+General registry. Every Julia version on a machine shares one depot, and the key `path` of
+`registries/General.toml` names the file of the registry that Pkg reads. Pkg of Julia 1.10 to 1.12
+writes `General.tar.gz`, Pkg of Julia 1.13 writes `General.tar.zst`, and neither removes the file of
+the other. A read of the file that `General.toml` does not name then disagrees with what Pkg
+resolves. Claude Code runs the hook on `PostToolUse` for `Bash`.
+
+The hook acts on a call with a simple command whose program is `julia` or `juliaup`, after the
+reserved words and the environment assignments. It reads `registries/` of the first entry of
+`JULIA_DEPOT_PATH`, or of `~/.julia`. When that directory holds more than one `General.tar.*` file,
+or when the file that `path` names is not the newest of them, it adds a warning to the session's
+context. The warning names each file with its modification time and the file that `General.toml`
+names. It gives the remedy: run `Pkg.Registry.update()` on the default Julia, then delete the copy
+that `General.toml` does not name.
+
+It blocks nothing, edits nothing, and exits with status 0 for each input. It prints nothing when it
+cannot read the input, when the call runs no Julia, and when the directory or `General.toml` is
+missing. Test it:
+
+```bash
+echo '{"tool_name":"Bash","tool_input":{"command":"julia -e 1"}}' | ./registry-copies.py
+```
+
+The install gives this hook to Claude Code only.
+
 ## `probe.py`
 
 This script holds the test cases of the hooks and runs them. Its `GROUPS` split the cases into
-eight groups, and `harness test` runs each group as the part `probe:<group>`, so the probe needs
+nine groups, and `harness test` runs each group as the part `probe:<group>`, so the probe needs
 no run of its own; [Development](../development.md#tests) describes the run.
 
 A case is a hook, an input and the expected result. The probe runs each case in its own

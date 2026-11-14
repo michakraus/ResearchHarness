@@ -65,9 +65,10 @@ class Subparsers(Protocol):
 
 # The modules beyond the standard library that a file may import: the hook probe loads the
 # harness's own package, the guard's tables of its four frontends import the guard package by its
-# name `guard`, whose parent directory the guard's `__main__` puts on `sys.path`, and the six hooks
+# name `guard`, whose parent directory the guard's `__main__` puts on `sys.path`, and the seven hooks
 # that read JSON import the guard's `jsonio` from `guard/`, which lies beside them wherever they
-# are installed; `kaimon-note.py` also imports its `shell` and `kaimon_session`.
+# are installed; `kaimon-note.py` also imports its `shell` and `kaimon_session`, and
+# `registry-copies.py` its `shell`.
 OWN = {
     "hooks/probe.py": frozenset({"harness"}),
     "hooks/context-handoff.py": frozenset({"guard"}),
@@ -75,6 +76,7 @@ OWN = {
     "hooks/install-drift.py": frozenset({"guard"}),
     "hooks/kaimon-note.py": frozenset({"guard"}),
     "hooks/prompt-log.py": frozenset({"guard"}),
+    "hooks/registry-copies.py": frozenset({"guard"}),
     "hooks/worktree.py": frozenset({"guard"}),
     "hooks/guard/frontends/claude.py": frozenset({"guard"}),
     "hooks/guard/frontends/antigravity.py": frozenset({"guard"}),
