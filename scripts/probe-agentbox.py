@@ -21,8 +21,8 @@ and GLAB_CONFIG_DIR, in place of the caller's, are the directories <out>/run/<fr
 <out>/run/<frontend>/glab, which the script makes empty outside srt before the frontend's first
 probe, and GIT_TERMINAL_PROMPT is 0. Unless --no-model is given, it then runs the frontend
 probes, each as `~/.local/bin/agentbox <frontend> <non-interactive form>`, killed with its process
-group after --timeout seconds, 300 by default. Every other program that the script or a probe starts, except
-/bin/sh and the /usr/bin/true of X4 and X8, is found by name on the PATH.
+group after --timeout seconds, 300 by default. Every other program that the script or a probe
+starts, except /bin/sh and the /usr/bin/true of X4 and X8, is found by name on the PATH.
 
 A probe that the sandbox fails to stop changes nothing that outlives the run and prints no file's
 content: a read prints a count, an append opens the file and writes nothing, and a probe that

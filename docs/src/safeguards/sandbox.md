@@ -141,7 +141,7 @@ key acts on macOS only.
 
 **oh-my-pi can reach the macOS spell service.** `srt`'s profile allows a fixed list of Mach
 services, such as the font and logging services. oh-my-pi's typo detection asks the spell service
-`mul-xpc (Apple)_OpenStep` for each word of the prompt, so `omp`'s settings file adds that one
+`mul-xpc (Apple)_OpenStep` for each word of the prompt, so `omp`'s settings file adds that
 service in `allowMachLookup`, from the key `mach_lookup` of the policy file. A command that
 oh-my-pi runs can reach it too: the service receives the words that it is sent and can write
 learned words to `~/Library/Spelling`, outside the sandbox.

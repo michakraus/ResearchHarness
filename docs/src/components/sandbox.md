@@ -85,13 +85,13 @@ with no leading zero. Each form is one that `srt` takes in `allowedDomains`, so 
 `srt` refuse the file. The user's own hosts for a frontend go in a `[frontend.<name>]` table of the
 overlay `network.toml` beside the profile ([The profile](../profile.md)), not in this file.
 
-`omp`'s `mach_lookup` is `mul-xpc (Apple)_OpenStep`, the macOS spell service. oh-my-pi's typo
-detection, the setting `spelling.typoDetection`, which is on by default, asks it for each word of
-the prompt. `srt`'s profile allows a fixed list of services, without this one, so the lookup fails
-and AppKit prints the refusal into the terminal. The service receives the prompt's words and can
-write learned words to `~/Library/Spelling`. The name holds the language of the system's spelling
-setting: `mul` is *automatic by language*, and a fixed language has another name, which needs its
-own entry.
+`omp`'s `mach_lookup` starts with `mul-xpc (Apple)_OpenStep`, the macOS spell service. oh-my-pi's
+typo detection, the setting `spelling.typoDetection`, which is on by default, asks it for each word
+of the prompt. `srt`'s profile allows a fixed list of services, without this one, so the lookup
+fails and AppKit prints the refusal into the terminal. The service receives the prompt's words and
+can write learned words to `~/Library/Spelling`. The name holds the language of the system's
+spelling setting: `mul` is *automatic by language*, and a fixed language has another name, which
+needs its own entry.
 
 Every frontend's `mach_lookup` holds `com.apple.trustd.agent`, the trust service: it is the whole
 list of `claude`, `opencode` and `antigravity`, and follows the spell service in `omp`'s. `gh`,
