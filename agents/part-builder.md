@@ -106,8 +106,8 @@ Your caller spawns a **new** builder for each round after the first, with `Round
 and its rows, the directory, the branch, the base and the head, and the last builder's report as
 the handoff note. Read your part's sections as above, and `git diff <base>..<head>` in the
 directory. The handoff note is not evidence: check each claim of it that you rely on. Copy each
-row of its *Reported, not fixed* into your own report's, so that the last report holds every
-defect the loop left.
+row of its *Reported, not fixed* that your round does not fix into your own report's, one row per
+defect, so that the last report holds every defect the loop left.
 
 `pwd` must be the directory your caller names, and `git rev-parse --short HEAD` the head it names,
 on the part's branch. Otherwise stop and report. Make no branch.
@@ -141,18 +141,18 @@ fix adds, changes or makes false. Commit, fill *Blocking defects answered*, and 
 
 ## The finish
 
-Your caller spawns you with `Round: finish` after its own read of the diff. Run step 8 over the
-whole branch first; here it fixes text only, and a false line whose fix needs a change of code goes
-to your caller under *Question for the dispatcher*. Treat each of the critic's *Other defects*
-that the handoff note does not already record as *The critic's findings* says, with the same
-limit: a fix that needs a change of code goes to your caller under *Question for the dispatcher*.
-Then do what the plan's §L says for the finish.
+Your caller spawns you with `Round: finish` after its own read of the diff. Treat each of the
+critic's *Other defects* that the handoff note does not already record as *The critic's findings*
+says; a fix that needs a change of code goes to your caller under *Question for the dispatcher*.
+Then run step 8 over the whole branch; here it fixes text only, and a false line whose fix needs a
+change of code goes to your caller under *Question for the dispatcher*. Then do what the plan's §L
+says for the finish.
 Before the branch leaves the worktree, delegate in the foreground to the verifier of the
 repository: `julia-branch-verifier` in `Packages/` and `Experiments/`, `python-branch-verifier` in
 a Python repository, one with a `pyproject.toml` whose `Project.toml`, where it has one, names no
 package. Another repository has no verifier. Fix only the text it leaves. Where §L commits to the
 default branch without a pull request, return its paths and its verdict to your caller, which
-commits. Otherwise stage by name the verifier's returned paths and those of your own text fixes,
+commits. Otherwise stage by name the verifier's returned paths and those of your own text changes,
 commit them, and push the branch with `git push -u origin <branch>`. Then open the pull request
 with `gh pr create -R <owner>/<repo> --body-file <file>`; where the branch has an open pull
 request, replace its body with `gh pr edit <NN> -R <owner>/<repo> --body-file <file>` instead.

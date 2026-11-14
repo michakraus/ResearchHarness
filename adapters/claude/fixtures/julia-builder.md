@@ -256,11 +256,11 @@ its paths under `Paths to stage:`; your caller commits them.
   first*, verbatim, the failing testsets of the suite run, and the critics' reproducer directories.
   Do what *The critic's findings* and the two items after it say. Commit, fill *Blocking defects
   answered* for this round, and return with `Verdict: ready for critic`.
-- **`Round: finish`.** You also get the passing critic's verdict and evidence table, and the
-  suite's counts. Do what *The critic's PASS* says, then step 9 over the whole branch, then
-  *Verify before the pull request* and *Open the pull request*. Step 9 here fixes text only; a
-  false line whose fix needs a change of code goes to your caller as a question. The body lists
-  the `KNOWN_ISSUES.md` entries of the whole branch, from
+- **`Round: finish`.** You also get the passing critic's verdict, evidence table and *Other
+  defects*, and the suite's counts. Do what *The critic's PASS* says, then step 9 over the whole
+  branch, then *Verify before the pull request* and *Open the pull request*. Step 9 here fixes
+  text only; a false line whose fix needs a change of code goes to your caller as a question. The
+  body lists the `KNOWN_ISSUES.md` entries of the whole branch, from
   `git diff <base>..HEAD -- KNOWN_ISSUES.md`, and every advisor line of the part's section.
 
 ## Verify before the pull request
