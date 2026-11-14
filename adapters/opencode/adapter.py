@@ -1065,6 +1065,14 @@ def selftest():
         not undone and ("{home}/.claude/rules/**", "deny") in edit,
         f"each edit path that the settings template denies is a deny under OpenCode: {undone}",
     )
+    # The committed permission files against their generator: a change of the settings template
+    # that `harness permissions --apply` has not carried into them fails here, and so in CI.
+    stale = [
+        str(path.relative_to(REPO))
+        for path, committed, generated in permission_files(collect_rules()[0])
+        if committed != generated
+    ]
+    check(not stale, f"the committed permission files are what the settings template gives: {stale}")
 
     with tempfile.TemporaryDirectory() as tmp:
         home = pathlib.Path(tmp)

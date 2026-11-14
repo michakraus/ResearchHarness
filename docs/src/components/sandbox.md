@@ -343,6 +343,17 @@ directory's name, and the user and the token not empty and free of `%` and white
 to that host. Otherwise it removes the
 caller's `GITLAB_TOKEN`, prints one line on stderr that names the store, and starts the frontend.
 
+**The proxy's credentials and a credential manager.** srt's proxy URL carries a user name and a
+password, `http://<user>:<password>@<loopback host>:<port>`. After a request through the proxy
+succeeds, git passes those proxy credentials to `credential approve`, so every credential helper
+whose URL matches the proxy gets a `store`. A credential manager left in `~/.gitconfig` matches
+it, and its `store` writes to `~/.gitconfig` and to the keychain. srt refuses both writes, and git
+prints `error: could not lock config file ~/.gitconfig: Operation not permitted`. The git
+operation goes on: the line is noise, not a failure. git matches the port of a credential URL
+exactly, and the proxy's port changes with each run, so no section of `forge.gitconfig` can clear
+the helper for the proxy. Removing the credential manager from `~/.gitconfig` (step 5 below) ends
+the line.
+
 **Your steps**, after the merge and before `harness install --apply`:
 
 1. On GitHub, make one fine-grained token for each owner, each organisation and your account:

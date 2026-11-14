@@ -9,6 +9,9 @@
 #
 # A merge argument of digits only is a pull request or merge request of the source's origin: gh
 # names its branch for an origin on github.com, glab for any other host, and it must be open.
+# Where glab's own login cannot read a merge request and the origin is an https:// URL, it asks
+# glab once more, in the source, with the password of the source's git credential for the
+# origin as GITLAB_TOKEN: a project access token with the read_api scope reads the project.
 # Any other argument is a branch name.
 set -euo pipefail
 
@@ -57,15 +60,34 @@ case "$subcommand" in
             # "<state> <branch>" of the pull request or merge request; nothing when it is not
             # found.
             if [ "$host" = github.com ]; then
-                request="pull request #$1" open=OPEN
+                request="pull request #$1" open=OPEN hint=""
                 answer=$(gh pr view "$1" -R "github.com/$path" --json state,headRefName --jq '.state + " " + .headRefName') || answer=""
             else
                 request="merge request !$1" open=opened
-                answer=$(glab mr view "$1" -R "$project" -F json --jq '.state + " " + .source_branch') || answer=""
+                hint=" Neither glab nor the source's git credential reads it; merge its branch with dotfiles merge <branch>."
+                query='.state + " " + .source_branch'
+                answer=$(glab mr view "$1" -R "$project" -F json --jq "$query") || answer=""
+                if [ -z "$answer" ] && [[ "$project" == https://* ]]; then
+                    # The password that git uses for the origin, read only: no terminal prompt,
+                    # no askpass program (an empty GIT_ASKPASS also overrides core.askPass and
+                    # SSH_ASKPASS), no credential manager dialog, and no approve or reject.
+                    token=$(printf 'url=%s\n\n' "$project" |
+                        GIT_ASKPASS="" GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git -C "$DOTFILES_SOURCE" credential fill 2>/dev/null |
+                        sed -n 's/^password=//p') || token=""
+                    # glab sends a token of the environment only to the host of GITLAB_HOST, and
+                    # needs a remote of its working directory on that host: the source's origin.
+                    if [ -n "$token" ]; then
+                        answer=$(cd "$DOTFILES_SOURCE" &&
+                            GITLAB_TOKEN=$token GITLAB_HOST=$host glab mr view "$1" -R "$project" -F json --jq "$query") || answer=""
+                    fi
+                    # A token that the caller exports would carry the password to dotfiles-merge.
+                    unset token
+                fi
             fi
             read -r state branch <<<"$answer"
             if [ "$state" != "$open" ] || [ -z "$branch" ]; then
-                echo "dotfiles merge: $request is ${state:-not found}, not open; nothing is merged." >&2
+                [ -z "$state" ] || hint=""
+                echo "dotfiles merge: $request is ${state:-not found}, not open; nothing is merged.$hint" >&2
                 exit 1
             fi
             echo "dotfiles merge: $request is the branch $branch."
@@ -73,7 +95,7 @@ case "$subcommand" in
         exec "$here/dotfiles-merge" "$branch"
         ;;
     -h | --help)
-        sed -n '2,12p' "$0" | cut -c3-
+        sed -n '2,15p' "$0" | cut -c3-
         ;;
     *)
         usage
