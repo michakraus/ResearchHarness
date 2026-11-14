@@ -509,7 +509,7 @@ with the severity `warning`.
 
 The job `ast-grep` of the workflow `julia.yml` runs the rule tests. The path filter of the
 workflow names `ast-grep/**`, so a change of a rule or a rule test alone starts it. The job
-installs the release 0.51.1 of ast-grep, with its SHA-256, and builds the parser with
+installs the release 0.51.2 of ast-grep, with its SHA-256, and builds the parser with
 `build-julia.sh`. `research-sgconfig.yml` names its paths relative to `~/Research`, so the job
 writes a configuration with the checkout's absolute paths. Then it runs `ast-grep test` and the
 four scans of `rule-tests/scope/`. The job fails when a test fails, when a test names a rule that
