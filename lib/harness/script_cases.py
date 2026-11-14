@@ -45,8 +45,8 @@ runs them.
   no `#!` script, glabx the first glab, each with the secret's token, without the caller's other
   token, host and transport variables, and with an empty configuration directory that is gone
   after the run; the helper decrypts and answers only `get` for its URL's host; each refusal exits
-  2 with one line `sealed: …` and no token; a Ctrl-C reaches `age` and gh; and at an injected expiry of the
-  time limit the script kills `age`.
+  2 with one line `sealed: …` and no token; a Ctrl-C reaches `age` and gh; and at an injected
+  expiry of the time limit the script kills `age`.
 """
 
 import importlib.util
