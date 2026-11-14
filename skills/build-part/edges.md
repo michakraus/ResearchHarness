@@ -191,12 +191,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   *Sandbox the agent frontends*)
 - **a secret held in a shell variable that a caller may have exported:** `token=$(…)` in a bash
   script keeps the export flag of a caller's `token`, so an `exec` or any child after it receives
-  the secret in its environment. `unset` the variable after its last use, and test with a caller
-  that exports the name (E5m, *Sandbox the agent frontends*)
+  the secret in its environment. `unset` the name before the assignment: an `unset` after the last
+  use still gives the secret to every child in between. Test with a caller that exports the name
+  (E5m, *Sandbox the agent frontends*)
 - **a no-prompt flag that covers one prompt route of several:** `GIT_TERMINAL_PROMPT=0` stops git's
   terminal prompt, but `credential fill` still runs `GIT_ASKPASS`, `core.askPass` or `SSH_ASKPASS`,
-  which can open a dialog whose answer becomes the secret. A set but empty `GIT_ASKPASS` stops all
-  three (git `prompt.c`); test each route (E5m)
+  which can open a dialog whose answer becomes the secret, and a credential helper can open its
+  own, such as Git Credential Manager without `GCM_INTERACTIVE=never`. A set but empty
+  `GIT_ASKPASS` stops the three askpass routes (git `prompt.c`); test each route (E5m, *Sandbox
+  the agent frontends*)
 
 ## A numerical method
 
