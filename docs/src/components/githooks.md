@@ -345,22 +345,29 @@ run code of other repositories.
 | job | what it runs |
 |:--|:--|
 | `list` | reads the dependents from `.github/dependents.toml` with `dependents.jl list`; it fails with a line that names `harness dependents --apply` when the file is missing |
-| `test` | one job per dependent, on Ubuntu with Julia `1`, 60 minutes at most, and `fail-fast` off: the compat check, `Pkg.develop` of the head into the dependent's project and `Pkg.test(test_args = ["core"])`; on a failure, the same against the default branch of the base, in a second checkout of the dependent, so that the resolution of the run against the head does not carry over; then the row of the dependent |
+| `test` | one job per dependent, on Ubuntu with Julia `1`, 60 minutes at most, and `fail-fast` off: the compat check; a setup step, `Pkg.develop` of the head into the dependent's project, and a test step, `Pkg.test(test_args = ["core"])`, which runs only after its setup succeeds; on a failure of either, the same two steps against the default branch of the base, in a second checkout of the dependent, so that the resolution of the run against the head does not carry over; then the row of the dependent |
 
-The row is one of four:
+The row is one of five:
 
 - *excluded*: the dependent's `[compat]` entry excludes the head, for example after a breaking
   bump. The job does not test it, because a test needs a compat override that no user can
   install.
-- *green*: the dependent passes against the head.
-- *regression*: the dependent fails against the head and passes against the default branch. This
-  includes a head that the resolver cannot install beside the other dependencies of the
-  dependent. The log of the head step then names the conflict ("empty intersection …").
-- *known red*: the dependent fails against both. The pull request does not cause it.
+- *green*: the setup and the tests against the head pass.
+- *regression*: the setup against the head fails, and the setup against the default branch
+  passes. Or the tests fail against the head and pass against the default branch. A failed setup
+  against the head counts as a regression. The compat check has already left out a head that the
+  dependent's `[compat]` excludes. So the job reads the failure as a head that the resolver cannot
+  install beside the other dependencies of the dependent. The log of the head's setup step names
+  the cause, such as a conflict ("empty intersection …").
+- *known red*: the tests fail against both. The pull request does not cause it.
+- *inconclusive*: the setup or the tests fail against the head. The setup against the default
+  branch fails too, for example on the registry or a download. The row names which setup failed:
+  the default branch's alone, or the head's and the default branch's.
 
-Of the four rows, only a regression fails the job. A step that fails before the row also fails
-the job. Two examples are the compat check and the checkout of a dependent that the token of the
-base cannot read. The workflow is advisory: `harness ci-protection` does not require it.
+A regression and an inconclusive row fail the job. An inconclusive row asks a person to read the
+log or to run the job again. A step that fails before the row also fails the job. Two examples
+are the compat check and the checkout of a dependent that the token of the base cannot read. The
+workflow is advisory: `harness ci-protection` does not require it.
 
 ## `workflows/dependents.jl`
 
@@ -371,23 +378,24 @@ the workflow.
 ```bash
 julia --startup-file=no dependents.jl list <dependents.toml>
 julia --startup-file=no dependents.jl excluded <base> <dependent>
-julia --startup-file=no dependents.jl row <name> <excluded> <head outcome> <main outcome>
+julia --startup-file=no dependents.jl row <name> <excluded> <head setup> <head test> <main setup> <main test>
 ```
 
 `list` prints the dependents as a JSON array, the matrix of the `test` job. `excluded` reads the
 `version` of the base's `Project.toml` and the dependent's `[compat]` entry for the base. It reads
 the entry with `Pkg.Versions.semver_spec`. It prints `excluded=true` when the version is outside
 the entry. It prints `excluded=false` when the version is inside, or when the dependent has no
-entry. `row` prints the row from the outcomes of the two test steps. It appends the row under a
-header to the job summary, and exits with status 1 for a regression. Where the variable is set,
-each command writes its result to `$GITHUB_OUTPUT` or `$GITHUB_STEP_SUMMARY`.
+entry. `row` prints the row from the outcomes of the four setup and test steps. A step that did
+not run has the outcome `skipped` or an empty one. `row` appends the row under a header to the
+job summary, and exits with status 1 for a regression and for an inconclusive row. Where the
+variable is set, each command writes its result to `$GITHUB_OUTPUT` or `$GITHUB_STEP_SUMMARY`.
 
 These inputs exit with status 2 and one line on stderr:
 
 - a missing file, or a file that is not TOML;
 - a malformed entry, or a base `version` that is no version number;
 - a `[compat]` entry that is no version specifier;
-- a combination of outcomes that is none of the four rows.
+- a combination of outcomes that is none of the five rows.
 
 ## `workflows/Documenter.yml`
 
