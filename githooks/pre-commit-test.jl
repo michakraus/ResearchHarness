@@ -866,6 +866,58 @@ end
         @test !occursin("Stacktrace", out * err)
     end
 
+    # The stages read the files on disk, so a file with an unstaged edit is refused before any
+    # stage runs.
+    @testset "a partly staged .jl file is refused with its name" begin
+        repo, env = fixture(FORMATTED)
+        write(joinpath(repo, "src", "Fixture.jl"), MISFORMATTED)
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test occursin("pre-commit: src/Fixture.jl has changes that are not staged", out * err)
+        @test occursin("Stage the rest of", out * err)
+        @test !occursin("formatting", out * err)
+    end
+
+    @testset "a fully staged change of a .jl file passes" begin
+        code, out = second_commit(FORMATTED, replace(FORMATTED, r"end\n$" => "triple(x) = 3x\n\nend\n"); extra = [])
+        @test code == 0
+        @test !occursin("not staged", out)
+        @test occursin("loads: ok", out)
+    end
+
+    @testset "an unstaged change of another .jl file passes" begin
+        repo, env = fixture(FORMATTED; extra = ["src/other.jl" => "f(x) = x\n"])
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        write(joinpath(repo, "src", "Fixture.jl"), replace(FORMATTED, r"end\n$" => "triple(x) = 3x\n\nend\n"))
+        run(setenv(`git -C $repo add src/Fixture.jl`, env))
+        write(joinpath(repo, "src", "other.jl"), "f(x) = 2x\n")
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test !occursin("not staged", out * err)
+    end
+
+    # As a glob, the path src/a[b].jl also matches src/ab.jl, which has an unstaged change.
+    @testset "a fully staged path with glob characters passes beside an unstaged path it matches as a glob" begin
+        repo, env = fixture(FORMATTED; extra = ["src/a[b].jl" => "f(x) = x\n", "src/ab.jl" => "g(x) = x\n"])
+        run(setenv(`git -C $repo commit -q -m base`, env))
+        write(joinpath(repo, "src", "a[b].jl"), "f(x) = 2x\n")
+        run(setenv(`git -C $repo add -- src/a\[b\].jl`, env))
+        write(joinpath(repo, "src", "ab.jl"), "g(x) = 2x\n")
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test !occursin("not staged", out * err)
+    end
+
+    # Under the variable, `*.jl` lists the staged files of the root only, so the file is there.
+    @testset "GIT_GLOB_PATHSPECS does not stop the refusal of a partly staged file" begin
+        repo, env = fixture(FORMATTED; extra = ["top.jl" => "t(x) = x\n"])
+        write(joinpath(repo, "top.jl"), "t(x) = 2x\n")
+        env["GIT_GLOB_PATHSPECS"] = "1"
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test occursin("pre-commit: top.jl has changes that are not staged", out * err)
+    end
+
     @testset "an indented, single-quoted name runs the load test" begin
         code, out = run_hook(FORMATTED; project = replace(PROJECT, "name = \"Fixture\"" => "  name = 'Fixture'"))
         @test code == 0
@@ -1284,6 +1336,16 @@ end
             cd(() -> Base.invokelatest(hook.added_lines, "src/Fixture.jl", nothing), repo)
         end
         @test lines == [4:4, 8:8]
+    end
+
+    # As for `added_lines`, only a direct call reaches a file below src/ with the variable set.
+    @testset "unstaged ignores GIT_GLOB_PATHSPECS" begin
+        repo, env = fixture(FORMATTED)
+        write(joinpath(repo, "src", "Fixture.jl"), MISFORMATTED)
+        files = withenv(env..., "GIT_GLOB_PATHSPECS" => "1") do
+            cd(() -> Base.invokelatest(hook.unstaged, ["src/Fixture.jl"]), repo)
+        end
+        @test files == ["src/Fixture.jl"]
     end
 
     # `format` with no style uses JuliaFormatter's default style: githooks/ has no
