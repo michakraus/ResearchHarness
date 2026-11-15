@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""gh, glab and git with a secret that only the user's Touch ID decrypts. One script with three
-names; the base name of the path that it runs as chooses what it does:
+"""gh, glab and git with a secret that only the user decrypts, with Touch ID or the Mac's password.
+One script with three names; the base name of the path that it runs as chooses what it does:
 
     ghx <the arguments of gh>
     glabx <the arguments of glab>

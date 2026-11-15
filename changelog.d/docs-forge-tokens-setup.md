@@ -8,4 +8,5 @@
   steps of the sealed secrets: they say what each flag of `keygen` does and pin
   `--recipient-type se`, write the recipient into `recipient.txt` for `age -R`, and say in which
   clones, such as the dotfiles' `~/.local/share/chezmoi`, a repository's own helper goes, and how
-  to check it. The sandbox page keeps the mechanism and links to these steps.
+  to check it. The sandbox page keeps the mechanism and links to these steps. "A forge token per
+  owner" leaves the planned work, and the sealed secrets name the Mac's password beside Touch ID.

@@ -364,11 +364,11 @@ organisation tokens*) ends the line.
 
 **The sealed secrets**, on macOS only. After those steps your terminal has the agents' tokens,
 not your own broad access. A broad login on the Mac is also the sessions' login: they run gh, glab
-and git as you. So your broad tokens are secrets that only your Touch ID decrypts, and three names
-of [`sealed.py`](scripts.md#sealed-py) in `~/.local/bin` use them: `ghx` runs gh, and `glabx` runs
-glab, with your broad token; `git-credential-sealed` is a git credential helper that gives one
-repository its own token. Each run that reads a secret asks for Touch ID. A Touch ID prompt that
-you did not start comes from a session: refuse it. The secrets are in
+and git as you. So your broad tokens are secrets that only you decrypt, with Touch ID or the Mac's
+password, and three names of [`sealed.py`](scripts.md#sealed-py) in `~/.local/bin` use them: `ghx`
+runs gh, and `glabx` runs glab, with your broad token; `git-credential-sealed` is a git credential
+helper that gives one repository its own token. Each run that reads a secret asks for Touch ID. A
+Touch ID prompt that you did not start comes from a session: refuse it. The secrets are in
 `~/.config/research-harness/sealed/`, which the settings template denies to Claude Code's read
 tools (`permissions.deny`) and to its sandbox (`denyRead` and `credentials.files`), and which no
 frontend's `own` names, so every srt file denies it too. OpenCode's `guard-paths.json`, which
