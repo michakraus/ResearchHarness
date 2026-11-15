@@ -18,8 +18,8 @@
 # `min` resolves the lower bound of *this* package's `[compat] julia` entry and `1` the current
 # stable release, so one identical matrix tests the right versions in every repository, whatever
 # its floor. The check names therefore never change — not when a package raises its floor, and not
-# when Julia releases. That is what lets harness ci-protection use one static list
-# for every repository without test groups.
+# when Julia releases. That is what lets harness ci-protection use one static list for every
+# repository without test groups.
 #
 # `pre` and `nightly` are advisory (`experimental: true` + `continue-on-error`): a failure in an
 # unreleased Julia is information, not a broken build. They are deliberately NOT required checks.
