@@ -996,3 +996,15 @@
   case although the probe is right.
 - kind: defect
 - found: 2026-11-14, the planning of part E5n1
+
+### K164 · On macOS, `write_zshrc` creates an empty `~/.zshrc` in a home that holds none, against the header's "writes nothing".
+
+- location: `sandbox/probe-daemon.jl:126`
+- evidence: with `linux` false, the probe opens `home/.zshrc` to append whether or not it exists.
+  On a fresh `mktempdir()` home, `ProbeDaemon.write_zshrc(h; linux = false)` gives `allowed`, and
+  `h/.zshrc` then exists with 0 bytes. Under a profile that allows the append, a session's run on
+  a Mac without `~/.zshrc` leaves that file behind; the header comment says the probe "opens the
+  file to append and writes nothing". The decision for the probe names Linux only, so the macOS
+  branch is unchanged.
+- kind: defect
+- found: 2026-11-15, the spec of part D4 of the sandbox plan
