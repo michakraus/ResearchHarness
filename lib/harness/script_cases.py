@@ -1325,14 +1325,17 @@ def probe_routes(check: Callable[[object, str], None], tmp: pathlib.Path) -> Non
 def probe_silent(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """A `rapportd` listener is match on no answer (000) and on 401, 403 and 407, and MISMATCH on
     any other status, against `000, 401, 403 or 407`; a listener of another command that gives no
-    answer stays MISMATCH against `401, 403 or 407`."""
+    answer stays MISMATCH against `401, 403 or 407`, also where its name starts with `rapportd` or
+    is a part of it."""
     lsof = (
         "rapportd 301 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7101 (LISTEN)\n"
         "rapportd 302 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7102 (LISTEN)\n"
         "rapportd 303 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7103 (LISTEN)\n"
         "gamma 304 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7104 (LISTEN)\n"
+        "rapportdx 305 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7105 (LISTEN)\n"
+        "rapport 306 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7106 (LISTEN)\n"
     )
-    codes = {"7101": "none", "7102": "200", "7103": "401", "7104": "none"}
+    codes = {"7101": "none", "7102": "200", "7103": "401", "7104": "none", "7105": "none", "7106": "none"}
     home = probe_home(tmp / "silent", {"srt": "allow", "lsof": lsof, "curl": codes})
     out = home / "out"
     probe_run(home, "--no-model", "claude", "--out", str(out))
@@ -1354,6 +1357,11 @@ def probe_silent(check: Callable[[object, str], None], tmp: pathlib.Path) -> Non
     check(
         got.get("L:7104", ())[:3] == ("401, 403 or 407", "000", "MISMATCH"),
         f"another command with no answer is 000, MISMATCH against 401, 403 or 407 -> {got.get('L:7104')}",
+    )
+    near = (got.get("L:7105", ())[:3], got.get("L:7106", ())[:3])
+    check(
+        near == (("401, 403 or 407", "000", "MISMATCH"),) * 2,
+        f"rapportdx and rapport with no answer are 000, MISMATCH against 401, 403 or 407 -> {near}",
     )
 
 
