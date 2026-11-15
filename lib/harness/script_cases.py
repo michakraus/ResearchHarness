@@ -1289,7 +1289,7 @@ def probe_routes(check: Callable[[object, str], None], tmp: pathlib.Path) -> Non
         "node 202 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7001 (LISTEN)\n"
     )
     # OpenCode's service serves its web app at `/` and `/path` and asks for its password below
-    # `/api/v2/`; the node listener would answer 401 there, so a question to it there shows
+    # `/api/v2/`; the node listener answers 401 there, so a request to it there shows in its row
     codes = {"4096": "200", "4096/path": "200", "4096/api/v2/session": "401"}
     codes |= {"7001": "200", "7001/api/v2/session": "401"}
     home = probe_home(tmp / "routes", {"srt": "allow", "lsof": lsof, "curl": codes})
