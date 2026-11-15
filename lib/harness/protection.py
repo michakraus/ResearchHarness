@@ -201,7 +201,7 @@ def github_token() -> Generator[None]:
         return
     module = sealed()
     refused = cast("type[Exception]", module.RefusedError)
-    print("ci-protection: decrypting the sealed secret github for every gh call...")
+    print("ci-protection: decrypting the sealed secret github for every gh call...", flush=True)
     try:
         program = cast("pathlib.Path", module.program("gh", skip_scripts=True))
         secret = module.decrypt("github")
@@ -1152,11 +1152,28 @@ printf '%s %s %s %s %s\\n' "${GH_TOKEN-unset}" "${GITHUB_TOKEN-unset}" "${GH_HOS
 """
 
 
+def entered() -> tuple[str, dict[str, str] | None, str]:
+    """The runner inside `github_token` and the output of one gh call there."""
+    with contextlib.redirect_stdout(io.StringIO()), github_token():
+        return RUNNER.program, RUNNER.env, gh("api", "user")
+
+
+def failed_inside() -> tuple[str, str, dict[str, str] | None]:
+    """The GH_CONFIG_DIR of a `github_token` block that a GhError ends, as one ends the
+    subcommand, and the runner after it."""
+    inside = ""
+    with contextlib.suppress(GhError), contextlib.redirect_stdout(io.StringIO()), github_token():
+        inside = cast("dict[str, str]", RUNNER.env)["GH_CONFIG_DIR"]
+        raise GhError("inside the block")
+    return inside, RUNNER.program, RUNNER.env
+
+
 def token_cases() -> tuple[int, int]:
     """`github_token` in a scratch HOME, with sealed.py's `decrypt` and `program` replaced: no
     sealed secret leaves gh as it is; a sealed secret is decrypted once and every gh call of the
-    block runs the real gh with its token and a new empty GH_CONFIG_DIR, gone after the block; a
-    secret of another host, and a refusal of sealed.py, raise HarnessError."""
+    block runs the real gh with its token and a new empty GH_CONFIG_DIR, gone after the block, also
+    after a failure inside it; a secret of another host, and a refusal of sealed.py, raise
+    HarnessError."""
     wrong = 0
     total = 0
 
@@ -1189,11 +1206,6 @@ def token_cases() -> tuple[int, int]:
         def program(_name: str, *, skip_scripts: bool) -> pathlib.Path:
             return stub if skip_scripts else home
 
-        def entered() -> tuple[str, dict[str, str] | None, str]:
-            """The runner inside `github_token` and the output of one gh call there."""
-            with contextlib.redirect_stdout(io.StringIO()), github_token():
-                return RUNNER.program, RUNNER.env, gh("api", "user")
-
         with (
             mock.patch.dict(os.environ, caller),
             mock.patch.object(module, "decrypt", decrypt),
@@ -1225,6 +1237,13 @@ def token_cases() -> tuple[int, int]:
                 ok=bool(config)
                 and not pathlib.Path(config).exists()
                 and (RUNNER.program, RUNNER.env) == ("gh", None),
+            )
+
+            inside, *after = failed_inside()
+            check(
+                "a failure inside the block: the runner is gh again and the GH_CONFIG_DIR is gone",
+                (inside, after),
+                ok=bool(inside) and not pathlib.Path(inside).exists() and after == ["gh", None],
             )
 
             for label, kind, expected in (

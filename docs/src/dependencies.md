@@ -114,9 +114,10 @@ template sets `failIfUnavailable`, so without them Claude Code does not start. O
 On macOS, `age` and `age-plugin-se` are optional, and you install them yourself, with
 `brew install age age-plugin-se` ([Your own broad tokens](setup-macos.md#your-own-broad-tokens),
 step 1); `harness setup` does not. They are for the sealed secrets:
-`ghx`, `glabx` and `git-credential-sealed` decrypt your own broad forge tokens with `age` and an
-`age-plugin-se` identity in the Secure Enclave, so each decryption asks for Touch ID. Without
-them each run of these three commands that reads a secret refuses, and nothing else changes
+`ghx`, `glabx` and `git-credential-sealed` decrypt your own broad forge tokens, and
+`harness ci-protection` your GitHub token, with `age` and an `age-plugin-se` identity in the
+Secure Enclave, so each decryption asks for Touch ID. Without them each run of these four
+commands that reads a secret refuses, and nothing else changes
 ([The sealed secrets](components/sandbox.md#the-forge-tokens)).
 
 ## What each tool does

@@ -1534,7 +1534,8 @@ replaced. Cases of `github_token`, in a scratch home with `decrypt` and `program
 stub of `gh` that prints its environment, check that no sealed secret leaves `gh` as it is, that
 a sealed secret is decrypted once for every call of the block, with the token, a new empty
 `GH_CONFIG_DIR` gone after the block and no `GITHUB_TOKEN` or `GH_HOST`, and that a secret of
-another host and a refusal of `sealed.py` stop the subcommand. A case reads `test.yml` with `workflow_checks` and fails when `HARNESS_CHECKS` differs
+another host and a refusal of `sealed.py` stop the subcommand. A case reads `test.yml` with
+`workflow_checks` and fails when `HARNESS_CHECKS` differs
 from it, so a renamed or an added job fails `harness test`. The sweep does not run this subcommand, because it
 needs `gh` with a login.
 
