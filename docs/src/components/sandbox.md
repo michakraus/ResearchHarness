@@ -357,16 +357,12 @@ exactly, and the proxy's port changes with each run, so no section of `forge.git
 the helper for the proxy. Removing the credential manager from `~/.gitconfig` (step 5 below) ends
 the line.
 
-**Your steps**, after the merge and before `harness install --apply`:
+**Your steps:**
 
-1. On GitHub, make one fine-grained token for each owner, each organisation and your account:
-   resource owner that owner, all repositories, with the permissions Contents, Pull requests,
-   Issues, Workflows and Actions read and write, and Checks, Commit statuses and Metadata read; no
-   Gists permission. An organisation may have to approve a token.
-2. On the GitLab instance, make one group access token of the group, with the scopes `api`,
-   `read_repository` and `write_repository`, and a role that may create projects in the group. By
-   GitLab's default that is Maintainer; the group's setting *Roles allowed to create projects*
-   decides it.
+1. On GitHub, make one fine-grained token for each organisation and one for your account, with the
+   permissions that *The forge tokens* of the setup page lists
+   ([macOS](../setup-macos.md#the-forge-tokens), [Linux](../setup-linux.md#the-forge-tokens)).
+2. On the GitLab instance, make one group access token of the group, as the same section says.
 3. Put each token into `~/.config/research-harness/forge/<host>/<owner>.store` as the one line
    `https://x-access-token:<token>@github.com` or `https://oauth2:<token>@<gitlab host>`, mode
    600, the directories mode 700. Make `github.com/default.store` a copy of, or a symbolic link
@@ -394,27 +390,38 @@ from it OpenCode's `opencode.jsonc`, also refuses a command that runs `ghx`, `gl
 `git-credential-sealed`, so a session that types one is refused before a prompt appears. That deny
 prevents accidents; Touch ID and the read denies of the identity are the boundary.
 
-**Your steps for the sealed secrets**, on macOS, after the merge and `harness install --apply`:
+**Your steps for the sealed secrets**, on macOS, after the steps above:
 
 1. Install the tools: `brew install age age-plugin-se`.
 2. Make the identity in the Secure Enclave, in a directory with mode 700:
 
    ```sh
    mkdir -m 700 -p ~/.config/research-harness/sealed
-   age-plugin-se keygen --access-control any-biometry-or-passcode \
+   age-plugin-se keygen --access-control any-biometry-or-passcode --recipient-type se \
        -o ~/.config/research-harness/sealed/identity.txt
    ```
 
-   `any-biometry-or-passcode` lets a Mac without its Touch ID keyboard decrypt with its password,
-   which a session cannot type. Check the flags against `age-plugin-se --help` first.
-3. Encrypt each secret to the identity's recipient, the `age1se1…` key that `keygen` prints:
-   `github.age` with your broad GitHub token, `gitlab.age` with your broad GitLab token, and
-   `<name>.age` for a repository of its own. Each secret is one line
-   `https://<user>:<token>@<host>`. Type the line on stdin, then Ctrl-D, so that the token is in
-   no argument and not in the shell's history:
+   `keygen` prints one line, `Public key: age1se1…`. That key is the identity's recipient, and it
+   is no secret. `--access-control any-biometry-or-passcode` makes each decryption ask for Touch
+   ID, or for the Mac's password where no Touch ID is at hand; a session can type neither.
+   `--recipient-type se` keeps the recipient an `age1se1…` key: a later version of
+   `age-plugin-se` makes a `tag` key, `age1tag1…`, by default. The flags are those of
+   `age-plugin-se` 0.2.1, which `age-plugin-se --help` lists.
+3. Write the recipient into a file, so that no command needs the key typed:
 
    ```sh
-   age -r <recipient> -o ~/.config/research-harness/sealed/github.age
+   age-plugin-se recipients --recipient-type se -i ~/.config/research-harness/sealed/identity.txt \
+       -o ~/.config/research-harness/sealed/recipient.txt
+   ```
+
+   Then encrypt each secret to it: `github.age` with your broad GitHub token, `gitlab.age` with
+   your broad GitLab token, and `<name>.age` for a repository of its own. Each secret is one line
+   `https://<user>:<token>@<host>`. Run the command, type the line, press Enter, then Ctrl-D: the
+   token is then in no argument and not in the shell's history.
+
+   ```sh
+   age -R ~/.config/research-harness/sealed/recipient.txt \
+       -o ~/.config/research-harness/sealed/github.age
    ```
 
 4. Give a repository that has a token of its own, for example the dotfiles, its helper in place
