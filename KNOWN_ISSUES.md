@@ -11,8 +11,10 @@
   gap, for oh-my-pi under the sandbox launcher. The launcher `sandbox/agentbox` runs the whole
   oh-my-pi process under srt, so its `write` tool too. The srt file of oh-my-pi denies writes to
   `~/.omp/agent/config.yml` (`sandbox/policy.toml:71`) and allows none below `~/.claude/hooks`;
-  the probes W10 and W2 of `scripts/probe-agentbox.py` try the two places. The launcher is
-  opt-in: an oh-my-pi started without it has only the guard, and the gap is open there.
+  the probes W10 and W2 of `scripts/probe-agentbox.py` try the two places. On macOS the guard
+  refuses every call of an oh-my-pi session started without the launcher
+  (`hooks/guard/launcher.py`); on Linux such a session has only the guard, and the gap is open
+  there.
 - kind: defect
 - found: 2026-10-06
 
@@ -525,7 +527,7 @@
 
 ### K150 · Claude Code's guard does not read a `gh api` call behind a leading `rtk`.
 
-- location: `hooks/guard/frontends/claude.py:48`
+- location: `hooks/guard/frontends/claude.py:55`
 - evidence: OpenCode's table checks a command again with a leading `rtk ` removed; Claude Code's
   does not, so `rtk gh api -X DELETE repos/o/r`, `rtk gh api -X POST repos/o/r/issues -f title=x`
   and `rtk gh api repos/other-org/r/issues/3/comments -f body=x` pass, while the same commands
@@ -954,7 +956,7 @@
 
 ### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
 
-- location: `hooks/probe.py:1745`
+- location: `hooks/probe.py:1840`
 - evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
   reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
   calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports

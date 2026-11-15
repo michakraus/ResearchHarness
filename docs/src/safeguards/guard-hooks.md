@@ -439,7 +439,7 @@ cannot list it. So the guard lists `~/.ssh`, and the listing gives one of three 
 One sandbox other than `agentbox` counts: Claude Code's own, in the Code tab of the Claude desktop
 app. There `CLAUDE_CODE_ENTRYPOINT` is `claude-desktop`, and the check passes when
 `~/.claude/settings.json` holds `sandbox.enabled` as `true`. A settings file that is missing or
-cannot be read counts as no sandbox. For OpenCode and oh-my-pi nothing else counts.
+cannot be read or parsed counts as no sandbox. For OpenCode and oh-my-pi nothing else counts.
 
 Antigravity's table runs no such check. Antigravity's terminal sandbox holds its shell commands in
 the CLI and in the desktop app, and its shell tool cannot run under `agentbox`.

@@ -8,8 +8,9 @@ such as `FileNotFoundError` for a home with no `~/.ssh`, is refused because the 
 and one that returns is refused: the session runs outside `agentbox`. Only Claude Code's own
 sandbox counts in its place, in the Code tab of the Claude desktop app: `CLAUDE_CODE_ENTRYPOINT`
 is `claude-desktop` and `~/.claude/settings.json` holds `sandbox.enabled` as `true`; a settings
-file that is missing or cannot be read counts as no sandbox. On another platform the check passes:
-there is no launcher there. The check reads the file system at each call and keeps nothing.
+file that is missing or cannot be read or parsed counts as no sandbox. On another platform the
+check passes: there is no launcher there. The check reads the file system at each call and keeps
+nothing.
 """
 
 from collections.abc import Mapping
