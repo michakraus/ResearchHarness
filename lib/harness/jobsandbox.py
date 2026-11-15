@@ -137,7 +137,7 @@ the form of its result and the two sets of `run_all`. `read_research` reads
 level. A read probe gives `:NotAFile` (the probe file's `NotAFile`) where a directory stands at
 its path, and `:allowed` where a link to a regular file does: the cases put a directory at the
 paths of `read_research`, `read_claude_json` and `read_gh_hosts` and a link at that of
-`read_claude_json`, each in an empty home of its own. `write_zshrc` takes `linux`, which
+`read_claude_json`, each in a new home of its own. `write_zshrc` takes `linux`, which
 defaults to the running system: with it, a home that holds no `~/.zshrc` gives `:NotBound` (the
 probe file's `NotBound`) and gets none, because the job's `tmpfs` home on Linux holds the host's
 file only where it is bound; without it, the append creates the file. Without `julia` on the PATH

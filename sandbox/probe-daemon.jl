@@ -28,9 +28,8 @@
 # a gap, as `:NotBound`. `connect_loopback` connects to Kaimon's own port, 127.0.0.1:2828, given as
 # a string, so that `Sockets.getaddrinfo` reads the address before the connect, as HTTP.jl does
 # for Kaimon's clients of Qdrant and Ollama; a libc that cannot read it without the resolver gives
-# `:DNSError`.
-# `connect_remote` connects to 1.1.1.1:443, an address that answers, so a profile that lets it
-# through gives `:allowed` and not a timeout.
+# `:DNSError`. `connect_remote` connects to 1.1.1.1:443, an address that answers, so a profile that
+# lets it through gives `:allowed` and not a timeout.
 #
 # `OPEN_GAPS` names the negative probes that the sandbox does not stop, which report `:allowed`
 # under it: none on macOS; on Linux, none recorded. The event of `appleevent` is

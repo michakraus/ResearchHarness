@@ -999,7 +999,7 @@
 
 ### K164 · On macOS, `write_zshrc` creates an empty `~/.zshrc` in a home that holds none, against the header's "writes nothing".
 
-- location: `sandbox/probe-daemon.jl:142`
+- location: `sandbox/probe-daemon.jl:141`
 - evidence: with `linux` false, the probe opens `home/.zshrc` to append whether or not it exists.
   On a fresh `mktempdir()` home, `ProbeDaemon.write_zshrc(h; linux = false)` gives `allowed`, and
   `h/.zshrc` then exists with 0 bytes. Under a profile that allows the append, a session's run on
