@@ -5,7 +5,9 @@
 #   julia --startup-file=no test-layout-test.jl
 #
 # A fixture repository in the form of the convention must pass with exit 0 and no output. Each
-# mutation of it breaks one rule and must exit 1 with a line that names exactly that rule.
+# mutation of it breaks one rule and must exit 1 with a line that names exactly that rule. The
+# end-to-end test of the parallel template loads ParallelTestRunner from the harness's Julia
+# environment, $RESEARCH_HARNESS_JULIA or ~/.local/share/research-harness/julia/.
 
 using Test
 
