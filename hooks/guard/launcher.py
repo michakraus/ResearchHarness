@@ -11,9 +11,8 @@ sandbox counts in its place, in two sessions. In the Code tab of the Claude desk
 as `true`. In a session that `claudex` starts, `CLAUDE_CONFIG_DIR` is an absolute path that
 resolves to `~/.config/claudex`, and `settings.json` there holds `sandbox.enabled` as `true`. A
 settings file that is missing or cannot be read or parsed counts as no sandbox, and a plain
-`claude` session stays refused. On another platform the
-check passes: there is no launcher there. The check reads the file system at each call and keeps
-nothing.
+`claude` session stays refused. On another platform the check passes: there is no launcher there.
+The check reads the file system at each call and keeps nothing.
 """
 
 from collections.abc import Mapping
