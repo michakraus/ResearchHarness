@@ -983,7 +983,7 @@
 
 ### K163 · The script case `probe_timeout` passes or fails on measured wall-clock time.
 
-- location: `lib/harness/script_cases.py:1485`
+- location: `lib/harness/script_cases.py:1533`
 - evidence: the case checks `took < 10`, the seconds between the stub `agentbox` starts of F1 and
   F2 after F1 runs past `--timeout 2`, with the message `F1 past --timeout 2 is timeout within 10
   s`. A loaded machine or a slow runner that takes 10 s or more between the two starts fails the
