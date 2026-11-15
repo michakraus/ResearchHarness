@@ -19,13 +19,15 @@ is sealed in ~/.config/research-harness/sealed/github.age, `github_token` decryp
 `ghx` does, and every `gh` call runs the real gh with it. Without that file, gh runs from the PATH.
 
 Required checks. There are two static lists of required checks. The packages and experiments
-with a CI.yml and no test/ci-groups.toml require REQUIRED_CHECKS. CI.yml is byte-identical in
-every repository, its matrix is `version: [min, 1]` rather than version numbers, and its job
-names carry no event suffix. `min` resolves each package's own `[compat] julia` floor, so one
-matrix tests the right versions everywhere, and the check names never change. A required check
-that never reports leaves every pull request pending, unmergeable, with no error anywhere; so the
-list is correct only while the workflows are canonical, and the subcommand refuses to run unless
-`verify-workflows.jl` passes.
+with a CI.yml and no test/ci-groups.toml require REQUIRED_CHECKS: the checks that CI.yml reports
+on every pull request, Ubuntu on `min` and `1`, macOS and Windows on `1`, and the doctests. CI.yml
+is byte-identical in every repository, its versions are `min` and `1` rather than version numbers,
+and its job names carry no event suffix. `min` resolves each package's own `[compat] julia` floor,
+so one matrix tests the right versions everywhere, and the check names never change. `min` on
+macOS and Windows runs only on the weekly schedule, a tag and a run by hand, so it is no required
+check. A required check that never reports leaves every pull request pending, unmergeable, with
+no error anywhere; so the list is correct only while the workflows are canonical, and the
+subcommand refuses to run unless `verify-workflows.jl` passes.
 
 A repository with test/ci-groups.toml runs each test job once per group, and CI.yml then ends
 each job name with ` - <group>`. Its matrix is an expression that reads the file at run time,
@@ -33,8 +35,9 @@ which `workflow_checks` does not read, so `required_checks` reads the file of th
 instead. The pull request that adds or changes the file still runs against the old list, so
 merge it with the admin bypass and run this subcommand after the merge.
 
-`pre` and `nightly` are not required: they are `experimental: true`, and requiring them would block
-merges whenever an unreleased Julia breaks upstream.
+`pre` and `nightly` are not required: their job, `prerelease`, continues on error, and requiring
+them would block merges whenever an unreleased Julia breaks upstream. Downgrade.yml is not
+required either: its path filter leaves most pull requests without its checks.
 
 The Harness, the repository that runs the command, comes last and requires HARNESS_CHECKS: each
 job of its .github/workflows/test.yml that reports on every pull request and is not a warning.
@@ -88,17 +91,19 @@ from importlib.machinery import ModuleSpec
 from typing import Any, cast
 from unittest import mock
 
-from . import REPO, HarnessError, changing, fmt, jsonio, outcome
-from .githooks import git, repositories
+# `githooks` by module, not by name: `githooks_cases`, which `githooks` imports, reads
+# REQUIRED_CHECKS from here, so this module may load while `githooks` is half loaded.
+from . import REPO, HarnessError, changing, fmt, githooks, jsonio, outcome
 
-# The required status checks of a repository without test/ci-groups.toml: the non-experimental
-# jobs of the canonical CI.yml, `test` over version x os with `arch: default`, and the single pinned
-# `doctest` entry. verify-workflows.jl prints the same list from the template. `required_checks`
-# gives a repository with test groups its own list.
+# The required status checks of a repository without test/ci-groups.toml: the checks that the
+# canonical CI.yml reports on every pull request and that are not warnings. They are `test` on
+# Ubuntu with `min` and `1`, `test-other` on macOS and Windows with `1`, each with `arch: default`,
+# and the single pinned `doctest` entry. `min` on macOS and Windows runs only weekly and on a tag,
+# and `prerelease` is a warning, so neither is here. verify-workflows.jl prints the same set, and a
+# case derives it from the template. `required_checks` gives a repository with test groups its own
+# list.
 REQUIRED_CHECKS = [
     "Julia min - ubuntu-latest - default",
-    "Julia min - macOS-latest - default",
-    "Julia min - windows-latest - default",
     "Julia 1 - ubuntu-latest - default",
     "Julia 1 - macOS-latest - default",
     "Julia 1 - windows-latest - default",
@@ -292,7 +297,7 @@ def verify_workflows():
 
 def resolve(repo: pathlib.Path) -> tuple[str, str]:
     """(slug, branch) of a repository that can be protected; a skip or a failure otherwise."""
-    url = git(repo, "remote", "get-url", "origin").stdout.strip()
+    url = githooks.git(repo, "remote", "get-url", "origin").stdout.strip()
     m = re.match(r"(?:git@github\.com:|https://github\.com/)(.+?)(?:\.git)?$", url)
     if not m or "/" not in m.group(1):
         return "skip", "no github origin"
@@ -486,7 +491,7 @@ def targets() -> list[tuple[pathlib.Path, list[str]]]:
     package does not hide it."""
     found = [
         (repo, required_checks(repo))
-        for repo, _ in cast("list[tuple[pathlib.Path, str]]", repositories())
+        for repo, _ in cast("list[tuple[pathlib.Path, str]]", githooks.repositories())
         if (repo / ".github" / "workflows" / "CI.yml").is_file()
     ]
     return [*found, (REPO, HARNESS_CHECKS)]
@@ -758,10 +763,6 @@ def scratch_root(root: pathlib.Path) -> None:
 GROUPED_CHECKS = [
     "Julia min - ubuntu-latest - default - core",
     "Julia min - ubuntu-latest - default - long",
-    "Julia min - macOS-latest - default - core",
-    "Julia min - macOS-latest - default - long",
-    "Julia min - windows-latest - default - core",
-    "Julia min - windows-latest - default - long",
     "Julia 1 - ubuntu-latest - default - core",
     "Julia 1 - ubuntu-latest - default - long",
     "Julia 1 - macOS-latest - default - core",
@@ -1043,6 +1044,66 @@ def workflow_cases() -> tuple[int, int]:
             ok = got == expected
             wrong += not ok
             print(f"{'ok ' if ok else 'BAD'}  workflow: {label}")
+            if not ok:
+                print(f"     got {got!r}")
+    return len(cases), wrong
+
+
+# The term of CI.yml's job names that adds ` - <group>` for a group that is not empty.
+GROUP_TERM = "${{ matrix.group && format(' - {0}', matrix.group) || '' }}"
+
+
+def template_cases() -> tuple[int, int]:
+    """`workflow_checks` on the canonical CI.yml: refused as it is, because its matrices read the
+    outputs of the `groups` job; and with those outputs filled in for one event, and the group term
+    of a name read as the group's suffix, the contexts that the event reports. A pull request
+    reports `Test groups` and REQUIRED_CHECKS, or GROUPED_CHECKS with the groups `core` and `long`;
+    the weekly run adds `min` on macOS and Windows."""
+    ci = REPO / "githooks" / "workflows" / "CI.yml"
+    text = ci.read_text()
+
+    def filled(groups: list[str], versions: list[str]) -> str:
+        """CI.yml with the outputs `list` and `versions` of the `groups` job written in."""
+        return (
+            text.replace(
+                "${{ fromJSON(needs.groups.outputs.list) }}",
+                json.dumps([f" - {g}" if g else "" for g in groups]),
+            )
+            .replace("${{ fromJSON(needs.groups.outputs.versions) }}", json.dumps(versions))
+            .replace(GROUP_TERM, "${{ matrix.group }}")
+        )
+
+    weekly = ["Julia min - macOS-latest - default", "Julia min - windows-latest - default"]
+    cases: list[tuple[str, str, list[str] | str]] = [
+        ("CI.yml as it is is refused", text, "job test: the matrix is not a table of lists"),
+        (
+            "CI.yml on a pull request reports Test groups and REQUIRED_CHECKS",
+            filled([""], ["1"]),
+            sorted([*REQUIRED_CHECKS, "Test groups"]),
+        ),
+        (
+            "CI.yml on a pull request with the groups core and long reports Test groups and GROUPED_CHECKS",
+            filled(["core", "long"], ["1"]),
+            sorted([*GROUPED_CHECKS, "Test groups"]),
+        ),
+        (
+            "CI.yml on a weekly run adds min on macOS and Windows",
+            filled([""], ["min", "1"]),
+            sorted([*REQUIRED_CHECKS, "Test groups", *weekly]),
+        ),
+    ]
+    wrong = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        path = pathlib.Path(tmp) / "CI.yml"
+        for label, body, expected in cases:
+            path.write_text(body)
+            try:
+                got: list[str] | str = workflow_checks(path)
+            except HarnessError as e:
+                got = str(e).removeprefix(f"{path}: ")
+            ok = got == expected
+            wrong += not ok
+            print(f"{'ok ' if ok else 'BAD'}  template: {label}")
             if not ok:
                 print(f"     got {got!r}")
     return len(cases), wrong
@@ -1359,10 +1420,18 @@ def token_cases() -> tuple[int, int]:
 
 
 def selftest():
-    """Cases for `ruleset_problem`, `targets`, `workflow_checks`, `github_token`,
-    `cmd_ci_protection` and the message of `protect` for a refused write."""
+    """Cases for `ruleset_problem`, `targets`, `workflow_checks`, the contexts of the canonical
+    CI.yml, `github_token`, `cmd_ci_protection` and the message of `protect` for a refused write."""
     total = wrong = 0
-    for cases in (ruleset_cases, target_cases, workflow_cases, token_cases, command_cases, denied_cases):
+    for cases in (
+        ruleset_cases,
+        target_cases,
+        workflow_cases,
+        template_cases,
+        token_cases,
+        command_cases,
+        denied_cases,
+    ):
         n, w = cases()
         total += n
         wrong += w

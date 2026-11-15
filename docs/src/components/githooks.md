@@ -285,19 +285,26 @@ julia --startup-file=no release-notes-test.jl
 
 `workflows/CI.yml` is the CI workflow. `harness workflows` copies it to
 `.github/workflows/CI.yml` of each repository. It runs on a push to `main` or `master`, on a tag,
-on a pull request and by hand. It reads the package name from `Project.toml` at run time, so one
-file fits every repository.
+on a pull request, by hand, and weekly on Monday at 03:17 UTC. It reads the package name from
+`Project.toml` at run time, so one file fits every repository.
 
 | job | what it runs |
 |:--|:--|
-| `groups` | reads `test/ci-groups.toml` and gives the list of test groups to the two jobs below; one empty group where the file does not exist |
-| `test` | the tests on Julia `min` and `1`, on Ubuntu, macOS and Windows, once per test group; `pre` and `nightly` on Ubuntu, the whole suite, as information only |
-| `downgrade` | the tests with each direct dependency of `Project.toml` and `test/Project.toml` at the lower bound of its `[compat]` entry, the two resolved together, on Julia `min`, once per test group; information only |
+| `groups` | reads `test/ci-groups.toml` and gives the list of test groups to the jobs below; one empty group where the file does not exist. It also gives the Julia versions of `test-other` for the event: `1` on a pull request and a push to a branch, `min` and `1` on the weekly run, a tag, a run by hand and every other event |
+| `test` | the tests on Julia `min` and `1` on Ubuntu, once per test group |
+| `test-other` | the tests on macOS and Windows, with the versions of `groups`, once per test group; it starts only after every job of `test` passes |
+| `prerelease` | the tests on Julia `pre` and `nightly` on Ubuntu, the whole suite, on every event; information only |
 | `doctest` | `doctest` of the package on Julia `1` on Ubuntu, where `docs/Project.toml` exists |
 
+So a pull request runs Ubuntu on `min` and `1`, and macOS and Windows on `1` once Ubuntu is green.
+The weekly run and a tag run the full matrix. One concurrency group holds one ref and one event, so
+the weekly run and a push to `main` do not replace each other's pending run.
+
 The matrix names Julia versions by alias, `min` and `1`, so the names of the checks stay the same
-in every repository without test groups. Branch protection needs those fixed names. Only the entry
-of Julia `1` on Ubuntu measures coverage and sends it to Codecov, once per test group. A repository
+in every repository without test groups. `test` and `test-other` share one job name, so a check
+has the same name as in one matrix over the three systems. Branch protection needs those fixed
+names. Only the entry of Julia `1` on Ubuntu measures coverage and sends it to Codecov, once per
+test group. A repository
 that needs another job gets its own extra workflow file, not an edit of this one. No checkout
 keeps the token, because the build and the tests run code of the package and its dependencies.
 
@@ -311,18 +318,18 @@ The file is in the repository, so `CI.yml` stays identical in every repository:
 groups = ["core", "slow", "properties", "long"]
 ```
 
-The `test` and `downgrade` jobs then run once per group, with the group as the argument of
-`Pkg.test`, and each job name ends with ` - <group>`, such as
-`Julia min - ubuntu-latest - default - long`. Without the file, the jobs run the whole suite, and
-the job names do not change. Each group of Julia `1` on Ubuntu sends its own part of the coverage;
-Codecov merges the parts of one commit. `pre` and `nightly` run the whole suite in one job either
-way.
+The `test` and `test-other` jobs of `CI.yml` and the `downgrade` job of `Downgrade.yml` then run
+once per group, with the group as the argument of `Pkg.test`, and each job name ends with
+` - <group>`, such as `Julia min - ubuntu-latest - default - long`. Without the file, the jobs run
+the whole suite, and the job names do not change. Each group of Julia `1` on Ubuntu sends its own
+part of the coverage; Codecov merges the parts of one commit. `pre` and `nightly` run the whole
+suite in one job either way.
 
 The file lists `core`, `slow` and the repository's own groups, and `GROUPS` in `runtests.jl`
 runs exactly these groups for empty `ARGS`, so `Pkg.test()` and the `pre-push` hook still run
 every group. The rule `julia-tests`, `scripts/test-layout.jl` and `verify-workflows.jl` check
-this. `harness ci-protection` reads the file and requires one check per group and version and
-system.
+this. `harness ci-protection` reads the file and requires one check per group for each required
+Julia check.
 
 Each job runs its group alone, so a device group such as `metal` does not run in the required
 macOS jobs, where empty `ARGS` runs it without a group file. The file names the repository's own
@@ -340,6 +347,21 @@ file that a repository moves out of `core` keeps its quick check.
 A pull request that adds or changes the file reports the new check names, but the ruleset still
 requires the old ones. Merge that pull request with the admin bypass, and then run
 `harness ci-protection --apply`.
+
+## `workflows/Downgrade.yml`
+
+`workflows/Downgrade.yml` tests the `[compat]` lower bounds. `harness workflows` copies it to
+`.github/workflows/Downgrade.yml` of each repository that gets `CI.yml`. It runs on a pull request
+and a push to `main` or `master` that change `Project.toml` or `test/Project.toml`, on every tag,
+by hand, and weekly with `CI.yml`. GitHub reads no path filter for a tag, so every tag runs it.
+
+| job | what it runs |
+|:--|:--|
+| `groups` | the `groups` job of `CI.yml`, the same lines |
+| `downgrade` | the tests with each direct dependency of `Project.toml` and `test/Project.toml` at the lower bound of its `[compat]` entry, the two resolved together, on Julia `min`, once per test group; information only |
+
+The workflow is advisory: `harness ci-protection` does not require it, because its path filter
+leaves most pull requests without its checks.
 
 ## `workflows/Dependents.yml`
 
@@ -418,7 +440,7 @@ of each repository that has a tracked `docs/make.jl`.
 It does not go into a repository that the profile key `docs_exceptions` or `docs_additions`
 names. Such a repository keeps its own file: its documentation is a pipeline of several jobs, or
 it needs an extra step. The doctests do not run here; the `doctest` job of `CI.yml` runs them. It
-runs on the same events as `CI.yml`, on Ubuntu with Julia `1`. The checkout does not keep the
+runs on the events of `CI.yml` but the weekly one, on Ubuntu with Julia `1`. The checkout does not keep the
 token: the deploy pushes from a new repository of its own, with `DOCUMENTER_KEY` or
 `GITHUB_TOKEN`. A private repository names `devbranch` in its `deploydocs` call: without it,
 Documenter reads the default branch with `git remote show origin`, which needs the token there,
@@ -466,20 +488,22 @@ julia verify-workflows.jl --quiet    # only deviations and the summary
 
 It checks these points:
 
-1. `CI.yml`, `dependabot.yml`, `TagBot.yml` and `codecov.yml` are byte-identical to the
-   templates, in the working tree. `TagBot.yml` must be absent in an experiment.
+1. `CI.yml`, `Downgrade.yml`, `dependabot.yml`, `TagBot.yml` and `codecov.yml` are
+   byte-identical to the templates, in the working tree. `TagBot.yml` must be absent in an experiment.
    `Dependents.yml` and `dependents.jl` are byte-identical in each base of `dependents_bases`,
    which also has `.github/dependents.toml`, and absent from every other repository. The content
    of `dependents.toml` is the check of `harness dependents`.
 2. The same files on the default branch, for a repository that is on another branch.
-3. The job names of `CI.yml` are the names of the required checks.
+3. The names of the jobs `test`, `test-other` and `doctest` of `CI.yml` are the names of the
+   required checks.
 4. No `Register.yml`, `Documentation.yml`, `CompatHelper.yml` or other forbidden file exists.
 5. Each `uses:` names the expected major version of its action.
 6. A `test/ci-groups.toml` lists distinct group names, each group has an `if` in
    `test/runtests.jl`, and `GROUPS` runs exactly these groups for empty `ARGS`. Each workflow of
    its `workflows` is a file in `.github/workflows/` and is not an installed one.
 
-It prints the required checks of each repository that has a `test/ci-groups.toml`. It also
+Without `--quiet`, it prints the required checks of a repository without test groups, and those of
+each repository that has a `test/ci-groups.toml`. It also
 checks that a repository of `docs_additions` keeps the body of `Documenter.yml`. It
 reports the repositories whose `doctest` job skips itself. It exits with status 1 when a
 repository deviates. It
