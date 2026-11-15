@@ -1357,40 +1357,87 @@ def probe_environment(check: Callable[[object, str], None], tmp: pathlib.Path) -
 
 
 def probe_routes(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
-    """An `opencode` listener is asked at `/` and at `/path`, each with a row of its own; a `node`
-    listener only at `/`; `## Listeners` names the port of `L:<port>/path` without its route."""
+    """An `opencode` listener is asked at `/api/v2/session` only, in a row `L:<port>/api/v2/session`;
+    a `node` listener at `/` only; each detail starts with the command, the address and the PID;
+    `## Listeners` names the port of `L:<port>/api/v2/session` without its route."""
     lsof = (
         "opencode 201 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:4096 (LISTEN)\n"
         "node 202 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7001 (LISTEN)\n"
     )
-    codes = {"4096": "200", "4096/path": "401", "7001": "200", "7001/path": "401"}
+    # OpenCode's service serves its web app at `/` and `/path` and asks for its password below
+    # `/api/v2/`; the node listener answers 401 there, so a request to it there shows in its row
+    codes = {"4096": "200", "4096/path": "200", "4096/api/v2/session": "401"}
+    codes |= {"7001": "200", "7001/api/v2/session": "401"}
     home = probe_home(tmp / "routes", {"srt": "allow", "lsof": lsof, "curl": codes})
     out = home / "out"
     probe_run(home, "--no-model", "claude", "--out", str(out))
     got = {r[1]: (r[3], r[4], r[5]) for r in probe_rows(out) if r[1].startswith("L:")}
     check(
-        sorted(got) == ["L:4096", "L:4096/path", "L:7001"]
-        and got["L:4096"][:2] == ("200", "MISMATCH")
-        and got["L:4096/path"][:2] == ("401", "match")
-        and got["L:4096/path"][2].startswith("opencode 127.0.0.1:4096")
-        and got["L:7001"][:2] == ("200", "MISMATCH"),
-        f"opencode has a row at / (200, MISMATCH) and at /path (401, match); node one row at / -> {got}",
+        sorted(got) == ["L:4096/api/v2/session", "L:7001"]
+        and got["L:4096/api/v2/session"][:2] == ("401", "match")
+        and got["L:4096/api/v2/session"][2].startswith("opencode 127.0.0.1:4096 pid 201")
+        and got["L:7001"][:2] == ("200", "MISMATCH")
+        and got["L:7001"][2].startswith("node 127.0.0.1:7001 pid 202"),
+        f"opencode has one row at /api/v2/session (401, match) and node one row at / (200, MISMATCH), "
+        f"each detail with its command, address and PID -> {got}",
     )
     urls = [a[-1] for _, a in stub_calls(home, "curl") if a[-1].startswith("http://")]
     check(
-        sorted(urls) == ["http://127.0.0.1:4096/", "http://127.0.0.1:4096/path", "http://127.0.0.1:7001/"],
-        f"curl asks opencode at / and /path, node at / only -> {urls}",
+        sorted(urls) == ["http://127.0.0.1:4096/api/v2/session", "http://127.0.0.1:7001/"],
+        f"curl asks opencode at /api/v2/session only, node at / only -> {urls}",
     )
     md = (out / "report.md").read_text() if (out / "report.md").exists() else ""
     lines = [x for x in md.partition("## Listeners\n")[2].partition("\n## ")[0].splitlines() if x]
     check(
         lines
         == [
-            "- `opencode` answers `200`, `MISMATCH`: 1 port (4096), under claude",
-            "- `node` answers `200`, `MISMATCH`: 1 port (7001), under claude",
             "- `opencode` answers `401`, `match`: 1 port (4096), under claude",
+            "- `node` answers `200`, `MISMATCH`: 1 port (7001), under claude",
         ],
-        f"## Listeners names the port of L:4096/path as 4096 -> {lines}",
+        f"## Listeners names the port of L:4096/api/v2/session as 4096 -> {lines}",
+    )
+
+
+def probe_silent(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """A `rapportd` listener is match on no answer (000) and on 401, 403 and 407, and MISMATCH on
+    any other status, against `000, 401, 403 or 407`; a listener of another command that gives no
+    answer stays MISMATCH against `401, 403 or 407`, also where its name starts with `rapportd` or
+    is a part of it."""
+    lsof = (
+        "rapportd 301 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7101 (LISTEN)\n"
+        "rapportd 302 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7102 (LISTEN)\n"
+        "rapportd 303 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7103 (LISTEN)\n"
+        "gamma 304 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7104 (LISTEN)\n"
+        "rapportdx 305 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7105 (LISTEN)\n"
+        "rapport 306 u 3u IPv4 0x1 0t0 TCP 127.0.0.1:7106 (LISTEN)\n"
+    )
+    codes = {"7101": "none", "7102": "200", "7103": "401", "7104": "none", "7105": "none", "7106": "none"}
+    home = probe_home(tmp / "silent", {"srt": "allow", "lsof": lsof, "curl": codes})
+    out = home / "out"
+    probe_run(home, "--no-model", "claude", "--out", str(out))
+    got = {r[1]: (r[2], r[3], r[4], r[5]) for r in probe_rows(out) if r[1].startswith("L:")}
+    silent = "000, 401, 403 or 407"
+    check(
+        got.get("L:7101", ())[:3] == (silent, "000", "match")
+        and got.get("L:7101", ("",) * 4)[3].startswith("rapportd 127.0.0.1:7101 pid 301"),
+        f"rapportd with no answer is 000, match against {silent} -> {got.get('L:7101')}",
+    )
+    check(
+        got.get("L:7102", ())[:3] == (silent, "200", "MISMATCH"),
+        f"rapportd that answers 200 is MISMATCH -> {got.get('L:7102')}",
+    )
+    check(
+        got.get("L:7103", ())[:3] == (silent, "401", "match"),
+        f"rapportd that answers 401 is match -> {got.get('L:7103')}",
+    )
+    check(
+        got.get("L:7104", ())[:3] == ("401, 403 or 407", "000", "MISMATCH"),
+        f"another command with no answer is 000, MISMATCH against 401, 403 or 407 -> {got.get('L:7104')}",
+    )
+    near = (got.get("L:7105", ())[:3], got.get("L:7106", ())[:3])
+    check(
+        near == (("401, 403 or 407", "000", "MISMATCH"),) * 2,
+        f"rapportdx and rapport with no answer are 000, MISMATCH against 401, 403 or 407 -> {near}",
     )
 
 
@@ -1651,8 +1698,10 @@ def probe_units(check: Callable[[object, str], None], module: types.ModuleType) 
     row = module.shell_row("claude", module.Probe("W1", "refused", "true"), expired)
     listener = module.listener_row("claude", module.Listener("beta", "102", "127.0.0.1", "7002"), expired)
     check(
-        (row.got, row.verdict, listener.verdict) == ("timeout", "timeout", "timeout"),
-        f"a shell probe and a listener probe past their limit are timeout -> {row} {listener}",
+        (row.got, row.verdict, listener.got, listener.verdict) == ("timeout", "timeout", "timeout", "timeout")
+        and listener.detail.startswith("beta 127.0.0.1:7002 pid 102"),
+        f"a shell probe and a listener probe past their limit are timeout, the listener's detail with its "
+        f"command, address and PID -> {row} {listener}",
     )
     with tempfile.TemporaryDirectory(prefix="harness-probe-report-") as name:
         md = module.write_reports(
@@ -2986,6 +3035,7 @@ def probe_cases(check: Callable[[object, str], None]) -> None:
             probe_listeners,
             probe_environment,
             probe_routes,
+            probe_silent,
             probe_summary,
             probe_model,
             probe_void,

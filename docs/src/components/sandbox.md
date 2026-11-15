@@ -449,7 +449,7 @@ It runs four classes of probes for each chosen frontend:
 
 | class | ids | how it runs | what it asks |
 |:--|:--|:--|:--|
-| listener | `L:<port>`, `L:<port>/path` | `curl` under `srt` | does each TCP listener on `127.0.0.1`, on `::1` or on every interface answer 401, 403 or 407 |
+| listener | `L:<port>`, `L:<port>/api/v2/session` | `curl` under `srt` | does each TCP listener on `127.0.0.1`, on `::1` or on every interface answer 401, 403 or 407; a `rapportd` listener may also give no answer |
 | read and write | R1–R9, W1–W14 | `/bin/sh -c` under `srt` | can a command read a secret, or write a hook, a launch agent, a shell start file or another frontend's state |
 | network and process | N1–N9, X1–X8 | `/bin/sh -c` under `srt` | which hosts it reaches; can it open an app, send an Apple Event, mount, submit a launchd job, signal a process outside or start a sandbox of its own |
 | frontend | F1–F7 | the frontend under `agentbox` | does it start, do its tools run inside the sandbox, does its own file tool read outside, does it reach Kaimon, and do its own gates hold |
@@ -463,11 +463,16 @@ another one's `gh` left.
 
 The script lists the listeners with `lsof -nP -iTCP -sTCP:LISTEN`, outside `srt`, before the other
 probes. It asks a listener on every interface (`*:<port>`) at `127.0.0.1:<port>`, and each
-address and port once, at `/`. OpenCode's server takes a password, `OPENCODE_SERVER_PASSWORD`, and
-`/` of it can answer without one, so a listener whose command is `opencode` is also asked at
-`/path`, a route that OpenCode's binary names, in a row `L:<port>/path`. A listener answers as the
-policy means with 401, 403 or 407: 407 is a proxy's request for authentication, as `srt`'s own
-proxies give it. A shell probe runs as
+address and port once, at `/`. OpenCode's server takes a password, `OPENCODE_SERVER_PASSWORD`,
+for its API below `/api/v2/`, and its other routes, `/` among them, serve the web app's HTML
+without one; so a listener whose command is `opencode` is asked at `/api/v2/session` in place of
+`/`, in a row `L:<port>/api/v2/session`. A listener answers as the policy means with 401, 403 or
+407: 407 is a proxy's request for authentication, as `srt`'s own proxies give it. A listener whose
+command is `rapportd`, the macOS daemon of the communication between Apple devices, gives no HTTP
+answer, so its row expects `000, 401, 403 or 407` and is `match` on `000` too; a listener of
+any other command with no answer is `MISMATCH`. The `detail` of a listener row starts with
+`<command> <host>:<port> pid <pid>`, the command and the PID as `lsof` gives them, so that a
+listener of a `MISMATCH` row can be found after the run. A shell probe runs as
 `~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- /bin/sh -c <probe>`
 from `~/Research`, so its boundary is the settings file alone. A frontend probe runs the
 frontend's non-interactive form under `agentbox`: `claude -p`, `opencode run --auto`, `omp -p` or

@@ -9,8 +9,8 @@ or inside `agentbox`: srt refuses a sandbox inside its own.
 
 Before the probes it lists every TCP listener on 127.0.0.1, ::1 and every interface with `lsof`,
 outside srt, and asks a listener on every interface at 127.0.0.1. Then,
-for each frontend, it runs one listener probe per listener, at `/`, a second one at `/path` for an
-`opencode` listener, and the shell probes, each as
+for each frontend, it runs one listener probe per listener, at `/`, or at `/api/v2/session`, the
+route of OpenCode's API, for an `opencode` listener, and the shell probes, each as
 
     ~/.local/bin/srt --settings ~/.config/research-harness/sandbox/<policy name>.json -- \\
         /bin/sh -c <probe>
@@ -84,12 +84,17 @@ TOOL_TIMEOUT = 60
 DETAIL = 200
 REACHED = range(200, 400)
 AUTHENTICATES = ("401", "403", "407")
-# OpenCode's server takes a password and can answer at `/` without it; its binary names this
-# route, which an `opencode` listener is also asked at.
-OPENCODE_ROUTE = "/path"
+# OpenCode's server keeps its API below `/api/v2/` and asks for its password there; its other
+# routes, `/` among them, serve the web app's HTML without one. So an `opencode` listener is asked
+# at this route, and at no other.
+OPENCODE_ROUTE = "/api/v2/session"
 VOID = "F1 shows no start"
 DENIED = "403"
 NO_ANSWER = "000"
+# The command of a listener that gives no HTTP answer: rapportd, the macOS daemon of the
+# communication features between Apple devices (rapportd(8)). Its listener is also `match` on
+# NO_ANSWER.
+SILENT = "rapportd"
 LOOPBACK = ("127.0.0.1", "[::1]")
 EVERY_INTERFACE = "*"
 FAILED = ("MISMATCH", "timeout")
@@ -504,18 +509,21 @@ def listeners(text: str) -> list[Listener]:
 
 
 def listener_row(frontend: str, listener: Listener, call: Call, *, route: str = "/") -> Row:
-    """An HTTP request to `route` of `listener` under srt: `match` for the status 401, 403 or 407;
-    the id is `L:<port>`, with the route added where it is not `/`."""
+    """An HTTP request to `route` of `listener` under srt: `match` for the status 401, 403 or 407,
+    and for a SILENT listener also for no answer (000); the id is `L:<port>`, with the route added
+    where it is not `/`; the detail starts with the command, the address and `pid <pid>`."""
     address = f"{listener.host}:{listener.port}"
-    where = f"{listener.command} {address}"
+    where = f"{listener.command} {address} pid {listener.pid}"
     status, out, err = call(f"curl -s -g -o /dev/null -m 5 -w '%{{http_code}}' http://{address}{route}")
     probe_id = f"L:{listener.port}{'' if route == '/' else route}"
-    expected = "401, 403 or 407"
+    silent = listener.command == SILENT
+    accepted = (NO_ANSWER, *AUTHENTICATES) if silent else AUTHENTICATES
+    expected = "000, 401, 403 or 407" if silent else "401, 403 or 407"
     if status is None:
         return Row(frontend, probe_id, expected, "timeout", "timeout", f"{where} {detail(out + err)}")
     codes = out.split()
     code = codes[0] if codes else NO_ANSWER
-    verdict = "match" if code in AUTHENTICATES else "MISMATCH"
+    verdict = "match" if code in accepted else "MISMATCH"
     return Row(frontend, probe_id, expected, code, verdict, f"{where} {detail(out + err)}".strip())
 
 
@@ -664,9 +672,9 @@ def battery(options: Options, home: pathlib.Path, out: pathlib.Path) -> list[Row
     for frontend in options.frontends:
         env = forge_env(os.environ, run / frontend)
         call = functools.partial(sandboxed, srt, settings_file(home, frontend), research, env)
-        made = [listener_row(frontend, x, call) for x in loopback]
-        made += [
-            listener_row(frontend, x, call, route=OPENCODE_ROUTE) for x in loopback if x.command == "opencode"
+        made = [
+            listener_row(frontend, x, call, route=OPENCODE_ROUTE if x.command == "opencode" else "/")
+            for x in loopback
         ]
         made += [shell_row(frontend, p, call) for p in shell_probes(frontend, home, run, ident, kaimon)]
         clean(run, ident)
