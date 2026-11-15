@@ -10,8 +10,9 @@ arguments (dotfiles-merge also logs the `token` of its environment), and puts st
 and git first on the PATH. The stubs of gh and glab log their arguments and answer with the state
 and source branch in $GH_ANSWER or $GLAB_ANSWER, and exit 1 when the answer is empty, as gh and
 glab do for a number they cannot read. Under GITLAB_TOKEN=KEY the stub of glab answers
-$GLAB_TOKEN_ANSWER instead, and it logs its working directory, its GITLAB_HOST and whether its
-GITLAB_TOKEN is KEY. The stub of git logs each `credential` call and runs the real git. A scratch
+$GLAB_TOKEN_ANSWER instead, and it logs its working directory, its GITLAB_HOST, whether its
+GITLAB_TOKEN is KEY, and which of glab's variables of a token, a host, the protocol or the TLS
+check reach it. The stub of git logs each `credential` call and runs the real git. A scratch
 HOME holds a git repository at ~/.local/share/chezmoi whose origin each case sets, with a
 repo-local credential helper for https://git.example.org that returns the password in
 $HELPER_PASSWORD: an origin on github.com asks gh, any other host asks glab. The driver runs in a
@@ -21,12 +22,13 @@ The cases of the fallback to the source's git credential: glab's own login answe
 once and no credential is read; the credential answers, so glab runs a second time with the
 password as GITLAB_TOKEN, the host as GITLAB_HOST and the source as its directory, and the
 password is in no output, no argument and no file, nor, for a caller that exports `token`, in the
-environment of dotfiles-merge; an askpass program of the caller's GIT_ASKPASS or SSH_ASKPASS or of
-the source's core.askPass is not run when the helper returns no password; the second answer is not
-open; and no answer, for each of four reasons (glab answers neither call, the helper returns no
-password, the origin is an SSH address, the origin is an http:// URL), stops with one line that
-names `dotfiles merge <branch>`. It also runs `bash -n` and `shellcheck -S warning` on the
-driver. It exits 0 when every check passes.
+environment of dotfiles-merge; for a caller that exports glab's variables of a token, a host, the
+protocol or the TLS check, none reaches the second glab call; an askpass program of the caller's
+GIT_ASKPASS or SSH_ASKPASS or of the source's core.askPass is not run when the helper returns no
+password; the second answer is not open; and no answer, for each of four reasons (glab answers
+neither call, the helper returns no password, the origin is an SSH address, the origin is an
+http:// URL), stops with one line that names `dotfiles merge <branch>`. It also runs `bash -n` and
+`shellcheck -S warning` on the driver. It exits 0 when every check passes.
 """
 
 import os
