@@ -272,6 +272,13 @@ def structure(spec, lines):
     return errors, premise_cmds, delta_cmds, base
 
 
+def git_env() -> dict[str, str]:
+    """The environment of the two git calls, which need no user configuration: without the global
+    one, so that a process that may not read a file it includes (a Kaimon session, where a check
+    that needs Metal runs) does not stop git with exit status 128."""
+    return {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull}
+
+
 def status(tree: str) -> str | None:
     """`git status --porcelain` of a git tree, or None for any other tree and for a git that runs
     longer than 60 s. An ignored file is not a change: `run-tests.jl` resolves a `Manifest.toml`
@@ -280,6 +287,7 @@ def status(tree: str) -> str | None:
         p = subprocess.run(
             [shutil.which("git") or "git", "status", "--porcelain"],
             cwd=tree,
+            env=git_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -297,6 +305,7 @@ def export(repo: str, base: str, tree: str) -> str | None:
         archive = subprocess.run(
             [shutil.which("git") or "git", "archive", base],
             cwd=repo,
+            env=git_env(),
             capture_output=True,
             check=False,
             timeout=60,

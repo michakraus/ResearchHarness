@@ -20,6 +20,9 @@ runs them.
   spec-bundle.py copies the spec and names `$SPEC`.
 - A git of spec-validate.py and spec-bundle.py that runs past its timeout gives the answer of a git
   that fails: no status, a rule-9 error, and no commit.
+- In a home whose `.gitconfig` includes a file that the process may not read, git exits 128, and
+  spec-validate.py's export and status, which run git without the global configuration, still read
+  the repository.
 - The fix round's mutants: skills/build-part/evidence.md defines them in one section, with its
   four rules, and both builders and both build skills point at it.
 - scripts/probe-agentbox.py in a scratch home, with a stub for `srt`, `agentbox` and every program
@@ -821,6 +824,47 @@ def timeout_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
         isinstance(message, str) and message.startswith(f"rule 9: `git archive abc1234` fails in {tmp}: "),
         f"a git archive outside a repository fails with a rule-9 error -> {message!r}",
     )
+
+
+def unreadable_include_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
+    """A home whose `.gitconfig` includes a file that the process may not read, as in a Kaimon
+    session: git itself stops with status 128, and spec-validate.py's export and status, which run
+    git without the global configuration, still read the repository."""
+    validate = script(SPEC_VALIDATE)
+    git = shutil.which("git") or "git"
+    plain = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull}
+    repo, home, tree = tmp / "repo", tmp / "home", tmp / "tree"
+    for d in (repo, home, tree):
+        d.mkdir()
+    (repo / "a.txt").write_text("a\n")
+    for args in (
+        ["init", "-q"],
+        ["add", "a.txt"],
+        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "a"],
+    ):
+        subprocess.run([git, *args], cwd=repo, env=plain, check=True, capture_output=True, timeout=60)
+    secret = home / "forge.gitconfig"
+    secret.write_text("[user]\n\tname = t\n")
+    (home / ".gitconfig").write_text(f"[include]\n\tpath = {secret}\n")
+    secret.chmod(0)
+    try:
+        env = {**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")}
+        env.pop("GIT_CONFIG_GLOBAL", None)
+        bare = subprocess.run(
+            [git, "archive", "HEAD"], cwd=repo, env=env, capture_output=True, check=False, timeout=60
+        )
+        check(
+            bare.returncode == 128 and b"unable to access" in bare.stderr,
+            f"the fixture: git with the unreadable include exits 128 -> {bare.returncode} {bare.stderr!r}",
+        )
+        with mock.patch.dict(os.environ, env, clear=True):
+            got = (validate.export(str(repo), "HEAD", str(tree)), validate.status(str(repo)))
+        check(
+            got == (None, "") and (tree / "a.txt").read_text() == "a\n",
+            f"export and status without the global configuration read the repository -> {got}",
+        )
+    finally:
+        secret.chmod(0o600)
 
 
 def probe_home(tmp: pathlib.Path, config: dict[str, object], omit: tuple[str, ...] = ()) -> pathlib.Path:
@@ -2987,6 +3031,8 @@ def selftest() -> tuple[int, int]:
     sealed_cases(check)
     with tempfile.TemporaryDirectory(prefix="harness-script-timeouts-") as tmp:
         timeout_cases(check, pathlib.Path(tmp))
+    with tempfile.TemporaryDirectory(prefix="harness-script-include-") as tmp:
+        unreadable_include_cases(check, pathlib.Path(tmp))
     problems = fix_round_mutants(lambda path: (REPO / path).read_text())
     check(not problems, f"a fix round runs only the mutants that its fix touches -> {problems or 'holds'}")
     # the control: without the section, the case finds the gap
