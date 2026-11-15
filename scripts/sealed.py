@@ -44,8 +44,10 @@ past the time limit or prints no UTF-8; a plain text that is not one such line, 
 query or fragment and no control character in the user or the token; a secret of another host; no
 gh or glab on the PATH, or one that does not start; helper arguments that are not exactly a name of
 letters, digits and `-`, not starting with `-`, a URL `https://<host>` with no user, path, query or
-fragment, and an action; and a base name that is none of the three. The token is in no argument,
-file or message. The standard library only, and Python 3.9 or later, the python3 of macOS.
+fragment, and an action; and a base name that is none of the three. The refusal of an `age` that
+fails ends with age's last `age: error:` line, else with its last line that is not empty. The
+token is in no argument, file or message. The standard library only, and Python 3.9 or later, the
+python3 of macOS.
 """
 
 from __future__ import annotations
@@ -69,6 +71,8 @@ GITHUB = "github.com"
 HTTPS = "https"
 # The seconds that a decryption may take, a Touch ID prompt included.
 TIMEOUT = 120
+# The start of age's line that names the cause of a failure.
+AGE_ERROR = "age: error:"
 # A secret's name: letters, digits and `-`, not starting with `-`.
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
 # The words of a helper line after the program: the name, the URL and the action.
@@ -193,8 +197,10 @@ def decrypt(name: str) -> Secret:
         # The script's own SIGINT handler again; run holds SIGINT once more for gh or glab.
         signal.signal(signal.SIGINT, previous)
     if p.returncode != 0:
-        lines = err.decode(errors="replace").splitlines()
-        last = next((line.strip() for line in reversed(lines) if line.strip()), "")
+        lines = [line.strip() for line in err.decode(errors="replace").splitlines() if line.strip()]
+        # age ends its stderr with a footer that names its bug tracker; the cause is its error line.
+        errors = [line for line in lines if line.startswith(AGE_ERROR)]
+        last = (errors or lines or [""])[-1]
         raise RefusedError(f"age exits {status_of(p.returncode)} on {path}" + (f": {last}" if last else ""))
     try:
         text = out.decode()

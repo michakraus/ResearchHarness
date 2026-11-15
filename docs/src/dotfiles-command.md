@@ -228,10 +228,14 @@ back to `main`, deletes the local branch, and prints the command that opens the 
 create` for an `origin` on `github.com`, `glab mr create` for any other host. The commit is
 unsigned because only the signed merge of `dotfiles merge` counts on `main`.
 
-To take a template's edit too, answer `n`, run `chezmoi merge ~/<target>` for each template that
-it lists, and run `dotfiles absorb` again. Until the request is merged and applied, `chezmoi diff`
-and `dotfiles update` show the absorbed edits reverted: answer `n` to the question of `dotfiles
-update` until then.
+To take a template's edit too, answer `n`, put the edit into the template, and run `dotfiles
+absorb` again: it commits the changed template with the rest. The simpler way is `chezmoi edit
+~/<target>`, which opens the template in your editor and changes no live file: write the live
+edit into it, save, and check with `chezmoi diff` that the apply no longer reverts the edit.
+`chezmoi merge ~/<target>` does the same as a three-way merge of the live file, the template and
+its render, in the merge tool of chezmoi's configuration. Until the request is merged and
+applied, `chezmoi diff` and `dotfiles update` show the absorbed edits reverted: answer `n` to the
+question of `dotfiles update` until then.
 
 Each part of [the review](#the-review) must be read to its end. When you quit the pager early, it
 stops before the question, and nothing is absorbed.
