@@ -707,7 +707,9 @@ token is sealed in `~/.config/research-harness/sealed/github.age`, the command d
 as `ghx` does, with one Touch ID prompt, and every `gh` call runs the real `gh` with that token as
 `GH_TOKEN` and a new empty `GH_CONFIG_DIR`, removed at the end. The wrapper and your own `GH_TOKEN`
 and `gh` login are not used then. Without that file, as on Linux, `gh` runs from the `PATH`, with
-your environment.
+your environment. When GitHub answers a call with `Resource not accessible by personal access
+token`, the last line counts those repositories, names the missing permission *Administration:
+write*, and names the token: the sealed secret, or the one that `gh` from the `PATH` chose.
 
 **Exit status:** 0 when nothing would change, or after `--apply`; 1 when the dry run has a change;
 2 when the workflows are not canonical, the sealed token cannot be decrypted, or a call fails.
@@ -1534,7 +1536,11 @@ replaced. Cases of `github_token`, in a scratch home with `decrypt` and `program
 stub of `gh` that prints its environment, check that no sealed secret leaves `gh` as it is, that
 a sealed secret is decrypted once for every call of the block, with the token, a new empty
 `GH_CONFIG_DIR` gone after the block and no `GITHUB_TOKEN` or `GH_HOST`, and that a secret of
-another host and a refusal of `sealed.py` stop the subcommand. A case reads `test.yml` with
+another host and a refusal of `sealed.py` stop the subcommand. Cases of `protect`, with
+`targets`, `resolve`, `ruleset_id`, `plan_ruleset` and `apply_ruleset` replaced, check that writes
+refused with `Resource not accessible by personal access token` are counted and named with the
+permission and the token, `gh` from the `PATH` or the sealed secret, and that another failure
+keeps the plain message. A case reads `test.yml` with
 `workflow_checks` and fails when `HARNESS_CHECKS` differs
 from it, so a renamed or an added job fails `harness test`. The sweep does not run this subcommand, because it
 needs `gh` with a login.

@@ -626,9 +626,25 @@ def cmd_ci_protection(args: argparse.Namespace) -> int:
         return protect(args)
 
 
+# GitHub's answer to a call that the permissions of the token do not cover, as a ruleset write
+# with a token that has no Administration: write.
+NOT_ACCESSIBLE = "Resource not accessible by personal access token"
+
+
+def token_source() -> str:
+    """The token of the gh calls, as the refusal of a write that it may not make names it."""
+    if RUNNER.env is not None:
+        return "the sealed secret github, ~/.config/research-harness/sealed/github.age"
+    return (
+        "the one that gh from the PATH chose: the wrapper ~/.local/bin/gh gives the organisation "
+        "token of the owner, else GH_TOKEN, GITHUB_TOKEN or gh's login. On macOS, seal your own "
+        "broad token in ~/.config/research-harness/sealed/github.age"
+    )
+
+
 def protect(args: argparse.Namespace) -> int:
     """Plan or write the ruleset, or the removal of classic protection, of every target."""
-    changes = failed = 0
+    changes = failed = denied = 0
     for repo, checks in targets():
         try:
             slug, branch = resolve(repo)
@@ -654,7 +670,13 @@ def protect(args: argparse.Namespace) -> int:
         except GhError as e:
             print(f"{repo.name:<28} FAILED {e}")
             failed += 1
+            denied += NOT_ACCESSIBLE in str(e)
     print(f"\n{changes} change(s) {'made' if args.apply else 'to make'}, {failed} failed.")
+    if denied:
+        raise HarnessError(
+            f"{failed} repositories failed, {denied} of them because the token has no repository "
+            f"permission Administration: write; the token is {token_source()}"
+        )
     if failed:
         raise HarnessError(f"{failed} repositories failed")
     return outcome(args, changes)
@@ -1142,6 +1164,78 @@ def command_cases() -> tuple[int, int]:
     return 5, wrong
 
 
+def denied_message(env: dict[str, str] | None, errors: list[str]) -> str:
+    """The message of `protect --apply` over one target per error of `errors`, each the GhError of
+    its ruleset write, with RUNNER's environment `env`; "" when it raises none."""
+
+    def fail(slug: str, *_rest: object) -> None:
+        raise GhError(errors[int(slug.removeprefix("o/"))])
+
+    def fake_resolve(repo: pathlib.Path) -> tuple[str, str]:
+        return f"o/{repo.name}", "main"
+
+    def no_ruleset(_slug: str) -> None:
+        return None
+
+    def plan(*_rest: object) -> list[str]:
+        return ["create ruleset main"]
+
+    with (
+        mock.patch.multiple(
+            sys.modules[__name__],
+            targets=lambda: [(pathlib.Path(str(i)), REQUIRED_CHECKS) for i in range(len(errors))],
+            resolve=fake_resolve,
+            ruleset_id=no_ruleset,
+            plan_ruleset=plan,
+            apply_ruleset=fail,
+        ),
+        mock.patch.object(RUNNER, "env", env),
+        contextlib.redirect_stdout(io.StringIO()),
+    ):
+        try:
+            protect(argparse.Namespace(apply=True, remove_classic=False))
+        except HarnessError as e:
+            return str(e)
+    return ""
+
+
+def denied_cases() -> tuple[int, int]:
+    """The message of writes that the token may not make names the permission Administration:
+    write and the token: gh from the PATH, or inside `github_token` the sealed secret. Another
+    failure keeps the plain message."""
+    denied = f'{{"message":"{NOT_ACCESSIBLE}","documentation_url":"https://docs.gith'
+    cases = [
+        (
+            "two of three writes that the token may not make, gh from the PATH",
+            denied_message(None, [denied, "Not Found", denied]),
+            (
+                "3 repositories failed, 2 of them because the token has no",
+                "Administration: write",
+                "gh from the PATH",
+            ),
+        ),
+        (
+            "a write that the sealed token may not make",
+            denied_message({"GH_TOKEN": FAKE_SEALED}, [denied]),
+            ("1 repositories failed, 1 of them", "the token is the sealed secret github"),
+        ),
+    ]
+    wrong = 0
+    for label, got, parts in cases:
+        ok = all(p in got for p in parts)
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  ci-protection denied: {label}")
+        if not ok:
+            print(f"     got {got!r}")
+    other = denied_message(None, ["Not Found"])
+    ok = other == "1 repositories failed"
+    wrong += not ok
+    print(f"{'ok ' if ok else 'BAD'}  ci-protection denied: another failure keeps the plain message")
+    if not ok:
+        print(f"     got {other!r}")
+    return len(cases) + 1, wrong
+
+
 # The token of the fake decryption in `token_cases`; no real token.
 FAKE_SEALED = "fake-sealed-value"
 # A stub of the real gh: one line with its GH_TOKEN, its GITHUB_TOKEN and GH_HOST (or `unset`),
@@ -1265,10 +1359,10 @@ def token_cases() -> tuple[int, int]:
 
 
 def selftest():
-    """Cases for `ruleset_problem`, `targets`, `workflow_checks`, `github_token` and
-    `cmd_ci_protection`."""
+    """Cases for `ruleset_problem`, `targets`, `workflow_checks`, `github_token`,
+    `cmd_ci_protection` and the message of `protect` for a refused write."""
     total = wrong = 0
-    for cases in (ruleset_cases, target_cases, workflow_cases, token_cases, command_cases):
+    for cases in (ruleset_cases, target_cases, workflow_cases, token_cases, command_cases, denied_cases):
         n, w = cases()
         total += n
         wrong += w
