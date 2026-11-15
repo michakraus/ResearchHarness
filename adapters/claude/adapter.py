@@ -1,8 +1,9 @@
 """The adapter of Claude Code: its layer of `harness install`, the settings and the trust.
 
-THE LAYER. `harness install` installs into ~/.claude/:
+THE LAYER. `harness install` installs into ~/.claude/, and the settings into ~/.config/claudex/ too:
 
   settings/settings.proposal.json  -> ~/.claude/settings.json (merged: OWNED, and the keys it lacks)
+  settings/settings.proposal.json  -> ~/.config/claudex/settings.json (merged in the same way)
   agents/, skills/, rules/,
   instructions/, commands/ **      -> ~/.claude/**          (the same relative path)
   adapters/claude/**               -> ~/.claude/**          (the path relative to adapters/claude/)
@@ -51,6 +52,16 @@ dry run prints the unified diff of those sections and keys after the line of the
 (`settings_file`). A key of the template that the user removes comes back at the next install;
 another value in the file stays. A settings file that cannot be merged exits with status 2
 before anything is written.
+
+claudex runs Claude Code with CLAUDE_CONFIG_DIR=~/.config/claudex, where Claude Code reads its
+own settings.json and reaches the other files of ~/.claude by a second name. So
+~/.config/claudex/settings.json is the second file of the layer, merged from the same rendered
+template, and each file's plan line and diff carry its own path. In both files, each deny rule
+of the template on a path below ~/.claude/ or on ~/.claude.json has its twin below
+~/.config/claudex/ right after it, and so have the sandbox's read denies of ~/.claude.json,
+~/.claude/backups and ~/.claude/.credentials.json (`claudex_twins`). The twins of the two deny
+rules on **/.claude/settings*.json, which `**/.claude/` cannot match below ~/.config/claudex/, are
+those of the ~/.claude/settings*.json rules, so no rule is added twice.
 
 The install merges because the app rewrites settings.json at each change of model or effort in
 the UI. A `cp` of the proposal would revert each value set in the UI since the proposal last
@@ -569,18 +580,58 @@ def hook_command(command: str, profile: render_profile.Profile, python: str) -> 
     return shlex.join(program) + (" || " + shlex.join(words[cut + 1 :]) if cut < len(words) else "")
 
 
+# The configuration directory of claudex, relative to the home: claudex runs Claude Code with
+# CLAUDE_CONFIG_DIR set to it, so Claude Code reads its settings.json there, and the other files of
+# ~/.claude are reached there by a second name.
+CLAUDEX = ".config/claudex"
+# The deny rules that name a settings file below any `.claude` directory, and their twins below
+# ~/.config/claudex, which `**/.claude/` does not match.
+STARRED_TWINS = {
+    "Edit(**/.claude/settings.json)": f"Edit(/{{home}}/{CLAUDEX}/settings.json)",
+    "Edit(**/.claude/settings.local.json)": f"Edit(/{{home}}/{CLAUDEX}/settings.local.json)",
+}
+
+
+def claudex_twins(rules: list[str], home: str) -> list[str]:
+    """`rules` with the twin below ~/.config/claudex of each rule that names `home`/.claude/ or
+    `home`/.claude.json, or that STARRED_TWINS holds, right after that rule; `home` is how the rules
+    write the home directory, `/{home}` in a deny rule and `~` in a read deny of the sandbox. A twin
+    that the list already holds, a rule of `rules` or a twin added before it, is not added again,
+    so no twin appears twice: in the template, the twins of the two rules of STARRED_TWINS equal
+    those of the `/{home}/.claude/settings*.json` rules before them. Every other rule gets no twin."""
+    held = set(rules)
+    out: list[str] = []
+    for rule in rules:
+        out.append(rule)
+        if f"{home}/.claude/" in rule:
+            twin = rule.replace(f"{home}/.claude/", f"{home}/{CLAUDEX}/")
+        elif f"{home}/.claude.json" in rule:
+            twin = rule.replace(f"{home}/.claude.json", f"{home}/{CLAUDEX}/.claude.json")
+        else:
+            twin = STARRED_TWINS.get(rule)
+        if twin is not None and twin not in held:
+            out.append(twin)
+            held.add(twin)
+    return out
+
+
 def settings_template(
     profile: render_profile.Profile, overlay: str | pathlib.Path, python: str | None = None
 ) -> dict[str, Any]:
     """The settings template parsed, rendered with `profile` when it holds a placeholder, and with
     the network rules of settings/network.toml and the overlay at `overlay`, as `read_settings`
-    renders it. Then each command of its `hooks` is rendered by `hook_command`, which
-    `read_settings` does not do, with the interpreter `python`, by default the Python
-    environment's (`install.python_interpreter`)."""
+    renders it. Before the render, `permissions.deny` and `sandbox.filesystem.denyRead` get the
+    twins below ~/.config/claudex of their rules on Claude Code's paths (`claudex_twins`), while a
+    deny rule still writes the home as `/{home}`; the network's denies come after them. Then each
+    command of its `hooks` is rendered by `hook_command`, which `read_settings` does not do, with
+    the interpreter `python`, by default the Python environment's (`install.python_interpreter`)."""
     text = PROPOSAL.read_text()
     template = cast("dict[str, Any]", jsonio.loads(text, where=str(PROPOSAL)))
     interpreter: str = install.python_interpreter() if python is None else python
     try:
+        permissions, filesystem = template["permissions"], template["sandbox"]["filesystem"]
+        permissions["deny"] = claudex_twins(permissions["deny"], "/{home}")
+        filesystem["denyRead"] = claudex_twins(filesystem["denyRead"], "~")
         cfg = cast(
             "dict[str, Any]",
             render_profile.render_data(template, profile)
@@ -611,11 +662,13 @@ def settings_file(root, profile, overlay):
     variable of the template, leave the file as it is. A missing file is created with the keys of
     the template, indented by 2, mode 0644. Exits 2, before anything is written, on a file that is
     a symlink, is not a regular file, cannot be read, is not UTF-8 or JSON (`json_object`), is not
-    a JSON object, or holds an owned key whose value is not an object.
+    a JSON object, or holds an owned key whose value is not an object. The plan entry and the diff
+    header name the file below the home, `~/.claude/settings.json` for `root` ~/.claude.
     """
     import difflib
 
-    live = root / "settings.json"
+    live = cast("pathlib.Path", root / "settings.json")
+    label = f"~/{live.relative_to(pathlib.Path.home()).as_posix()}"
     # One lstat, so that a stat the sandbox denies is "cannot be read" on every Python, never "missing".
     try:
         st = os.lstat(live)
@@ -661,9 +714,7 @@ def settings_file(root, profile, overlay):
         return s
 
     a, b = (section_lines(section(c)) for c in (cfg, template))
-    diff = list(
-        difflib.unified_diff(a, b, "~/.claude/settings.json", "settings/settings.proposal.json", lineterm="")
-    )
+    diff = list(difflib.unified_diff(a, b, label, "settings/settings.proposal.json", lineterm=""))
     if diff or old is None:
 
         def change(merged: dict[str, JsonValue]) -> dict[str, JsonValue]:
@@ -679,12 +730,10 @@ def settings_file(root, profile, overlay):
                 cast("dict[str, JsonValue]", merged["env"])[key] = template["env"][key]
             return merged
 
-        data = ownedjson.merged(cast("str", text), change, where=str(cast("pathlib.Path", live))).encode(
-            "utf-8"
-        )
+        data = ownedjson.merged(text, change, where=str(live)).encode("utf-8")
     else:
         data = old
-    return live, data, 0o644 if old is None else None, "~/.claude/settings.json", True, "\n".join(diff)
+    return live, data, 0o644 if old is None else None, label, True, "\n".join(diff)
 
 
 def stray_warnings():
@@ -1072,12 +1121,17 @@ def plan(ctx: types.SimpleNamespace):
     case and Unicode form folded on every platform, as the default macOS volume compares them; on
     an installed path, or a directory above one, that is a symbolic link; and on an installed path
     that is not a readable file below directories."""
-    root = pathlib.Path.home() / ".claude"
-    # The settings go first, so that a new deny rule is in place before the files it protects.
-    settings = settings_file(root, ctx.profile, render_profile.network_path(ctx.args.profile))
+    home = pathlib.Path.home()
+    root = home / ".claude"
+    overlay = render_profile.network_path(ctx.args.profile)
+    # The settings go first, so that a new deny rule is in place before the files it protects:
+    # Claude Code's, then claudex's, which Claude Code reads under CLAUDE_CONFIG_DIR=~/.config/claudex.
+    settings = [
+        cast("tuple[Any, ...]", settings_file(r, ctx.profile, overlay)) for r in (root, home / CLAUDEX)
+    ]
     made = copies(ctx)
     layer_sources, layer, rules, shared = made.sources, made.layer, made.rules, made.shared
-    files: list[tuple[Any, ...]] = [cast("tuple[Any, ...]", settings), *made.files]
+    files: list[tuple[Any, ...]] = [*settings, *made.files]
     # The stamp goes after the layer, so that an apply that stops before its end leaves the old one.
     # It is over the source bytes of `layer`, which the hook reads again, not over the rendered ones.
     files.append(
@@ -2418,6 +2472,219 @@ def layer_cases(check, tmp):
         ),
         f"settings.json is the first file line of the Claude Code layer, the stamp the last: "
         f"{labels[:2]}, {labels[-1:]}",
+    )
+
+    # claudex runs Claude Code with CLAUDE_CONFIG_DIR=~/.config/claudex, where Claude Code reads a
+    # settings.json of its own. The install merges the same rendered template into it: the second
+    # file of the layer, right after ~/.claude/settings.json, each with its own label.
+    file_line = re.compile(r"^(~/\S+)\s+(?:INSTALL|REPLACE|already identical|MODE)", re.M)
+    base, claude, tree = fresh(["rules/x.md"])
+    claudex = base / "home" / ".config" / "claudex"
+    code, text = run(base)
+    labels = file_line.findall(text)
+    case(
+        lambda: (
+            code == 1
+            and labels[:2] == ["~/.claude/settings.json", "~/.config/claudex/settings.json"]
+            and len(labels) > 2
+            and labels[2].startswith("~/.claude/")
+            and labels.count("~/.claude/settings.json") == 1
+            and labels.count("~/.config/claudex/settings.json") == 1
+            and not claudex.exists()
+        ),
+        f"the dry run plans ~/.claude/settings.json, then ~/.config/claudex/settings.json, then the other files "
+        f"of the layer, and writes nothing: {code}, {labels[:3]}",
+    )
+    # A missing claudex settings.json is created with the keys of the template, indented by 2, mode
+    # 0644 under a umask of 077, the same bytes as a new ~/.claude/settings.json.
+    umask = os.umask(0o077)
+    try:
+        code, text = run(base, "--apply")
+    finally:
+        os.umask(umask)
+    new = json.dumps({**owned_of(base), **others}, indent=2, ensure_ascii=False) + "\n"
+    case(
+        lambda: (
+            code == 0
+            and (claudex / "settings.json").read_text() == new
+            and (claude / "settings.json").read_text() == new
+            and mode(claudex / "settings.json") == 0o644
+        ),
+        f"--apply writes a missing ~/.config/claudex/settings.json with the template's keys, indented by 2, "
+        f"mode 0644, as ~/.claude/settings.json: {code}, {tail(text)}",
+    )
+
+    # The deny rules and the read denies that name a path of Claude Code get a twin below
+    # ~/.config/claudex, right after them, in both files: claudex reaches the same files by that
+    # second name. Each other rule has none, and the network's denies stay last.
+    claudex_profile = render_profile.load(base / "profile.toml")
+    raw = cast("dict[str, Any]", json_value(PROPOSAL.read_text(), str(PROPOSAL)))
+    raw_deny = cast("list[str]", raw["permissions"]["deny"])
+    raw_read = cast("list[str]", raw["sandbox"]["filesystem"]["denyRead"])
+    rendered = settings_template(
+        claudex_profile, base / "network.toml", str(base / "python" / "bin" / "python")
+    )
+    h = f"/{claudex_profile.home}"
+    starred = {
+        f"Edit(**/.claude/{name})": f"Edit({h}/.config/claudex/{name})"
+        for name in ("settings.json", "settings.local.json")
+    }
+
+    def twin_of(rule: str) -> str | None:
+        """The twin below ~/.config/claudex that the rendered deny rule `rule` must have, or None."""
+        if f"{h}/.claude/" in rule:
+            return rule.replace(f"{h}/.claude/", f"{h}/.config/claudex/")
+        if f"{h}/.claude.json" in rule:
+            return rule.replace(f"{h}/.claude.json", f"{h}/.config/claudex/.claude.json")
+        return starred.get(rule)
+
+    def deny_twins(deny: list[str]) -> tuple[list[tuple[str, str | None]], list[str]]:
+        """The (rule, twin) pairs of `deny`, a twin being a rule below ~/.config/claudex, and its
+        rules without the twins."""
+        pairs: list[tuple[str, str | None]] = [
+            (deny[i - 1], r) for i, r in enumerate(deny) if "/.config/claudex/" in r
+        ]
+        return pairs, [r for r in deny if "/.config/claudex/" not in r]
+
+    origins = cast("list[str]", render_profile.render_data(raw_deny, claudex_profile))
+    # A twin that an earlier rule already gave is not wanted again: those of the two `**` rules.
+    wanted: list[tuple[str, str | None]] = []
+    for r in origins:
+        t = twin_of(r)
+        if t is not None and t not in [w for _, w in wanted]:
+            wanted.append((r, t))
+    read_wanted = [
+        ("~/.claude.json", "~/.config/claudex/.claude.json"),
+        ("~/.claude/backups", "~/.config/claudex/backups"),
+        ("~/.claude/.credentials.json", "~/.config/claudex/.credentials.json"),
+    ]
+
+    def installed(path: pathlib.Path) -> dict[str, Any]:
+        """The settings at `path`, or an empty object for a missing file, which fails each case below."""
+        return cast("dict[str, Any]", json_value(path.read_text(), str(path))) if path.is_file() else {}
+
+    def lists(cfg: dict[str, Any]) -> tuple[list[str], list[str]]:
+        """The deny rules and the sandbox's read denies of the settings `cfg`, each empty where missing."""
+        deny = cast("list[str]", cfg.get("permissions", {}).get("deny", []))
+        read = cast("list[str]", cfg.get("sandbox", {}).get("filesystem", {}).get("denyRead", []))
+        return deny, read
+
+    for label, cfg in [
+        ("the rendered template", rendered),
+        ("~/.claude/settings.json", installed(claude / "settings.json")),
+        ("~/.config/claudex/settings.json", installed(claudex / "settings.json")),
+    ]:
+        deny, read = lists(cfg)
+        pairs, plain = deny_twins(deny)
+        case(
+            lambda: (
+                len(raw_deny) == 286
+                and len(wanted) == 28
+                and pairs == wanted
+                and plain[: len(origins)] == origins
+                and len(deny) >= 314
+                and not any("claudex" in r for r in deny[314:])
+                and len(set(deny)) == len(deny)
+            ),
+            f"{label}: each rendered deny rule of the template that names ~/.claude/ or ~/.claude.json has its "
+            f"twin below ~/.config/claudex right after it, the two **/.claude/settings*.json rules add none again, "
+            f"314 rules before the network's denies, none twice, and no other rule has a twin: {len(deny)}, "
+            f"{[p for p in pairs if p not in wanted][:2]}, {[p for p in wanted if p not in pairs][:2]}",
+        )
+        case(
+            lambda: (
+                len(raw_read) == 28
+                and len(read) == 31
+                and [r for r in read if "claudex" not in r] == raw_read
+                and all(read[read.index(r) + 1] == t for r, t in read_wanted)
+            ),
+            f"{label}: denyRead holds the template's 28 entries, and the twin below ~/.config/claudex of "
+            f"~/.claude.json, ~/.claude/backups and ~/.claude/.credentials.json right after each: {read}",
+        )
+
+    # The two `**` rules alone each get their home-anchored twin; after the home rule, whose twin is
+    # the same, the `**` rule adds none again.
+    starred_alone = claudex_twins(
+        ["Edit(**/.claude/settings.json)", "Edit(**/.claude/settings.local.json)"], "/{home}"
+    )
+    case(
+        lambda: (
+            starred_alone
+            == [
+                "Edit(**/.claude/settings.json)",
+                "Edit(/{home}/.config/claudex/settings.json)",
+                "Edit(**/.claude/settings.local.json)",
+                "Edit(/{home}/.config/claudex/settings.local.json)",
+            ]
+        ),
+        f"claudex_twins gives each **/.claude/settings*.json rule its twin below ~/.config/claudex: {starred_alone}",
+    )
+    after_home = claudex_twins(
+        ["Edit(/{home}/.claude/settings.json)", "Edit(**/.claude/settings.json)"], "/{home}"
+    )
+    case(
+        lambda: (
+            after_home
+            == [
+                "Edit(/{home}/.claude/settings.json)",
+                "Edit(/{home}/.config/claudex/settings.json)",
+                "Edit(**/.claude/settings.json)",
+            ]
+        ),
+        f"claudex_twins adds a twin that it has added already no second time: {after_home}",
+    )
+    held_already = ["Read(/{home}/.claude.json)", "Read(/{home}/.config/claudex/.claude.json)"]
+    case(
+        lambda: claudex_twins(held_already, "/{home}") == held_already,
+        f"claudex_twins adds no twin that the rules hold already: {claudex_twins(held_already, '/{home}')}",
+    )
+
+    # A claudex settings.json with a key of its own and a stale owned section is merged, not
+    # replaced: the key stays, the section comes from the template. Each diff names its own file.
+    stale = json.dumps({"model": "x", "permissions": {"deny": []}}, indent=2) + "\n"
+    claudex.mkdir(parents=True, exist_ok=True)
+    (claudex / "settings.json").write_text(stale)
+    (claude / "settings.json").write_text(stale)
+    code, text = run(base)
+    lines = text.splitlines()
+    heads = [lines[i + 1] for i, line in enumerate(lines[:-1]) if file_line.match(line) and "REPLACE" in line]
+    case(
+        lambda: (
+            code == 1
+            and heads[:2] == ["--- ~/.claude/settings.json", "--- ~/.config/claudex/settings.json"]
+            and (claudex / "settings.json").read_text() == stale
+        ),
+        f"the dry run's diff of each settings file names that file: {code}, {heads[:2]}",
+    )
+    code, text = run(base, "--apply")
+    merged = json_value((claudex / "settings.json").read_text(), "settings.json")
+    case(
+        lambda: (
+            code == 0
+            and merged["model"] == "x"
+            and merged["permissions"] == owned_of(base)["permissions"]
+            and merged == json_value((claude / "settings.json").read_text(), "settings.json")
+            and len(list(claudex.glob("settings.json.bak-*"))) == 1
+        ),
+        f"--apply keeps the key `model` of a claudex settings.json, replaces its stale `permissions` from the "
+        f"template, and keeps the old file as a backup: {code}, {list(merged)[:3]}, {tail(text)}",
+    )
+
+    # A claudex settings.json that is no JSON exits 2 with one line naming it, before anything is written.
+    (claudex / "settings.json").write_text("{\n")
+    before = scratch.snapshot(base)
+    code, text = run(base, "--apply")
+    lines = text.strip().splitlines()
+    case(
+        lambda: (
+            refused(code, text)
+            and len(lines) == 1
+            and str(claudex / "settings.json") in lines[0]
+            and "is not JSON" in lines[0]
+            and scratch.snapshot(base) == before
+        ),
+        f"a ~/.config/claudex/settings.json that is not JSON exits 2 with one line that names it, and no file "
+        f"changes: {code}, {lines[-3:]}",
     )
 
     # A settings.json that cannot be merged exits 2 with one line naming it and the reason, before
