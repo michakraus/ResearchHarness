@@ -86,8 +86,9 @@ Checks:
       once with the password as GITLAB_TOKEN and the host as GITLAB_HOST, and the password is on
       no output; glab's other token, host, protocol and TLS variables that the caller exports do
       not reach it; with no password, and for an ssh:// origin, glab runs with its own login; when
-      glab fails, absorb exits 1 and names the pushed branch and the command that opens the
-      request, which bash parses back to the title of a subject with quotes. It stops without a
+      glab fails, and when gh fails on an origin on github.com (with no password), absorb exits 1
+      and names the pushed branch and the command that opens the request, which bash parses back
+      to the title of a subject with quotes. It stops without a
       terminal (before the fetch), on an argument (exit 2), on a detached HEAD, on a main ahead
       of and one diverged from origin/main, on an untracked, a
       deleted, a staged deleted, an added and a renamed file, on a review quit early (the line),
@@ -1539,10 +1540,12 @@ def absorb(name, label, password, *, fail=False, origin=GITLAB, **caller):
     """In a new absorb_world with a live edit of .plain, the origin `origin` (by default an
     https:// origin on a GitLab host) that git rewrites to the scratch remote, and the source's
     own credential helper, which gives `password` (none when empty): run dotfiles-absorb,
-    answer y, and return the world, the output, the pushed branch and glab's log. With
-    `fail`, glab exits 1, and absorb must exit 1; otherwise 0. `caller` holds variables that
-    the caller exports; ABSORB_SUBJECT among them is the subject of absorb's commit
+    answer y, and return the world, the output, the pushed branch and the log of the tool that
+    opens the request, gh for GITHUB and glab otherwise; the other tool must not run. With
+    `fail`, that tool exits 1, and absorb must exit 1; otherwise 0. `caller` holds variables
+    that the caller exports; ABSORB_SUBJECT among them is the subject of absorb's commit
     (SUBJECT_HOOK)."""
+    tool, other = ("gh", "glab") if origin == GITHUB else ("glab", "gh")
     want_code = 1 if fail else 0
     w = absorb_world(name)
     w.env.update(caller)
@@ -1557,7 +1560,7 @@ def absorb(name, label, password, *, fail=False, origin=GITLAB, **caller):
     hook.write_text(SUBJECT_HOOK)
     hook.chmod(0o755)
     if fail:
-        (w.root / "glab.fail").write_text("")
+        (w.root / f"{tool}.fail").write_text("")
     (w.home / ".plain").write_text("plain live\n")
     code, out = w.run("dotfiles-absorb", answers="y\n")
     branches = remote_absorbs(w)
@@ -1566,9 +1569,9 @@ def absorb(name, label, password, *, fail=False, origin=GITLAB, **caller):
         f"absorb, {label}: exit {code}, {want_code}, one branch on the remote {branches}",
     )
     source_kept(w, f"absorb, {label}", base)
-    check(request_log(w, "gh") == [[], []], f"absorb, {label}: gh does not run")
+    check(request_log(w, other) == [[], []], f"absorb, {label}: {other} does not run")
     branch = "".join(ref.removeprefix("refs/heads/") for ref in branches)
-    return w, out, branch, request_log(w, "glab")
+    return w, out, branch, request_log(w, tool)
 
 
 def absorb_requests():
@@ -1639,6 +1642,32 @@ def absorb_by_hand():
     ]
     check(
         f"the branch {branch} is pushed, but the merge request could not be opened" in out
+        and words == want
+        and "is open." not in out
+        and HELPER_KEY not in out,
+        f"absorb, {label}: exit 1, the pushed branch and a command that bash parses to {want!r}: "
+        f"{words!r} {out[-400:]!r}",
+    )
+
+    # The same for gh, on an origin on github.com: gh gets no password, and its command by hand
+    # parses back to the title too.
+    label = "gh cannot open the request"
+    w, out, branch, (args, env) = absorb(
+        "c17-github-fail", label, HELPER_KEY, fail=True, origin=GITHUB, ABSORB_SUBJECT=title
+    )
+    subject, body = pushed_message(w, branch)
+    head = ("gh", "pr", "create", "-R", "github.com/owner/dotfiles", "--base", "main", "--head", branch)
+    check(
+        args == [[*head[1:], "--title", subject, "--body", body]]
+        and subject == title
+        and env == [f"cwd={w.source} host=<unset> token=<unset>"],
+        f"absorb, {label}: gh runs once with the hook's subject as the title, and no password: {args} {env}",
+    )
+    printed = re.search(r"open it with: (.*?)\r?$", out, re.MULTILINE)
+    words = shell_words(printed.group(1), w.env) if printed else []
+    want = [*head, "--title", title]
+    check(
+        f"the branch {branch} is pushed, but the pull request could not be opened" in out
         and words == want
         and "is open." not in out
         and HELPER_KEY not in out,
