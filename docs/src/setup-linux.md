@@ -1,10 +1,9 @@
 # Setup on Linux
 
 This page sets up a Linux machine in four steps: the prerequisites, the clone, `harness setup`
-and the check that it worked. Then you make the [forge tokens](#the-forge-tokens).
-`harness setup` puts the tools and the
-[frontends](concepts.md#frontend) that you choose on the machine, and then sets up the harness,
-with its [install](concepts.md#install).
+and the check that it worked. Then you make the [forge tokens](#the-forge-tokens). `harness setup`
+puts the tools and the [frontends](concepts.md#frontend) that you choose on the machine, and then
+sets up the harness, with its [install](concepts.md#install).
 [setup-reference.md](setup-reference.md) gives each step of `harness setup`: what it does, why,
 and how to do it by hand. [setup-macos.md](setup-macos.md) is the page for macOS.
 
@@ -139,27 +138,40 @@ session.
 ## The forge tokens
 
 **`harness setup` makes no token.** An [agent](concepts.md#agent) reaches GitHub and GitLab with
-tokens that you make: on GitHub, one fine-grained token for each organisation and one for your
-account; on GitLab, one group access token. The forge limits each token to its owner, so an agent
-can write only to the repositories of that owner. A broad login, such as `gh auth login`, gives an
-agent write access to every repository that you can write.
+the organisation tokens that you make: on GitHub, one fine-grained token for each organisation and
+one for your account; on GitLab, one group access token. The forge limits each token to its owner,
+so an agent can write only to the repositories of that owner. A broad login, such as
+`gh auth login`, gives an agent write access to every repository that you can write.
+[The forge tokens](components/sandbox.md#the-forge-tokens) explains how the harness passes the
+tokens. The sealed broad tokens of [setup-macos.md](setup-macos.md#your-own-broad-tokens) need the
+Secure Enclave of a Mac, so this page has no such step.
 
-**On GitHub**, make one fine-grained token for each organisation and one for your account. Set the
-resource owner to that organisation or to your account, select all repositories, and give the
-token these permissions:
+### The organisation tokens
 
-- Read access to Dependabot alerts, artifact metadata, commit statuses and metadata
-- Read and write access to actions, code, discussions, issues, pull requests, repository creation
-  and workflows
+1. On GitHub, make one fine-grained token for each organisation and one for your account. Set the
+   resource owner to that organisation or to your account, select all repositories, and give the
+   token these permissions:
 
-Give the token no Gists permission. An organisation can require that it approves a token.
+   - Read access to Dependabot alerts, artifact metadata, commit statuses and metadata
+   - Read and write access to actions, code, discussions, issues, pull requests, repository
+     creation and workflows
 
-**On GitLab**, make one group access token of the group, with the scopes `api`, `read_repository`
-and `write_repository`, and a role that can create projects in the group. By GitLab's default,
-that role is Maintainer; the group's setting *Roles allowed to create projects* decides it.
-
-**Then** put the tokens into the token store and run `harness install --apply`: steps 3 to 5 of
-*Your steps* in [The forge tokens](components/sandbox.md#the-forge-tokens).
+   Give the token no Gists permission. An organisation can require that it approves a token.
+2. On GitLab, make one group access token of the group, with the scopes `api`, `read_repository`
+   and `write_repository`, and a role that can create projects in the group. By GitLab's default,
+   that role is Maintainer; the group's setting *Roles allowed to create projects* decides it.
+3. Put each token into `~/.config/research-harness/forge/<host>/<owner>.store` as the one line
+   `https://x-access-token:<token>@github.com` or `https://oauth2:<token>@<gitlab host>`, mode
+   600, the directories mode 700. Make `github.com/default.store` a copy of, or a symbolic link
+   to, your account's file.
+4. Run `harness install --apply`.
+5. Remove the broad credentials and route your terminal the same way: `gh auth logout`, replace
+   glab's stored token by the group token (`glab auth login --hostname <gitlab host>`), erase the
+   credential manager's GitHub and GitLab entries, and, in your dotfiles, remove the credential
+   manager and `gh auth git-credential` helpers from `~/.gitconfig` and end its credential lines
+   with `[include] path = ~/.config/research-harness/forge.gitconfig`. A Claude Code session runs
+   git and gh outside its [sandbox](concepts.md#sandbox), so a broad credential that stays there
+   stays usable.
 
 **More.** To keep several machines the same, see
 [Dotfiles (optional)](setup-reference.md#dotfiles-optional).

@@ -354,31 +354,18 @@ it, and its `store` writes to `~/.gitconfig` and to the keychain. srt refuses bo
 prints `error: could not lock config file ~/.gitconfig: Operation not permitted`. The git
 operation goes on: the line is noise, not a failure. git matches the port of a credential URL
 exactly, and the proxy's port changes with each run, so no section of `forge.gitconfig` can clear
-the helper for the proxy. Removing the credential manager from `~/.gitconfig` (step 5 below) ends
-the line.
+the helper for the proxy. Removing the credential manager from `~/.gitconfig` (step 5 of *The
+organisation tokens*) ends the line.
 
-**Your steps:**
+**Your steps** are *The organisation tokens* of the setup page
+([macOS](../setup-macos.md#the-organisation-tokens),
+[Linux](../setup-linux.md#the-organisation-tokens)): the tokens, the token store,
+`harness install --apply`, and the terminal routed the same way.
 
-1. On GitHub, make one fine-grained token for each organisation and one for your account, with the
-   permissions that *The forge tokens* of the setup page lists
-   ([macOS](../setup-macos.md#the-forge-tokens), [Linux](../setup-linux.md#the-forge-tokens)).
-2. On the GitLab instance, make one group access token of the group, as the same section says.
-3. Put each token into `~/.config/research-harness/forge/<host>/<owner>.store` as the one line
-   `https://x-access-token:<token>@github.com` or `https://oauth2:<token>@<gitlab host>`, mode
-   600, the directories mode 700. Make `github.com/default.store` a copy of, or a symbolic link
-   to, your account's file.
-4. Run `harness install --apply`.
-5. Remove the broad credentials and route your terminal the same way: `gh auth logout`, replace
-   glab's stored token by the group token (`glab auth login --hostname <gitlab host>`), erase the
-   credential manager's GitHub and GitLab entries, and, in your dotfiles, remove the credential
-   manager and `gh auth git-credential` helpers from `~/.gitconfig` and end its credential lines
-   with `[include] path = ~/.config/research-harness/forge.gitconfig`. A Claude Code session runs
-   git and gh outside its sandbox, so a broad credential that stays there stays usable.
-
-**The sealed secrets**, on macOS only. After step 5 your terminal has the agents' tokens, not your
-own broad access. A broad login on the Mac is also the sessions' login: they run gh, glab and git
-as you. So your broad tokens are secrets that only your Touch ID decrypts, and three names of
-[`sealed.py`](scripts.md#sealed-py) in `~/.local/bin` use them: `ghx` runs gh, and `glabx` runs
+**The sealed secrets**, on macOS only. After those steps your terminal has the agents' tokens,
+not your own broad access. A broad login on the Mac is also the sessions' login: they run gh, glab
+and git as you. So your broad tokens are secrets that only your Touch ID decrypts, and three names
+of [`sealed.py`](scripts.md#sealed-py) in `~/.local/bin` use them: `ghx` runs gh, and `glabx` runs
 glab, with your broad token; `git-credential-sealed` is a git credential helper that gives one
 repository its own token. Each run that reads a secret asks for Touch ID. A Touch ID prompt that
 you did not start comes from a session: refuse it. The secrets are in
@@ -390,53 +377,9 @@ from it OpenCode's `opencode.jsonc`, also refuses a command that runs `ghx`, `gl
 `git-credential-sealed`, so a session that types one is refused before a prompt appears. That deny
 prevents accidents; Touch ID and the read denies of the identity are the boundary.
 
-**Your steps for the sealed secrets**, on macOS, after the steps above:
-
-1. Install the tools: `brew install age age-plugin-se`.
-2. Make the identity in the Secure Enclave, in a directory with mode 700:
-
-   ```sh
-   mkdir -m 700 -p ~/.config/research-harness/sealed
-   age-plugin-se keygen --access-control any-biometry-or-passcode --recipient-type se \
-       -o ~/.config/research-harness/sealed/identity.txt
-   ```
-
-   `keygen` prints one line, `Public key: age1se1…`. That key is the identity's recipient, and it
-   is no secret. `--access-control any-biometry-or-passcode` makes each decryption ask for Touch
-   ID, or for the Mac's password where no Touch ID is at hand; a session can type neither.
-   `--recipient-type se` keeps the recipient an `age1se1…` key: a later version of
-   `age-plugin-se` makes a `tag` key, `age1tag1…`, by default. The flags are those of
-   `age-plugin-se` 0.2.1, which `age-plugin-se --help` lists.
-3. Write the recipient into a file, so that no command needs the key typed:
-
-   ```sh
-   age-plugin-se recipients --recipient-type se -i ~/.config/research-harness/sealed/identity.txt \
-       -o ~/.config/research-harness/sealed/recipient.txt
-   ```
-
-   Then encrypt each secret to it: `github.age` with your broad GitHub token, `gitlab.age` with
-   your broad GitLab token, and `<name>.age` for a repository of its own. Each secret is one line
-   `https://<user>:<token>@<host>`. Run the command, type the line, press Enter, then Ctrl-D: the
-   token is then in no argument and not in the shell's history.
-
-   ```sh
-   age -R ~/.config/research-harness/sealed/recipient.txt \
-       -o ~/.config/research-harness/sealed/github.age
-   ```
-
-4. Give a repository that has a token of its own, for example the dotfiles, its helper in place
-   of a plain token file. git asks the helpers of `~/.gitconfig`, `forge.gitconfig` included,
-   before those of the repository, and stops at the first that answers. So in the repository, an
-   empty `helper` clears them first:
-
-   ```sh
-   git config credential.https://<host>.helper ''
-   git config --add credential.https://<host>.helper 'sealed <name> https://<host>'
-   ```
-
-   The helper line names the URL, and the helper answers only for that host.
-5. Keep glab's stored login as the group token of step 5 above; your broad GitLab access goes
-   through `glabx`.
+**Your steps for the sealed secrets** are *Your own broad tokens* of
+[setup-macos.md](../setup-macos.md#your-own-broad-tokens): the tools, the identity in the Secure
+Enclave, the secrets, and the helper of a repository that has a token of its own.
 
 ## The pinned srt
 
