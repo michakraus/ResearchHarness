@@ -2,13 +2,6 @@
 
 ## Unreleased
 
-- **The edge catalogue of `build-part` gains two edges that a later round found.** Under a
-  numerical method: a non-finite input divided by a coefficient that automatic differentiation
-  carries as a dual number with zero partials, which fills the Jacobian row with `NaN` and makes
-  the LU throw where the step should be recorded as unconverged. Under a type or an interface: a
-  validity check written against a wider interface than the arithmetic needs, which let a string
-  through as two values and a complex value through to an `InexactError`.
-
 - **Under oh-my-pi, `gh pr create` in an own organisation runs unasked when it runs alone.**
   oh-my-pi's `allow` matches only a whole command with no `;`, `&`, `|`, redirection or `$`, so a
   `cd … && gh pr create --repo <owner>/…` or a trailing `| tail` fell to the final `prompt` pattern.

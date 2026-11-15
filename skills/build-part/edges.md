@@ -237,11 +237,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - `NaN` and `Inf` in an input, and at a trial point; a slope of `-Inf` read as descent
 - **a non-finite input divided by a coefficient that the Jacobian's automatic differentiation
   carries as a dual number with zero partials:** the quotient rule computes `NaN · 0 = NaN` in
-  every partial, so the whole row of the Jacobian is `NaN` and the LU raises `SingularException`,
-  where the residual alone would leave the step unconverged and recorded. A box scheme divided a
-  forcing term by its cache's `λ::ST`. Divide by the plain value (`ForwardDiff.value`), and run a
-  `NaN` and an `Inf` input through the whole solve, not through the residual (I2 round 1, *Revive
-  the multisymplectic package*)
+  every partial, so the whole row of the Jacobian is `NaN` and the LU throws (`SingularException`
+  from the simple solver package, `ArgumentError` from `LinearAlgebra.lu`), where the residual
+  alone would leave the step unconverged and recorded. A box scheme divided a forcing term by its
+  cache's `λ::ST`. Divide by the plain value (`ForwardDiff.value`), and run a `NaN` and an `Inf`
+  input through the whole solve, not through the residual (I2 round 1, *Revive the multisymplectic
+  package*)
 - a subnormal input; a result that underflows to zero; an anchor value near `floatmin`
 - a scale of `1e±8`, and a scale that is **not a power of 2** — a power of 2 is exact and hides
   round-off
@@ -430,9 +431,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - **a validity check written against an interface wider than the arithmetic that uses the
   value:** `applicable(length, x)` accepts the string `"ab"` as two values, and `x isa Number`
   accepts a complex value; the first runs with `convert(Float64, 'a') == 97.0` and no error, the
-  second throws `InexactError` at the conversion to the real element type in every run. Check what
-  the arithmetic needs (`Real` entries), and test a string, a complex scalar and a complex vector
-  (I2 verify 2 and the finish after verify 3, *Revive the multisymplectic package*)
+  second throws `InexactError` at the conversion to the real element type wherever the imaginary
+  part is not zero. Check what the arithmetic needs (`Real` entries), and test a string, a complex
+  scalar and a complex vector (I2 verify 2 and the finish after verify 3, *Revive the
+  multisymplectic package*)
 - a device array under `allowscalar(false)`
 - a device claim read from a `JLArray` run, for a method that factors a small block with `lu!` and
   `ldiv!`: a `JLArray` raises "Scalar indexing is disallowed" there, because JLArrays has no `lu` and
