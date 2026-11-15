@@ -18,7 +18,10 @@ refused.
 
 The hooks run against a fixture `HOME`, never the real one, so the cases mean the same on
 every machine and in CI. Each Python hook runs with this interpreter, `sys.executable`, not
-with its shebang, and each call has a timeout.
+with its shebang, and each call has a timeout. Each fixture home in which the guard of Claude
+Code, OpenCode or oh-my-pi runs holds a `.ssh` that the guard cannot list, as under `agentbox`,
+so that its launcher check passes there; only the cases of the launcher check add homes whose
+`.ssh` it can list.
 """
 
 import ast
@@ -127,6 +130,49 @@ for many in MANY_GATES:
     many_file.parent.mkdir(parents=True, exist_ok=True)
     many_file.write_text(json.dumps({"session_id": many_sid, "pid": os.getpid()}), encoding="utf-8")
 ENV = {**CLEAN, "HOME": HOME}
+# The `.ssh` of each fixture home in which a guard case of Claude Code, OpenCode or oh-my-pi runs: a
+# directory with mode 000, which the guard cannot list, as under `agentbox`, whose sandbox denies
+# `~/.ssh`. On macOS the guard refuses every call of those frontends when it can list `~/.ssh`
+# (`guard/launcher.py`). `main` gives each one mode 700 again before it removes the fixture, so that
+# the removal need not go through a directory that it cannot list.
+CLOSED_SSH: list[pathlib.Path] = []
+# The launcher check answers on macOS alone; on another platform it passes every call, so there each
+# case of the launcher that runs the guard in a process of its own expects the decision of the corpus.
+MAC = sys.platform == "darwin"
+# A text of the launcher check's refusal of a session whose `~/.ssh` the guard can list, and one of
+# its refusal when the listing fails with another error than `PermissionError`.
+LAUNCHER_OUTSIDE = "runs outside `agentbox`, with `~/.ssh` readable"
+LAUNCHER_UNKNOWN = "cannot tell whether a sandbox holds"
+
+
+def closed_ssh(home: str | pathlib.Path) -> None:
+    """Make `<home>/.ssh` with mode 000, and record it in CLOSED_SSH."""
+    ssh = pathlib.Path(home, ".ssh")
+    ssh.mkdir()
+    CLOSED_SSH.append(ssh)
+    ssh.chmod(0o000)
+
+
+def launcher_home(home: str | pathlib.Path, *, ssh: bool = True, enabled: object = None) -> str:
+    """Give the fixture home `home` a readable `.ssh` unless `ssh` is false, and a
+    `.claude/settings.json` whose `sandbox.enabled` is `enabled`, or none for None; a bytes `enabled`
+    is the file's whole content. Return the home spelt with two leading slashes, as HOME is."""
+    path = pathlib.Path(home)
+    path.mkdir(exist_ok=True)
+    if ssh:
+        (path / ".ssh").mkdir(exist_ok=True)
+        (path / ".ssh").chmod(0o700)
+    if enabled is not None:
+        (path / ".claude").mkdir(exist_ok=True)
+        data = (
+            enabled
+            if isinstance(enabled, bytes)
+            else json.dumps({"sandbox": {"enabled": enabled}}).encode("utf-8")
+        )
+        (path / ".claude" / "settings.json").write_bytes(data)
+    return "/" + str(path)
+
+
 # The profile of each fixture home, whose `org` list the `gh api` check reads: an own organisation
 # and an own account. A record's `profile` names another file in place of it, through
 # `RESEARCH_HARNESS_PROFILE`: one of PROFILES below the fixture's `profiles/`, or a missing one.
@@ -513,12 +559,13 @@ STAMP = ".harness-install.json"
 # therefore hold JavaScript syntax only. A home holds the extension in `extensions/`, or the plugins
 # in `plugins/`, beside the path list that `harness install` renders with the dummy profile and the
 # home, with this interpreter as its `python`; a copy of the guard package in `hooks/guard/`, never a
-# link; and `.ssh/`, `.omp/`, `Research/P/.git/` and `bin/`. The groups `omp` and `opencode` run each
-# record of their frontend in `tests/guard/corpus.jsonl` through the extension or the plugin and the
-# guard, and the edges of the transport that a record cannot hold: an interpreter that is missing, a
-# guard that exits 3 after its answer, prints `{`, is killed after its answer or does not answer in
-# time, a path list that is missing, malformed or without `python`, and a message that the guard
-# cannot read. The timeout case runs a copy whose timeout is 0.3 s, so that it costs no 10 s.
+# link; and `.ssh/` with mode 000 (CLOSED_SSH), `.omp/`, `Research/P/.git/` and `bin/`. The groups
+# `omp` and `opencode` run each record of their frontend in `tests/guard/corpus.jsonl` through the
+# extension or the plugin and the guard, and the edges of the transport that a record cannot hold: an
+# interpreter that is missing, a guard that exits 3 after its answer, prints `{`, is killed after its
+# answer or does not answer in time, a path list that is missing, malformed or without `python`, and
+# a message that the guard cannot read. The timeout case runs a copy whose timeout is 0.3 s, so that
+# it costs no 10 s.
 #
 # An oh-my-pi record holds `tool`, `input`, the `decision` and, where it needs them, `cwd`, the
 # session's working directory (CWD by default), and `agent`, the kind of the context's agent. An
@@ -649,8 +696,9 @@ def plugin_home(
         if frontend == "omp"
         else {plugin: f"adapters/opencode/plugins/{plugin}.ts" for plugin in OC_PLUGINS}
     )
-    for directory in (layout, ".ssh", ".omp", "Research/P/.git", "bin"):
+    for directory in (layout, ".omp", "Research/P/.git", "bin"):
         (home / directory).mkdir(parents=True)
+    closed_ssh(home)
     own_profile(str(home))
     shutil.copytree(GUARD, home / "hooks" / "guard", ignore=shutil.ignore_patterns("__pycache__"))
     for plugin, source in sources.items():
@@ -834,6 +882,10 @@ def omp_cases():
         patterns = json_value("".join(line for line in lines if not line.startswith("#")), "the config")
         patterns = patterns["bash"]["patterns"]
         good = plugin_home("omp", "omp-home")
+        opened = plugin_home("omp", "omp-open")
+        launcher_home(opened, enabled=True)
+        opened_unusable = unusable_list_home("omp", "ask", "x")
+        launcher_home(opened_unusable)
         homes = transport_homes("omp")
         unusable = {
             key: unusable_list_home("omp", key, value) for key, value in (("deny", "x"), ("edit", [1]))
@@ -862,6 +914,25 @@ def omp_cases():
         got = omp_pattern(command, patterns)
         report(ok=got == expected, line=f"exp {expected} got {got}  [omp-patts]  {command}")
     status = {"command": "git status"}
+    # The launcher check: in a home whose `.ssh` the guard can list, a call that the corpus passes is
+    # refused on macOS, also with the entrypoint and the settings of Claude Code's Code tab, which
+    # count for Claude Code alone.
+    got = omp_reply(opened, ("bash", status), extra={"CLAUDE_CODE_ENTRYPOINT": "claude-desktop"})
+    expected, reason = ("deny", LAUNCHER_OUTSIDE) if MAC else ("pass", "")
+    report(
+        ok=got.decision == expected and reason in got.reason,
+        line=f"exp {expected} got {got.decision}  [omp-guard]  a readable .ssh, the Code tab's settings: "
+        f"bash {status}: {got.reason[:70]!r}",
+    )
+    # The check runs before the guard reads its path list: a list that holds no list of strings under
+    # `ask` gives the launcher's reason.
+    got = omp_reply(opened_unusable, ("bash", status))
+    reason = LAUNCHER_OUTSIDE if MAC else "no list of strings"
+    report(
+        ok=got.decision == "deny" and reason in got.reason,
+        line=f"exp deny, {reason!r} got {got.decision}  [omp-guard]  a readable .ssh and a list whose ask is "
+        f"no list of strings: bash {status}: {got.reason[:70]!r}",
+    )
     for label, (home, want) in homes.items():
         calls = [
             ("bash", status),
@@ -1065,6 +1136,8 @@ def oc_cases():
     )
     try:
         good = plugin_home("opencode", "oc-home", rtk=rewrite)
+        opened = plugin_home("opencode", "oc-open")
+        launcher_home(opened, enabled=True)
         fail = {
             "rtk exits 1": plugin_home(
                 "opencode", "oc-rtk-1", rtk='#!/bin/sh\necho "rtk git status"\nexit 1\n'
@@ -1151,9 +1224,32 @@ def oc_cases():
             + (f" with the profile {record['profile']}" if "profile" in record else ""),
         )
 
+    # The launcher check: in a home whose `.ssh` the guard can list, a call that the corpus passes is
+    # refused on macOS, also with the entrypoint and the settings of Claude Code's Code tab, which
+    # count for Claude Code alone.
+    status = oc_event("git status")
+    got = reply(opened, status, extra={"CLAUDE_CODE_ENTRYPOINT": "claude-desktop"})
+    expected, reason = ("deny", LAUNCHER_OUTSIDE) if MAC else ("pass", "")
+    report(
+        ok=got.decision == expected and reason in got.reason,
+        line=f"exp {expected} got {got.decision}  [oc-guards]  a readable .ssh, the Code tab's settings: "
+        f"shell git status: {got.reason[:70]!r}",
+    )
+    # The check runs before the guard reads its path lists: a local list that is no JSON gives the
+    # launcher's reason.
+    broken = pathlib.Path(FIXTURE.name, "oc-local", "launcher")
+    broken.mkdir(parents=True)
+    (broken / "guard-paths.json").write_text("{", encoding="utf-8")
+    got = reply(opened, status, config_dir=str(broken))
+    reason = LAUNCHER_OUTSIDE if MAC else "so the call is blocked"
+    report(
+        ok=got.decision == "deny" and reason in got.reason,
+        line=f"exp deny, {reason!r} got {got.decision}  [oc-guards]  a readable .ssh and a local list that "
+        f"is no JSON: shell git status: {got.reason[:70]!r}",
+    )
+
     # It fails closed: each refuses `git status`, and a missing list a read too, with a reason that
     # names the plugin and the cause.
-    status = oc_event("git status")
     for label, (home, want) in homes.items():
         events = [
             status,
@@ -1862,12 +1958,28 @@ def agy_cases() -> tuple[int, int]:
         fixture = AgyFixture()
         pathlib.Path(AGY_ELSEWHERE, "sub").mkdir(parents=True)
         home = fixture.home("agy-home")
+        opened = fixture.home("agy-open")
+        launcher_home(opened)
     # The adapters, the profile and the rendering fail with HarnessError, an input of an unexpected
     # shape with the others; the case reports it as wrong, and the probe goes on to its summary.
     except (harness_error, ImportError, OSError, ValueError, LookupError, TypeError, AttributeError) as e:
         report(ok=False, line=f"exp fixture got {type(e).__name__}  [agy-guard]  {e}")
         return report.total, report.wrong
     agy_record_cases(report, home)
+    # Antigravity's table runs no launcher check: in a home whose `.ssh` the guard can list, the first
+    # record that the guard lets through gives its recorded decision.
+    record = next(r for r in agy_records(opened) if r["decision"] == "ask")
+    got = agy_reply(
+        opened,
+        agy_payload(record["tool"], record["args"], str(record.get("workspace", CWD))),
+        extra=profile_env(cast("dict[str, Any]", record)),
+    )
+    want = (record["decision"], record["bypass"])
+    report(
+        ok=(got.decision, bypass_of(got.overwrite)) == want,
+        line=f"exp {want} got {(got.decision, bypass_of(got.overwrite))}  [agy-guard]  a readable .ssh: "
+        f"{record['tool']} {json.dumps(record['args'])[:120]}",
+    )
     agy_policy_cases(report, fixture, home)
     agy_home_cases(report, fixture)
     agy_payload_cases(report, home)
@@ -1943,6 +2055,7 @@ def fixture():
     content = {".gitignore": "__pycache__/\n"}
     for directory in (home + "/Research/.scratch", home + "/Research/.worktrees"):
         os.makedirs(directory)
+    closed_ssh(home)
     open(home + "/Research/CLAUDE.md", "w").close()
     for repository, files in repositories.items():
         for name in files:
@@ -2371,6 +2484,8 @@ def main(argv=None):
         fixture()
         return cases(names or list(GROUPS))
     finally:
+        for ssh in CLOSED_SSH:
+            ssh.chmod(0o700)
         FIXTURE.cleanup()
 
 
@@ -2567,10 +2682,13 @@ OS_READS = frozenset(
 )
 # The reads of the guard outside `paths.py` and `jsonio.py` that the bound per payload leaves out, by
 # file and call: the package's own directory and the roots of the checks, each read once per process
-# at import, and the one path of a directory or worktree call, which holds no shell command.
+# at import, the one path of a directory or worktree call, which holds no shell command, and the
+# launcher check's listing of `~/.ssh` and read of Claude Code's settings, each once per process.
 READS_ALLOWED = frozenset(
     {
         ("__main__.py", "Path(__file__).resolve()"),
+        ("launcher.py", "Path(home, '.ssh').iterdir()"),
+        ("launcher.py", "Path(home, '.claude', 'settings.json').read_text(encoding='utf-8')"),
         ("directory_scope.py", "Path(Path.home(), 'Research').resolve()"),
         ("directory_scope.py", "Path(path).resolve()"),
         ("rm_scope.py", "Path.home().resolve()"),
@@ -2623,6 +2741,111 @@ def guard_entry(missing: str) -> tuple[list[str], str]:
     return [str(h["command"]) for h in group["hooks"]], guard
 
 
+def launcher_cases(report: Callable[..., None]) -> None:
+    """The launcher check of Claude Code's table, run as the frontend runs the guard, and the check
+    itself in this process with an explicit platform, so that its answers on macOS are tested on
+    every platform. A `Bash` call of `true` and a `Read` call, a tool that no entry of the table
+    names, each pass by the corpus, and a payload that the table cannot read is refused with the
+    launcher's reason, which the check gives before the payload is read; each subprocess case sets
+    `CLAUDE_CODE_ENTRYPOINT` or removes it."""
+    fixture_dir = pathlib.Path(FIXTURE.name)
+    opened = launcher_home(fixture_dir / "launcher-open")
+    on = launcher_home(fixture_dir / "launcher-on", enabled=True)
+    off = launcher_home(fixture_dir / "launcher-off", enabled=False)
+    text_true = launcher_home(fixture_dir / "launcher-text", enabled="true")
+    unread = launcher_home(fixture_dir / "launcher-unread", enabled=b"{")
+    no_sandbox = launcher_home(fixture_dir / "launcher-empty", enabled=b"{}")
+    not_utf8 = launcher_home(fixture_dir / "launcher-bytes", enabled=b'{"sandbox": {"enabled": true}} \xff')
+    missing = launcher_home(fixture_dir / "launcher-none", ssh=False)
+    plain = launcher_home(fixture_dir / "launcher-file", ssh=False)
+    pathlib.Path(FIXTURE.name, "launcher-file", ".ssh").write_text("", encoding="utf-8")
+    bash = json.dumps({"tool_name": "Bash", "tool_input": {"command": "true"}, "cwd": CWD}).encode("utf-8")
+    read = json.dumps({"tool_name": "Read", "tool_input": {"file_path": CWD + "probe.py"}, "cwd": CWD})
+    desktop = "claude-desktop"
+    corpus_pass = ("pass", "")
+    for label, home, entry, data, on_mac, elsewhere in (
+        ("a readable .ssh: Bash", opened, None, bash, ("deny", LAUNCHER_OUTSIDE), corpus_pass),
+        (
+            "a readable .ssh: Read, a tool with no entry",
+            opened,
+            None,
+            read.encode("utf-8"),
+            ("deny", LAUNCHER_OUTSIDE),
+            corpus_pass,
+        ),
+        (
+            "a readable .ssh: a payload that the table cannot read",
+            opened,
+            None,
+            b"not json",
+            ("deny", LAUNCHER_OUTSIDE),
+            ("deny", "cannot read"),
+        ),
+        ("no .ssh: Bash", missing, None, bash, ("deny", LAUNCHER_UNKNOWN), corpus_pass),
+        ("the Code tab, sandbox.enabled true: Bash", on, desktop, bash, corpus_pass, corpus_pass),
+        (
+            "the Code tab, sandbox.enabled false: Bash",
+            off,
+            desktop,
+            bash,
+            ("deny", LAUNCHER_OUTSIDE),
+            corpus_pass,
+        ),
+        (
+            "the Code tab, no settings file: Bash",
+            opened,
+            desktop,
+            bash,
+            ("deny", LAUNCHER_OUTSIDE),
+            corpus_pass,
+        ),
+        ("the CLI, sandbox.enabled true: Bash", on, "cli", bash, ("deny", LAUNCHER_OUTSIDE), corpus_pass),
+    ):
+        env = {k: v for k, v in ENV.items() if k != "CLAUDE_CODE_ENTRYPOINT"} | {"HOME": home}
+        if entry is not None:
+            env["CLAUDE_CODE_ENTRYPOINT"] = entry
+        expected, reason = on_mac if MAC else elsewhere
+        got, output = guard_run(data, env=env)
+        report(
+            ok=got == expected and reason in output,
+            line=f"exp {expected} got {got}  [launcher ]  {label}: {output[:70]!r}",
+        )
+    sys.path.insert(0, HOOKS)
+    try:
+        launcher: Any = importlib.import_module("guard.launcher")
+    except ImportError as e:
+        report(ok=False, line=f"exp the module got {type(e).__name__}  [launcher ]  guard.launcher: {e}")
+        return
+    finally:
+        sys.path.remove(HOOKS)
+    for frontend, home, environ, platform, want, text in (
+        ("claude", opened, {}, "linux", "pass", ""),
+        ("claude", opened, {}, "darwin", "deny", LAUNCHER_OUTSIDE),
+        ("claude", HOME, {}, "darwin", "pass", ""),
+        ("claude", missing, {}, "darwin", "deny", LAUNCHER_UNKNOWN + " this Claude Code session"),
+        ("claude", plain, {}, "darwin", "deny", "NotADirectoryError"),
+        ("claude", on, {"CLAUDE_CODE_ENTRYPOINT": desktop}, "darwin", "pass", ""),
+        ("claude", off, {"CLAUDE_CODE_ENTRYPOINT": desktop}, "darwin", "deny", LAUNCHER_OUTSIDE),
+        ("claude", text_true, {"CLAUDE_CODE_ENTRYPOINT": desktop}, "darwin", "deny", LAUNCHER_OUTSIDE),
+        ("claude", unread, {"CLAUDE_CODE_ENTRYPOINT": desktop}, "darwin", "deny", LAUNCHER_OUTSIDE),
+        ("claude", no_sandbox, {"CLAUDE_CODE_ENTRYPOINT": desktop}, "darwin", "deny", LAUNCHER_OUTSIDE),
+        ("claude", not_utf8, {"CLAUDE_CODE_ENTRYPOINT": desktop}, "darwin", "deny", LAUNCHER_OUTSIDE),
+        ("claude", opened, {"CLAUDE_CODE_ENTRYPOINT": desktop}, "darwin", "deny", LAUNCHER_OUTSIDE),
+        ("claude", on, {"CLAUDE_CODE_ENTRYPOINT": "cli"}, "darwin", "deny", LAUNCHER_OUTSIDE),
+        ("claude", on, {"CLAUDE_CODE_ENTRYPOINT": desktop + "-3p"}, "darwin", "deny", LAUNCHER_OUTSIDE),
+        ("opencode", on, {"CLAUDE_CODE_ENTRYPOINT": desktop}, "darwin", "deny", "this OpenCode session"),
+        ("omp", on, {"CLAUDE_CODE_ENTRYPOINT": desktop}, "darwin", "deny", "agentbox omp"),
+    ):
+        verdict = launcher.outside(frontend, home, environ, platform)
+        settings = pathlib.Path(home, ".claude", "settings.json")
+        shown = repr(settings.read_bytes()) if settings.exists() else "no settings"
+        report(
+            ok=verdict.decision == want and text in verdict.reason,
+            line=f"exp {want} got {verdict.decision}  [launcher ]  outside({frontend!r}, {home[-22:]!r}, "
+            f"{environ}, {platform!r}) with {shown}: {verdict.reason[:60]!r}",
+        )
+
+
 def command_cases():
     """The guard on each record of the corpus, and on the edges that a line of it cannot hold."""
     wrong = 0
@@ -2637,6 +2860,7 @@ def command_cases():
         got, _ = guard_run(stdin.encode("utf-8"), env={**ENV, **profile})
         named = f" with the profile {profile['RESEARCH_HARNESS_PROFILE']}" if profile else ""
         report(ok=got == expected, line=f"exp {expected} got {got}  [guard    ]  {stdin[:200]!r}{named}")
+    launcher_cases(report)
 
     for size, expected in ((MIB, "pass"), (MIB + 1, "deny")):
         payload = {"tool_name": "Bash", "tool_input": {"command": "echo " + "a" * (size - 5)}, "cwd": CWD}

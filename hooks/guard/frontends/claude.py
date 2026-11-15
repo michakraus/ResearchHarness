@@ -8,14 +8,20 @@ tool that no entry of `TABLE` names then passes, its `tool_input` unread. For a 
 names, a `tool_input` that is no object is refused, and so is a `Bash` call without a string
 `command` or with a command of more than `MAX_COMMAND` bytes of UTF-8.
 
+Before it reads the payload, the table puts every call to the launcher check (`launcher.outside`),
+and returns its refusal, so that a session outside `agentbox` gets the launcher's reason, for a tool
+that no entry of `TABLE` names too.
+
 Claude Code reads exit 2 as a denial and shows stderr to the model; exit 0 with a JSON
 `permissionDecision` on stdout as that decision; exit 0 with no output as no decision.
 """
 
 import json
+import os
 import re
+import sys
 from collections.abc import Callable
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import TextIO
 
 # The table imports its package by its absolute name `guard`: `__main__` puts the package's parent
@@ -30,6 +36,7 @@ from guard import (
     git_push_delete,
     git_writes,
     kaimon_session,
+    launcher,
     no_blind_stage,
     no_shell_file_write,
     rm_scope,
@@ -148,7 +155,11 @@ def call_of(tool: str, payload: dict[str, JsonValue]) -> Call:
 
 
 def decide(data: bytes) -> Verdict:
-    """The guard's verdict on the payload bytes `data`: the strongest verdict of the tool's checks."""
+    """The guard's verdict on the payload bytes `data`: the launcher check's refusal, else the
+    strongest verdict of the tool's checks."""
+    refused = launcher.outside("claude", str(Path.home()), os.environ, sys.platform)
+    if refused.decision == "deny":
+        return refused
     tool, payload = read(data)
     checks = checks_of(tool)
     if not checks:
