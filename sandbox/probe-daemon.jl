@@ -18,12 +18,16 @@
 # every negative probe gives the name of an exception class: `:SystemError` or an `IOError` class;
 # on macOS `lsopen` and `appleevent` `:ProcessFailedException`, `connect_remote` an `IOError` class
 # and `resolve_name` `:DNSError`; on Linux, where the job sees no /run/user/<uid>, `systemd_run`
-# and `session_bus` `:ProcessFailedException`. A write probe deletes what it created; the probe of
-# ~/.zshrc opens the file to append and writes nothing. `connect_loopback` connects to Kaimon's
-# own port, 127.0.0.1:2828, given as a string, so that `Sockets.getaddrinfo` reads the address
-# before the connect, as HTTP.jl does for Kaimon's clients of Qdrant and Ollama; a libc that cannot
-# read it without the resolver gives `:DNSError`. `connect_remote` connects to 1.1.1.1:443, an
-# address that answers, so a profile that lets it through gives `:allowed` and not a timeout.
+# and `session_bus` `:ProcessFailedException`. `read_research` reads ~/Research/Harness/README.md,
+# a file that every tree of the harness holds. A write probe deletes what it created; the probe of
+# ~/.zshrc opens the file to append and writes nothing. On Linux, where the job's home is a `tmpfs`
+# that holds only the job's binds, `write_zshrc` gives `:NotBound` where that home holds no
+# ~/.zshrc as a regular file: the probe then measures nothing, and its result is neither a pass
+# nor a gap. `connect_loopback` connects to Kaimon's own port, 127.0.0.1:2828, given as a string,
+# so that `Sockets.getaddrinfo` reads the address before the connect, as HTTP.jl does for Kaimon's
+# clients of Qdrant and Ollama; a libc that cannot read it without the resolver gives `:DNSError`.
+# `connect_remote` connects to 1.1.1.1:443, an address that answers, so a profile that lets it
+# through gives `:allowed` and not a timeout.
 #
 # `OPEN_GAPS` names the negative probes that the sandbox does not stop, which report `:allowed`
 # under it: none on macOS; on Linux, none recorded. The event of `appleevent` is
@@ -41,6 +45,9 @@ const METAL = Base.PkgId(Base.UUID("dde4c033-4e86-420c-a63e-0dd931031962"), "Met
 
 """Raised by `metal` when `Metal.functional()` is false."""
 struct NotFunctional <: Exception end
+
+"""Raised by `write_zshrc` on Linux when `~/.zshrc` is not a regular file: it cannot reach the host's."""
+struct NotBound <: Exception end
 
 """`:allowed` when `f()` returns, else the name of the class of the exception that it throws."""
 function attempt(f)
@@ -76,7 +83,7 @@ scratch_name() = "probe-daemon-$(getpid())-$(time_ns())"
 
 # ----------------------------------------------------------------------- positive probes ----
 
-read_research(home = homedir()) = attempt(() -> read_only(first_file(joinpath(home, "Research"))))
+read_research(home = homedir()) = attempt(() -> read_only(joinpath(home, "Research", "Harness", "README.md")))
 write_research(home = homedir()) = attempt(() -> create_delete(joinpath(home, "Research", scratch_name())))
 write_tempdir(home = homedir()) = attempt(() -> create_delete(joinpath(tempdir(), scratch_name())))
 list_packages(home = homedir()) = attempt(() -> readdir(joinpath(home, ".julia", "packages")))
@@ -111,7 +118,18 @@ end
 read_claude_json(home = homedir()) = attempt(() -> read_only(joinpath(home, ".claude.json")))
 read_documents(home = homedir()) = attempt(() -> read_only(first_file(joinpath(home, "Documents"))))
 read_gh_hosts(home = homedir()) = attempt(() -> read_only(joinpath(home, ".config", "gh", "hosts.yml")))
-write_zshrc(home = homedir()) = attempt(() -> open(_ -> nothing, joinpath(home, ".zshrc"), "a"))
+"""
+`home/.zshrc` opened to append, with nothing written. With `linux`, `NotBound` when it is not a
+regular file: the job's home is a `tmpfs`, so an append there makes a new file and never reaches
+the host's.
+"""
+function write_zshrc(home = homedir(); linux = Sys.islinux())
+    return attempt() do
+        path = joinpath(home, ".zshrc")
+        linux && !isfile(path) && throw(NotBound())
+        open(_ -> nothing, path, "a")
+    end
+end
 function write_git_hooks(home = homedir(); repository = joinpath(home, "Research", "Harness"))
     return attempt(() -> create_delete(joinpath(repository, ".git", "hooks", scratch_name())))
 end

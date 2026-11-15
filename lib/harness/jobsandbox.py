@@ -132,15 +132,20 @@ profile reads, a skip line for its run.
 server runs under its profile or its `bwrap`; the cases below run each probe of both systems'
 sets against a scratch tree, where no sandbox applies, the network probes against a listener and
 two resolver stubs of the case on loopback and never against their default targets, and check
-the form of its result and the two sets of `run_all`. Without `julia` on the PATH they print a
-skip line. `OPEN_GAPS` of the probe file names the negative probes that the profile does not stop, which
-report `:allowed` under it: none. The cases check that value, that the file's header comment names
-`OPEN_GAPS` and each open gap and expects no exception class of one, that it expects
-`:ProcessFailedException` of `appleevent` and names its event, `name of startup disk`, that it
-expects an `IOError` class of `connect_remote` and `:DNSError` of `resolve_name`, that the
-network probes default to 127.0.0.1:2828, 1.1.1.1:443 and julialang.org (NETWORK_DEFAULTS), and
-that the default command of `appleevent` asks the Finder for `name of startup disk`: AppleScript
-answers `get name` of an application from the script itself and sends no Apple Event.
+the form of its result and the two sets of `run_all`. `read_research` reads
+`~/Research/Harness/README.md`, and the scratch `~/Research` holds only directories at its top
+level. `write_zshrc` takes `linux`, which defaults to the running system: with it, a home that
+holds no `~/.zshrc` gives `:NotBound` (the probe file's `NotBound`) and gets none, because the
+job's `tmpfs` home on Linux holds the host's file only where it is bound; without it, the append
+creates the file. Without `julia` on the PATH they print a skip line. `OPEN_GAPS` of the probe
+file names the negative probes that the profile does not stop, which report `:allowed` under it:
+none. The cases check that value, that the file's header comment names `OPEN_GAPS` and each open
+gap and expects no exception class of one, that it expects `:ProcessFailedException` of
+`appleevent` and names its event, `name of startup disk`, that it expects an `IOError` class of
+`connect_remote` and `:DNSError` of `resolve_name`, that the network probes default to
+127.0.0.1:2828, 1.1.1.1:443 and julialang.org (NETWORK_DEFAULTS), and that the default command
+of `appleevent` asks the Finder for `name of startup disk`: AppleScript answers `get name` of an
+application from the script itself and sends no Apple Event.
 """
 
 import dataclasses
@@ -2780,10 +2785,14 @@ def sandboxed(
 # The probe run of the cases: the probe file is ARGS[1] and the scratch home ARGS[2]. Metal, `open`
 # and `osascript` are stand-ins, and so are a TCP listener of the run on 127.0.0.1, a port of
 # 127.0.0.1 that it closed, and two resolvers, one that answers 127.0.0.1 and one that throws
-# DNSError, for the network probes, which never reach their default targets. One line
-# `name result` per probe, then `classes true` when every result is `:allowed`, `:NotFunctional` or
-# the name of an exception class of Base or Sockets, `open_gaps true`
-# when OPEN_GAPS is `()`, and `gaps_negative true` when each open gap is a negative probe.
+# DNSError, for the network probes, which never reach their default targets; four empty homes of
+# `mktempdir` for `write_zshrc`, and two whose `.zshrc` is a directory and a dangling link. One
+# line `name result` per probe, then `classes true` when every result is `:allowed`,
+# `:NotFunctional`, `:NotBound` or the name of an exception class of Base or Sockets,
+# `unbound_zshrc false` when the probe with `linux` left the empty home without a `.zshrc`,
+# `default_zshrc true` when the default of `linux` gives the result of `Sys.islinux()`,
+# `open_gaps true` when OPEN_GAPS is `()`, and `gaps_negative true` when each open gap is a
+# negative probe.
 PROBE_RUN = """
 using Sockets
 include(ARGS[1])
@@ -2801,6 +2810,10 @@ stand_ins = (
     :metal, :lsopen, :appleevent, :systemd_run, :session_bus,
     :connect_loopback, :connect_remote, :resolve_name,
 )
+unbound, fresh, by_default, by_system = mktempdir(), mktempdir(), mktempdir(), mktempdir()
+directory, dangling = mktempdir(), mktempdir()
+mkdir(joinpath(directory, ".zshrc"))
+symlink(joinpath(dangling, "none"), joinpath(dangling, ".zshrc"))
 every = unique((P.probe_names(false)..., P.probe_names(true)...))
 results = [
     [name => getfield(P, name)(home) for name in every if !(name in stand_ins)];
@@ -2815,6 +2828,13 @@ results = [
     :systemd_run_refused => P.systemd_run(home; command = `false`);
     :session_bus => P.session_bus(home; command = `true`);
     :session_bus_refused => P.session_bus(home; command = `false`);
+    :write_zshrc_linux => P.write_zshrc(home; linux = true);
+    :write_zshrc_macos => P.write_zshrc(home; linux = false);
+    :write_zshrc_unbound => P.write_zshrc(unbound; linux = true);
+    :write_zshrc_new => P.write_zshrc(fresh; linux = false);
+    :write_zshrc_directory => P.write_zshrc(directory; linux = true);
+    :write_zshrc_dangling => P.write_zshrc(dangling; linux = true);
+    :read_research_missing => P.read_research(joinpath(home, "none"));
     :read_ssh_missing => P.read_ssh(joinpath(home, "none"));
     :write_julia_config_missing => P.write_julia_config(joinpath(home, "none"));
     :connect_loopback => P.connect_loopback(home; port);
@@ -2832,7 +2852,10 @@ for (name, r) in results
 end
 exception(M, r) = isdefined(M, r) && getfield(M, r) isa Type && getfield(M, r) <: Exception
 exception(r) = exception(Base, r) || exception(Sockets, r)
-println("classes ", all(r -> r === :allowed || r === :NotFunctional || exception(r), last.(results)))
+own(r) = r === :allowed || r === :NotFunctional || r === :NotBound
+println("classes ", all(r -> own(r) || exception(r), last.(results)))
+println("unbound_zshrc ", ispath(joinpath(unbound, ".zshrc")))
+println("default_zshrc ", P.write_zshrc(by_default) === P.write_zshrc(by_system; linux = Sys.islinux()))
 println("open_gaps ", P.OPEN_GAPS == ())
 println("gaps_negative ", all(g -> g in P.NEGATIVE || g in P.LINUX_NEGATIVE, P.OPEN_GAPS))
 println("macos_set ", join(P.probe_names(false), ","))
@@ -2933,7 +2956,7 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
     ):
         (home / d).mkdir(parents=True)
     files = {
-        "Research/a.txt": "secret research\n",
+        "Research/Harness/README.md": "secret research\n",
         ".ssh/id_ed25519": "secret key\n",
         ".claude.json": "secret state\n",
         "Documents/d.txt": "secret document\n",
@@ -2970,6 +2993,9 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
         "read_documents",
         "read_gh_hosts",
         "write_zshrc",
+        "write_zshrc_linux",
+        "write_zshrc_macos",
+        "write_zshrc_new",
         "write_git_hooks",
         "write_julia_config",
         "lsopen",
@@ -2995,6 +3021,10 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
     refused = {
         "metal_false": "NotFunctional",
         "metal_missing": "ErrorException",
+        "write_zshrc_unbound": "NotBound",
+        "write_zshrc_directory": "NotBound",
+        "write_zshrc_dangling": "NotBound",
+        "read_research_missing": "SystemError",
         "lsopen_refused": "ProcessFailedException",
         "appleevent_refused": "ProcessFailedException",
         "systemd_run_refused": "ProcessFailedException",
@@ -3010,6 +3040,12 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
     case(
         f"a refused probe returns the name of its exception class: {got}",
         ok=all(got.get(n) == want for n, want in refused.items()),
+    )
+    case(
+        f"write_zshrc on Linux opens no ~/.zshrc that the home does not hold, and its default "
+        f"gives the result of linux = Sys.islinux(): "
+        f"{got.get('unbound_zshrc')} {got.get('default_zshrc')}",
+        ok=got.get("unbound_zshrc") == "false" and got.get("default_zshrc") == "true",
     )
     case(
         "every result is :allowed or the name of an exception class, never a file's content",
