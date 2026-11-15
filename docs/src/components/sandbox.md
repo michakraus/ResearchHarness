@@ -354,38 +354,21 @@ it, and its `store` writes to `~/.gitconfig` and to the keychain. srt refuses bo
 prints `error: could not lock config file ~/.gitconfig: Operation not permitted`. The git
 operation goes on: the line is noise, not a failure. git matches the port of a credential URL
 exactly, and the proxy's port changes with each run, so no section of `forge.gitconfig` can clear
-the helper for the proxy. Removing the credential manager from `~/.gitconfig` (step 5 below) ends
-the line.
+the helper for the proxy. Removing the credential manager from `~/.gitconfig` (step 5 of *The
+organisation tokens*) ends the line.
 
-**Your steps**, after the merge and before `harness install --apply`:
+**Your steps** are *The organisation tokens* of the setup page
+([macOS](../setup-macos.md#the-organisation-tokens),
+[Linux](../setup-linux.md#the-organisation-tokens)): the tokens, the token store,
+`harness install --apply`, and the terminal routed the same way.
 
-1. On GitHub, make one fine-grained token for each owner, each organisation and your account:
-   resource owner that owner, all repositories, with the permissions Contents, Pull requests,
-   Issues, Workflows and Actions read and write, and Checks, Commit statuses and Metadata read; no
-   Gists permission. An organisation may have to approve a token.
-2. On the GitLab instance, make one group access token of the group, with the scopes `api`,
-   `read_repository` and `write_repository`, and a role that may create projects in the group. By
-   GitLab's default that is Maintainer; the group's setting *Roles allowed to create projects*
-   decides it.
-3. Put each token into `~/.config/research-harness/forge/<host>/<owner>.store` as the one line
-   `https://x-access-token:<token>@github.com` or `https://oauth2:<token>@<gitlab host>`, mode
-   600, the directories mode 700. Make `github.com/default.store` a copy of, or a symbolic link
-   to, your account's file.
-4. Run `harness install --apply`.
-5. Remove the broad credentials and route your terminal the same way: `gh auth logout`, replace
-   glab's stored token by the group token (`glab auth login --hostname <gitlab host>`), erase the
-   credential manager's GitHub and GitLab entries, and, in your dotfiles, remove the credential
-   manager and `gh auth git-credential` helpers from `~/.gitconfig` and end its credential lines
-   with `[include] path = ~/.config/research-harness/forge.gitconfig`. A Claude Code session runs
-   git and gh outside its sandbox, so a broad credential that stays there stays usable.
-
-**The sealed secrets**, on macOS only. After step 5 your terminal has the agents' tokens, not your
-own broad access. A broad login on the Mac is also the sessions' login: they run gh, glab and git
-as you. So your broad tokens are secrets that only your Touch ID decrypts, and three names of
-[`sealed.py`](scripts.md#sealed-py) in `~/.local/bin` use them: `ghx` runs gh, and `glabx` runs
-glab, with your broad token; `git-credential-sealed` is a git credential helper that gives one
-repository its own token. Each run that reads a secret asks for Touch ID. A Touch ID prompt that
-you did not start comes from a session: refuse it. The secrets are in
+**The sealed secrets**, on macOS only. After those steps your terminal has the agents' tokens,
+not your own broad access. A broad login on the Mac is also the sessions' login: they run gh, glab
+and git as you. So your broad tokens are secrets that only you decrypt, with Touch ID or the Mac's
+password, and three names of [`sealed.py`](scripts.md#sealed-py) in `~/.local/bin` use them: `ghx`
+runs gh, and `glabx` runs glab, with your broad token; `git-credential-sealed` is a git credential
+helper that gives one repository its own token. Each run that reads a secret asks for Touch ID. A
+Touch ID prompt that you did not start comes from a session: refuse it. The secrets are in
 `~/.config/research-harness/sealed/`, which the settings template denies to Claude Code's read
 tools (`permissions.deny`) and to its sandbox (`denyRead` and `credentials.files`), and which no
 frontend's `own` names, so every srt file denies it too. OpenCode's `guard-paths.json`, which
@@ -394,42 +377,9 @@ from it OpenCode's `opencode.jsonc`, also refuses a command that runs `ghx`, `gl
 `git-credential-sealed`, so a session that types one is refused before a prompt appears. That deny
 prevents accidents; Touch ID and the read denies of the identity are the boundary.
 
-**Your steps for the sealed secrets**, on macOS, after the merge and `harness install --apply`:
-
-1. Install the tools: `brew install age age-plugin-se`.
-2. Make the identity in the Secure Enclave, in a directory with mode 700:
-
-   ```sh
-   mkdir -m 700 -p ~/.config/research-harness/sealed
-   age-plugin-se keygen --access-control any-biometry-or-passcode \
-       -o ~/.config/research-harness/sealed/identity.txt
-   ```
-
-   `any-biometry-or-passcode` lets a Mac without its Touch ID keyboard decrypt with its password,
-   which a session cannot type. Check the flags against `age-plugin-se --help` first.
-3. Encrypt each secret to the identity's recipient, the `age1se1…` key that `keygen` prints:
-   `github.age` with your broad GitHub token, `gitlab.age` with your broad GitLab token, and
-   `<name>.age` for a repository of its own. Each secret is one line
-   `https://<user>:<token>@<host>`. Type the line on stdin, then Ctrl-D, so that the token is in
-   no argument and not in the shell's history:
-
-   ```sh
-   age -r <recipient> -o ~/.config/research-harness/sealed/github.age
-   ```
-
-4. Give a repository that has a token of its own, for example the dotfiles, its helper in place
-   of a plain token file. git asks the helpers of `~/.gitconfig`, `forge.gitconfig` included,
-   before those of the repository, and stops at the first that answers. So in the repository, an
-   empty `helper` clears them first:
-
-   ```sh
-   git config credential.https://<host>.helper ''
-   git config --add credential.https://<host>.helper 'sealed <name> https://<host>'
-   ```
-
-   The helper line names the URL, and the helper answers only for that host.
-5. Keep glab's stored login as the group token of step 5 above; your broad GitLab access goes
-   through `glabx`.
+**Your steps for the sealed secrets** are *Your own broad tokens* of
+[setup-macos.md](../setup-macos.md#your-own-broad-tokens): the tools, the identity in the Secure
+Enclave, the secrets, and the helper of a repository that has a token of its own.
 
 ## The pinned srt
 

@@ -711,9 +711,9 @@ macOS. The `gh_token` cases of `lib/harness/script_cases.py` run it with a stub 
 
 ## `sealed.py`
 
-`sealed.py` runs gh, glab and git with the user's own broad tokens, which only the user's Touch ID
-decrypts. It is one script with three names, and the base name of the path that it runs as
-chooses what it does:
+`sealed.py` runs gh, glab and git with the user's own broad tokens, which only the user decrypts,
+with Touch ID or the Mac's password. It is one script with three names, and the base name of the
+path that it runs as chooses what it does:
 
 ```bash
 ghx <the arguments of gh>
