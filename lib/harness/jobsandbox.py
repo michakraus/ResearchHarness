@@ -134,18 +134,22 @@ sets against a scratch tree, where no sandbox applies, the network probes agains
 two resolver stubs of the case on loopback and never against their default targets, and check
 the form of its result and the two sets of `run_all`. `read_research` reads
 `~/Research/Harness/README.md`, and the scratch `~/Research` holds only directories at its top
-level. `write_zshrc` takes `linux`, which defaults to the running system: with it, a home that
-holds no `~/.zshrc` gives `:NotBound` (the probe file's `NotBound`) and gets none, because the
-job's `tmpfs` home on Linux holds the host's file only where it is bound; without it, the append
-creates the file. Without `julia` on the PATH they print a skip line. `OPEN_GAPS` of the probe
-file names the negative probes that the profile does not stop, which report `:allowed` under it:
-none. The cases check that value, that the file's header comment names `OPEN_GAPS` and each open
-gap and expects no exception class of one, that it expects `:ProcessFailedException` of
-`appleevent` and names its event, `name of startup disk`, that it expects an `IOError` class of
-`connect_remote` and `:DNSError` of `resolve_name`, that the network probes default to
-127.0.0.1:2828, 1.1.1.1:443 and julialang.org (NETWORK_DEFAULTS), and that the default command
-of `appleevent` asks the Finder for `name of startup disk`: AppleScript answers `get name` of an
-application from the script itself and sends no Apple Event.
+level. A read probe gives `:NotAFile` (the probe file's `NotAFile`) where a directory stands at
+its path, and `:allowed` where a link to a regular file does: the cases put a directory at the
+paths of `read_research`, `read_claude_json` and `read_gh_hosts` and a link at that of
+`read_claude_json`, each in a new home of its own. `write_zshrc` takes `linux`, which
+defaults to the running system: with it, a home that holds no `~/.zshrc` gives `:NotBound` (the
+probe file's `NotBound`) and gets none, because the job's `tmpfs` home on Linux holds the host's
+file only where it is bound; without it, the append creates the file. Without `julia` on the PATH
+they print a skip line. `OPEN_GAPS` of the probe file names the negative probes that the profile
+does not stop, which report `:allowed` under it: none. The cases check that value, that the
+file's header comment names `OPEN_GAPS` and each open gap and expects no exception class of one,
+that it expects `:ProcessFailedException` of `appleevent` and names its event,
+`name of startup disk`, that it expects an `IOError` class of `connect_remote` and `:DNSError` of
+`resolve_name`, that the network probes default to 127.0.0.1:2828, 1.1.1.1:443 and julialang.org
+(NETWORK_DEFAULTS), and that the default command of `appleevent` asks the Finder for
+`name of startup disk`: AppleScript answers `get name` of an application from the script itself
+and sends no Apple Event.
 """
 
 import dataclasses
@@ -2786,9 +2790,11 @@ def sandboxed(
 # and `osascript` are stand-ins, and so are a TCP listener of the run on 127.0.0.1, a port of
 # 127.0.0.1 that it closed, and two resolvers, one that answers 127.0.0.1 and one that throws
 # DNSError, for the network probes, which never reach their default targets; four empty homes of
-# `mktempdir` for `write_zshrc`, and two whose `.zshrc` is a directory and a dangling link. One
-# line `name result` per probe, then `classes true` when every result is `:allowed`,
-# `:NotFunctional`, `:NotBound` or the name of an exception class of Base or Sockets,
+# `mktempdir` for `write_zshrc`, and two whose `.zshrc` is a directory and a dangling link; three
+# homes with a directory at the path of `read_research`, `read_claude_json` and `read_gh_hosts`,
+# and one whose `.claude.json` is a link to a regular file. One line `name result` per probe, then
+# `classes true` when every result is `:allowed`, `:NotFunctional`, `:NotBound`, `:NotAFile` or
+# the name of an exception class of Base or Sockets,
 # `unbound_zshrc false` when the probe with `linux` left the empty home without a `.zshrc`,
 # `default_zshrc true` when the default of `linux` gives the result of `Sys.islinux()`,
 # `open_gaps true` when OPEN_GAPS is `()`, and `gaps_negative true` when each open gap is a
@@ -2814,6 +2820,10 @@ unbound, fresh, by_default, by_system = mktempdir(), mktempdir(), mktempdir(), m
 directory, dangling = mktempdir(), mktempdir()
 mkdir(joinpath(directory, ".zshrc"))
 symlink(joinpath(dangling, "none"), joinpath(dangling, ".zshrc"))
+dir_at(parts...) = (h = mktempdir(); mkpath(joinpath(h, parts...)); h)
+linked = mktempdir()
+write(joinpath(linked, "state"), "secret state\\n")
+symlink(joinpath(linked, "state"), joinpath(linked, ".claude.json"))
 every = unique((P.probe_names(false)..., P.probe_names(true)...))
 results = [
     [name => getfield(P, name)(home) for name in every if !(name in stand_ins)];
@@ -2835,6 +2845,10 @@ results = [
     :write_zshrc_directory => P.write_zshrc(directory; linux = true);
     :write_zshrc_dangling => P.write_zshrc(dangling; linux = true);
     :read_research_missing => P.read_research(joinpath(home, "none"));
+    :read_research_directory => P.read_research(dir_at("Research", "Harness", "README.md"));
+    :read_claude_json_directory => P.read_claude_json(dir_at(".claude.json"));
+    :read_gh_hosts_directory => P.read_gh_hosts(dir_at(".config", "gh", "hosts.yml"));
+    :read_claude_json_link => P.read_claude_json(linked);
     :read_ssh_missing => P.read_ssh(joinpath(home, "none"));
     :write_julia_config_missing => P.write_julia_config(joinpath(home, "none"));
     :connect_loopback => P.connect_loopback(home; port);
@@ -2852,7 +2866,7 @@ for (name, r) in results
 end
 exception(M, r) = isdefined(M, r) && getfield(M, r) isa Type && getfield(M, r) <: Exception
 exception(r) = exception(Base, r) || exception(Sockets, r)
-own(r) = r === :allowed || r === :NotFunctional || r === :NotBound
+own(r) = r === :allowed || r === :NotFunctional || r === :NotBound || r === :NotAFile
 println("classes ", all(r -> own(r) || exception(r), last.(results)))
 println("unbound_zshrc ", ispath(joinpath(unbound, ".zshrc")))
 println("default_zshrc ", P.write_zshrc(by_default) === P.write_zshrc(by_system; linux = Sys.islinux()))
@@ -2990,6 +3004,7 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
         "metal",
         "read_ssh",
         "read_claude_json",
+        "read_claude_json_link",
         "read_documents",
         "read_gh_hosts",
         "write_zshrc",
@@ -3025,6 +3040,9 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
         "write_zshrc_directory": "NotBound",
         "write_zshrc_dangling": "NotBound",
         "read_research_missing": "SystemError",
+        "read_research_directory": "NotAFile",
+        "read_claude_json_directory": "NotAFile",
+        "read_gh_hosts_directory": "NotAFile",
         "lsopen_refused": "ProcessFailedException",
         "appleevent_refused": "ProcessFailedException",
         "systemd_run_refused": "ProcessFailedException",
