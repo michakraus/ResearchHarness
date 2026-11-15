@@ -10,8 +10,9 @@ arguments (dotfiles-merge also logs the `token` of its environment), and puts st
 and git first on the PATH. The stubs of gh and glab log their arguments and answer with the state
 and source branch in $GH_ANSWER or $GLAB_ANSWER, and exit 1 when the answer is empty, as gh and
 glab do for a number they cannot read. Under GITLAB_TOKEN=KEY the stub of glab answers
-$GLAB_TOKEN_ANSWER instead, and it logs its working directory, its GITLAB_HOST and whether its
-GITLAB_TOKEN is KEY. The stub of git logs each `credential` call and runs the real git. A scratch
+$GLAB_TOKEN_ANSWER instead, and it logs its working directory, its GITLAB_HOST, whether its
+GITLAB_TOKEN is KEY, and which of glab's variables of a token, a host, the protocol or the TLS
+check reach it. The stub of git logs each `credential` call and runs the real git. A scratch
 HOME holds a git repository at ~/.local/share/chezmoi whose origin each case sets, with a
 repo-local credential helper for https://git.example.org that returns the password in
 $HELPER_PASSWORD: an origin on github.com asks gh, any other host asks glab. The driver runs in a
@@ -21,12 +22,13 @@ The cases of the fallback to the source's git credential: glab's own login answe
 once and no credential is read; the credential answers, so glab runs a second time with the
 password as GITLAB_TOKEN, the host as GITLAB_HOST and the source as its directory, and the
 password is in no output, no argument and no file, nor, for a caller that exports `token`, in the
-environment of dotfiles-merge; an askpass program of the caller's GIT_ASKPASS or SSH_ASKPASS or of
-the source's core.askPass is not run when the helper returns no password; the second answer is not
-open; and no answer, for each of four reasons (glab answers neither call, the helper returns no
-password, the origin is an SSH address, the origin is an http:// URL), stops with one line that
-names `dotfiles merge <branch>`. It also runs `bash -n` and `shellcheck -S warning` on the
-driver. It exits 0 when every check passes.
+environment of dotfiles-merge; for a caller that exports glab's variables of a token, a host, the
+protocol or the TLS check, none reaches the second glab call; an askpass program of the caller's
+GIT_ASKPASS or SSH_ASKPASS or of the source's core.askPass is not run when the helper returns no
+password; the second answer is not open; and no answer, for each of four reasons (glab answers
+neither call, the helper returns no password, the origin is an SSH address, the origin is an
+http:// URL), stops with one line that names `dotfiles merge <branch>`. It also runs `bash -n` and
+`shellcheck -S warning` on the driver. It exits 0 when every check passes.
 """
 
 import os
@@ -67,13 +69,20 @@ def answering(name, variable):
 # A stub of glab: log the arguments to glab.log, and the working directory, GITLAB_HOST and whether
 # GITLAB_TOKEN is unset or empty (none), $EXPECTED_TOKEN (match) or another value (other) to
 # glab.env, so that no log holds the token. It answers $GLAB_TOKEN_ANSWER under the expected token
-# and $GLAB_ANSWER otherwise, and exits 1 on an empty answer.
+# and $GLAB_ANSWER otherwise, and exits 1 on an empty answer. It also logs to glab.vars which of
+# glab's variables that name a token, a host, the protocol or the TLS check reach it.
 GLAB = """#!/bin/bash
 echo "glab $*" >> "$HOME/glab.log"
 if [ -z "${GITLAB_TOKEN-}" ]; then token=none
 elif [ "$GITLAB_TOKEN" = "$EXPECTED_TOKEN" ]; then token=match
 else token=other; fi
 printf 'cwd=%s host=%s token=%s\\n' "$PWD" "${GITLAB_HOST-}" "$token" >> "$HOME/glab.env"
+seen=""
+for name in GITLAB_ACCESS_TOKEN OAUTH_TOKEN GITLAB_URI GL_HOST GITLAB_API_HOST GITLAB_REPO \\
+    GLAB_API_PROTOCOL API_PROTOCOL GLAB_SKIP_TLS_VERIFY SKIP_TLS_VERIFY GLAB_CA_CERT CA_CERT; do
+    if [ -n "${!name+x}" ]; then seen="$seen $name"; fi
+done
+printf 'token=%s vars=%s\\n' "$token" "${seen# }" >> "$HOME/glab.vars"
 if [ "$token" = match ]; then answer=$GLAB_TOKEN_ANSWER; else answer=$GLAB_ANSWER; fi
 [ -n "$answer" ] || exit 1
 printf '%s\\n' "$answer"
@@ -108,6 +117,23 @@ MERGE = """#!/bin/bash
 echo "dotfiles-merge $*"
 echo "token=${token-}" >> "$HOME/merge.env"
 """
+
+# glab's variables that name another token, another API host, the protocol or the TLS check: the
+# driver runs the glab call that holds the password without them.
+GLAB_HOSTILE = (
+    "GITLAB_ACCESS_TOKEN",
+    "OAUTH_TOKEN",
+    "GITLAB_URI",
+    "GL_HOST",
+    "GITLAB_API_HOST",
+    "GITLAB_REPO",
+    "GLAB_API_PROTOCOL",
+    "API_PROTOCOL",
+    "GLAB_SKIP_TLS_VERIFY",
+    "SKIP_TLS_VERIFY",
+    "GLAB_CA_CERT",
+    "CA_CERT",
+)
 
 # The password that the helper returns and the stub of glab expects in GITLAB_TOKEN.
 KEY = "test-token"
@@ -284,6 +310,20 @@ def fallback_cases(s):
     check(
         p.stdout.endswith("dotfiles-merge feature-x\n") and KEY not in merge_env,
         f"a caller that exports token: the password is not in dotfiles-merge's environment: {merge_env!r}",
+    )
+    for log in ("glab", "glab.env", "git-credential.log", "helper.env", "glab.vars"):
+        s.log(log)
+
+    # A caller that exports glab's variables of a token, a host, the protocol or the TLS check:
+    # none reaches the glab call that holds the password, which would send it elsewhere or in
+    # clear text.
+    hostile = dict.fromkeys(GLAB_HOSTILE, "elsewhere.invalid")
+    p = s.run("merge", "31", keyed="opened feature-x", helper=KEY, extra=hostile)
+    keyed_calls = [line for line in s.log("glab.vars").splitlines() if line.startswith("token=match ")]
+    check(
+        p.stdout.endswith("dotfiles-merge feature-x\n") and keyed_calls == ["token=match vars="],
+        f"a caller that exports glab's host, protocol and TLS variables: none reaches the glab call "
+        f"with the password: {keyed_calls}",
     )
     for log in ("glab", "glab.env", "git-credential.log", "helper.env"):
         s.log(log)

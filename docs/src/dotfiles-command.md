@@ -138,10 +138,14 @@ merge. Any other argument is a branch name.
 `glab` first asks with its own login. When that login cannot read the merge request and the
 `origin` is an `https://` URL, the driver reads the password that git uses for the `origin`, with
 `git credential fill` in the source, and asks `glab` once more, in the source, with that password
-as `GITLAB_TOKEN` and the host of the `origin` as `GITLAB_HOST`. For a personal project that the
-GitLab group token of [The forge tokens](components/sandbox.md#the-forge-tokens) cannot read,
-that credential is a project access token of the project, in a credential helper of the source's
-own git configuration; the token needs the `read_api` scope (or `api`). The read sets
+as `GITLAB_TOKEN` and the host of the `origin` as `GITLAB_HOST`. That `glab` runs without the
+caller's other token, host, protocol and TLS variables of `glab`, such as `GITLAB_API_HOST` and
+`API_PROTOCOL`, which would send the password to another host or in clear text. For a personal
+project that the GitLab group token of [The forge tokens](components/sandbox.md#the-forge-tokens)
+cannot read, that credential is a project access token of the project, in a credential helper of
+the source's own git configuration. `dotfiles merge` needs the `read_api` scope (or `api`), and
+[`dotfiles absorb`](#dotfiles-absorb) needs `api` to open the merge request: so the token's scopes
+are `read_repository`, `write_repository` and `api`. The read sets
 `GIT_ASKPASS` to the empty string, `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`: git runs
 no askpass program, whether the caller's `GIT_ASKPASS` or `SSH_ASKPASS` or a `core.askPass`
 names one, asks nothing in the terminal, and a credential manager opens no dialog. The read never
@@ -224,9 +228,25 @@ With nothing to re-add and no local change in the source, it says that nothing i
 exits 0. Otherwise it shows the hunks of the files to re-add and `git diff HEAD` of the source,
 and asks `y/N`. On `y`, it makes the branch `absorb/<host>-<UTC yyyymmdd-HHMMSS>` from `HEAD`,
 re-adds the files, commits every change of the source there, unsigned, pushes the branch, switches
-back to `main`, deletes the local branch, and prints the command that opens the request: `gh pr
-create` for an `origin` on `github.com`, `glab mr create` for any other host. The commit is
-unsigned because only the signed merge of `dotfiles merge` counts on `main`.
+back to `main`, deletes the local branch, and opens the request. The commit is unsigned because
+only the signed merge of `dotfiles merge` counts on `main`.
+
+The title of the request is the subject of the pushed commit, and its text is the body of that
+commit. `dotfiles absorb` reads both from the commit, because the local branch is gone and `HEAD`
+is `main` by then. For an `origin` on `github.com`, it runs `gh pr create -R github.com/<path>
+--base main --head <branch> --title <subject> --body <body>`. For any other host, it runs `glab mr
+create -R <origin> --target-branch main --source-branch <branch> --title <subject>
+--description <body> --yes` in the source. When the `origin` is an `https://` URL, it reads the password that git uses for the `origin` from the source's own git credential, as the
+driver does for [`dotfiles merge`](#dotfiles-merge), and gives it to `glab` as `GITLAB_TOKEN`,
+with the host of the `origin` as `GITLAB_HOST`. That `glab` runs without the caller's other
+token, host, protocol and TLS variables of `glab`, such as `GITLAB_API_HOST` and
+`API_PROTOCOL`: no variable of the caller sends the password to another host or in clear text.
+The password appears in no argument and on no output. When the `origin` is not an `https://`
+URL, or the credential gives no password, `glab` uses its own login. `gh` or `glab` prints the
+request, and then `dotfiles absorb` prints one line that names it. When `gh` or `glab` cannot open
+the request, `dotfiles absorb` prints one line on standard error, which says that the branch is
+pushed and gives the command that opens the request, and exits 1. That command gives the title,
+quoted for the shell, and no text: `gh` or `glab` asks for the text when you run it.
 
 To take a template's edit too, answer `n`, put the edit into the template, and run `dotfiles
 absorb` again: it commits the changed template with the rest. The simpler way is `chezmoi edit
@@ -240,13 +260,16 @@ question of `dotfiles update` until then.
 Each part of [the review](#the-review) must be read to its end. When you quit the pager early, it
 stops before the question, and nothing is absorbed.
 
-**Exit status:** 0 when nothing is absorbed, when the answer is not `y`, and after the push; 1
-when a stop above applies, when the re-add or the commit fails, when the push is refused, and when
-you quit the review early; 2 on a usage error. A refused push leaves the commit on the local
-branch, names it with the command that pushes it, and leaves `HEAD` on `main`.
+**Exit status:** 0 when nothing is absorbed, when the answer is not `y`, and after the request is
+open; 1 when a stop above applies, when the re-add or the commit fails, when the push is refused,
+when the request cannot be opened, and when you quit the review early; 2 on a usage error. A
+refused push leaves the commit on the local branch, names it with the command that pushes it,
+and leaves `HEAD` on `main`.
 
-**Reads:** the live files, the source, and chezmoi's persistent state. **Writes:** a branch of the
-source and of its `origin`; never a live file.
+**Reads:** the live files, the source, chezmoi's persistent state, and the source's git
+credential for an `https://` `origin` that is not on `github.com`. **Writes:** a branch of the
+source and of its `origin`, and a pull request or merge request of the `origin`; never a live
+file.
 
 **Where to run it:** in your own terminal, on the host whose files you edited, then merge the
 request on the template host with `dotfiles merge`.
