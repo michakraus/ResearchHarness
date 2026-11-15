@@ -44,7 +44,9 @@ concurrency:
 jobs:
     groups:
         # The test groups of test/ci-groups.toml as a JSON list, or `[""]` where the file is absent;
-        # and the Julia versions of `test-other` for this event as a JSON list.
+        # and the Julia versions of the `test-other` job of CI.yml for this event, which this
+        # workflow does not read. The job is the `groups` job of CI.yml, so both read the file
+        # alike.
         name: Test groups
         runs-on: ubuntu-latest
         timeout-minutes: 10

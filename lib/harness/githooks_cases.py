@@ -109,6 +109,18 @@ TEST_NAME = (
 PRERELEASE_NAME = "Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}"
 # The two projects that the downgrade job resolves, which Downgrade.yml watches.
 PROJECTS = ["Project.toml", "test/Project.toml"]
+# The standard libraries that the downgrade job of Downgrade.yml keeps at their bundled versions.
+DOWNGRADE_SKIP = ",".join(
+    [
+        *("ArgTools", "Artifacts", "Base64", "CRC32c", "Dates", "DelimitedFiles", "Distributed"),
+        *("Downloads", "FileWatching", "Future", "InteractiveUtils", "LazyArtifacts", "LibCURL"),
+        *("LibGit2", "Libdl", "LinearAlgebra", "Logging", "Markdown", "Mmap", "NetworkOptions", "Pkg"),
+        *("Printf", "Profile", "REPL", "Random", "SHA", "Serialization", "SharedArrays", "Sockets"),
+        *("SparseArrays", "Statistics", "TOML", "Tar", "Test", "UUIDs", "Unicode"),
+    ]
+)
+# The jobs of CI.yml that run the tests.
+TESTED = ("test", "test-other", "prerelease")
 BASE_UUID = "00000000-0000-0000-0000-00000000000b"
 # The installed paths of the two files, relative to a repository.
 INSTALLED = (".github/workflows/Dependents.yml", ".github/dependents.jl")
@@ -563,7 +575,11 @@ def workflow_cases(check: Check, tmp: pathlib.Path) -> None:
     shutil.copyfile(DEPENDENTS_YML, templates / "Dependents.yml")
     (templates / "Downgrade.yml").unlink(missing_ok=True)
     with mock.patch.object(githooks, "WORKFLOWS", templates):
-        code, _ = quiet(githooks.cmd_workflows, listed, apply=True)
+        # An installer that does not check the template first fails later, on the copy.
+        try:
+            code, _ = quiet(githooks.cmd_workflows, listed, apply=True)
+        except FileNotFoundError as e:
+            code = f"FileNotFoundError: {e}"
     check(
         isinstance(code, str) and "missing template" in code and "Downgrade.yml" in code,
         f"workflows refuses a missing Downgrade.yml template, naming it -> {code}",
@@ -601,8 +617,7 @@ def yaml_cases(check: Check) -> None:
         not read.refused, f"Dependents.yml is YAML with no repeated key -> line {read.line}, {read.duplicate}"
     )
     data = cast("dict[object, object]", read.data if isinstance(read.data, dict) else {})
-    # YAML 1.1 reads the key `on` as True.
-    on = cast("dict[str, object]", data.get(True) or data.get("on") or {})
+    on = triggers(data)
     pull = cast("dict[str, object]", on.get("pull_request") or {})
     check(
         sorted(on) == ["pull_request", "workflow_dispatch"]
@@ -632,13 +647,8 @@ def yaml_cases(check: Check) -> None:
         f"a list job, and a test job per dependent on ubuntu-latest, 60 minutes, fail-fast false -> "
         f"{ {k: test.get(k) for k in ('needs', 'runs-on', 'timeout-minutes')} }, {strategy}",
     )
-    steps = cast("list[dict[str, object]]", test.get("steps") or [])
-    uses = {
-        str(s["uses"])
-        for job in jobs.values()
-        for s in cast("list[dict[str, object]]", job.get("steps") or [])
-        if "uses" in s
-    }
+    steps = job_steps(test)
+    uses = {str(s["uses"]) for job in jobs.values() for s in job_steps(job) if "uses" in s}
     runs = "\n".join(str(s.get("run", "")) for s in steps)
     versions = [
         cast("dict[str, object]", s.get("with") or {}).get("version")
@@ -683,9 +693,9 @@ def yaml_cases(check: Check) -> None:
     keeps = [
         (name, i)
         for name, job in jobs.items()
-        for i, s in enumerate(cast("list[dict[str, object]]", job.get("steps") or []))
+        for i, s in enumerate(job_steps(job))
         if str(s.get("uses", "")).startswith("actions/checkout@")
-        and cast("dict[str, object]", s.get("with") or {}).get("persist-credentials") is not False
+        and given(s).get("persist-credentials") is not False
     ]
     check(
         not keeps,
@@ -808,7 +818,7 @@ def triggers(data: dict[object, object]) -> dict[str, object]:
     return cast("dict[str, object]", data.get(True) or data.get("on") or {})
 
 
-def steps(job: dict[str, object]) -> list[dict[str, object]]:
+def job_steps(job: dict[str, object]) -> list[dict[str, object]]:
     """The steps of a job."""
     return cast("list[dict[str, object]]", job.get("steps") or [])
 
@@ -820,7 +830,7 @@ def given(step: dict[str, object]) -> dict[str, object]:
 
 def given_to(job: dict[str, object], action: str) -> dict[str, object]:
     """The `with:` table of the first step of a job that uses `action`, or an empty table."""
-    found = [given(s) for s in steps(job) if str(s.get("uses", "")).startswith(f"{action}@")]
+    found = [given(s) for s in job_steps(job) if str(s.get("uses", "")).startswith(f"{action}@")]
     return found[0] if found else {}
 
 
@@ -847,7 +857,7 @@ def ci_cases(check: Check) -> None:
         f"CI.yml: test-other waits for test, and prerelease and doctest wait for no job -> {needs}",
     )
     other = jobs.get("test-other", {})
-    conditions = [str(other.get("if", "")), *(str(s.get("if", "")) for s in steps(other))]
+    conditions = [str(other.get("if", "")), *(str(s.get("if", "")) for s in job_steps(other))]
     after = [c for c in conditions if any(w in c for w in ("always()", "failure()", "cancelled()"))]
     check(not after, f"CI.yml: test-other and its steps never run after a failure of test -> {after}")
     matrices = {name: matrix(job) for name, job in jobs.items()}
@@ -889,13 +899,13 @@ def ci_cases(check: Check) -> None:
     codecov = sorted(
         name
         for name, job in jobs.items()
-        for s in steps(job)
+        for s in job_steps(job)
         if str(s.get("uses", "")).startswith("codecov/")
     )
     coverage = {
         name: given(s).get("coverage")
         for name, job in jobs.items()
-        for s in steps(job)
+        for s in job_steps(job)
         if str(s.get("uses", "")).startswith("julia-actions/julia-runtest")
     }
     env = cast("dict[str, object]", jobs.get("test", {}).get("env") or {})
@@ -905,6 +915,24 @@ def ci_cases(check: Check) -> None:
         and env.get("COVERAGE") == "${{ matrix.version == '1' && matrix.os == 'ubuntu-latest' }}",
         f"CI.yml: only test, on Ubuntu with 1, measures and uploads the coverage -> codecov in {codecov}, "
         f"coverage {coverage}",
+    )
+    entry = {"version": "${{ matrix.version }}", "arch": "${{ matrix.arch }}"}
+    setup = {name: given_to(jobs.get(name, {}), "julia-actions/setup-julia") for name in TESTED}
+    runtest = {name: given_to(jobs.get(name, {}), "julia-actions/julia-runtest") for name in TESTED}
+    check(
+        setup == dict.fromkeys(TESTED, entry)
+        and runtest
+        == {
+            "test": {
+                "check_bounds": "auto",
+                "coverage": "${{ env.COVERAGE }}",
+                "test_args": "${{ matrix.group }}",
+            },
+            "test-other": {"check_bounds": "auto", "coverage": False, "test_args": "${{ matrix.group }}"},
+            "prerelease": {"check_bounds": "auto", "coverage": False},
+        },
+        f"CI.yml: test, test-other and prerelease set up the Julia and the architecture of their matrix "
+        f"entry, and test and test-other run the group of their entry -> setup {setup}, runtest {runtest}",
     )
     on = triggers(data)
     concurrency = cast("dict[str, object]", data.get("concurrency") or {})
@@ -927,7 +955,7 @@ def groups_output(tmp: pathlib.Path, event: str, ref: str, text: str | None) -> 
     new directory below `tmp` whose test/ci-groups.toml holds `text`, or which has none for None:
     its exit status, and the lines that it writes to GITHUB_OUTPUT."""
     _, jobs = template(CI_YML)
-    script = next((str(s["run"]) for s in steps(jobs.get("groups", {})) if s.get("id") == "read"), "")
+    script = next((str(s["run"]) for s in job_steps(jobs.get("groups", {})) if s.get("id") == "read"), "")
     root = pathlib.Path(tempfile.mkdtemp(dir=tmp))
     if text is not None:
         (root / "test").mkdir()
@@ -1003,18 +1031,26 @@ def downgrade_cases(check: Check) -> None:
         f"-> {data.get('concurrency')}, {sorted(jobs)}",
     )
     job = jobs.get("downgrade", {})
+    setup = given_to(job, "julia-actions/setup-julia")
     compat = given_to(job, "julia-actions/julia-downgrade-compat")
     runtest = given_to(job, "julia-actions/julia-runtest")
     check(
         job.get("needs") == "groups"
         and job.get("continue-on-error") is True
         and matrix(job) == {"group": GROUPS_LIST}
-        and compat.get("mode") == "forcedeps"
-        and compat.get("projects") == "., test"
-        and runtest.get("test_args") == "${{ matrix.group }}"
-        and runtest.get("allow_reresolve") is False,
+        and setup == {"version": "min"}
+        and compat
+        == {"mode": "forcedeps", "julia_version": "min", "projects": "., test", "skip": DOWNGRADE_SKIP}
+        and runtest
+        == {
+            "check_bounds": "auto",
+            "allow_reresolve": False,
+            "force_latest_compatible_version": False,
+            "test_args": "${{ matrix.group }}",
+        },
         f"the downgrade job runs each group at the lower bounds of both projects, as information -> "
-        f"{ {k: job.get(k) for k in ('needs', 'continue-on-error')} }, {matrix(job)}, {compat}, {runtest}",
+        f"{ {k: job.get(k) for k in ('needs', 'continue-on-error')} }, {matrix(job)}, {setup}, {compat}, "
+        f"{runtest}",
     )
 
 

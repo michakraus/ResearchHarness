@@ -304,9 +304,9 @@ The matrix names Julia versions by alias, `min` and `1`, so the names of the che
 in every repository without test groups. `test` and `test-other` share one job name, so a check
 has the same name as in one matrix over the three systems. Branch protection needs those fixed
 names. Only the entry of Julia `1` on Ubuntu measures coverage and sends it to Codecov, once per
-test group. A repository
-that needs another job gets its own extra workflow file, not an edit of this one. No checkout
-keeps the token, because the build and the tests run code of the package and its dependencies.
+test group. A repository that needs another job gets its own extra workflow file, not an edit of
+this one. No checkout keeps the token, because the build and the tests run code of the package
+and its dependencies.
 
 ### Test groups
 
@@ -503,13 +503,11 @@ It checks these points:
    its `workflows` is a file in `.github/workflows/` and is not an installed one.
 
 Without `--quiet`, it prints the required checks of a repository without test groups, and those of
-each repository that has a `test/ci-groups.toml`. It also
-checks that a repository of `docs_additions` keeps the body of `Documenter.yml`. It
-reports the repositories whose `doctest` job skips itself. It exits with status 1 when a
-repository deviates. It
-reads the profile for `docs_exceptions`, `docs_additions` and `dependents_bases`. It reads a key
-that the profile does not have as an empty list, so without `dependents_bases` no repository is a
-base.
+each repository that has a `test/ci-groups.toml`. It also checks that a repository of
+`docs_additions` keeps the body of `Documenter.yml`. It reports the repositories whose `doctest`
+job skips itself. It exits with status 1 when a repository deviates. It reads the profile for
+`docs_exceptions`, `docs_additions` and `dependents_bases`. It reads a key that the profile does
+not have as an empty list, so without `dependents_bases` no repository is a base.
 
 Run it after `harness workflows --apply`, and before a change to CI. `harness ci-protection
 --apply` refuses to run when it fails. The rule `generated-hooks-and-workflows` and the agent

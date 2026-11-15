@@ -1008,3 +1008,14 @@
   branch is unchanged.
 - kind: defect
 - found: 2026-11-15, the spec of part D4 of the sandbox plan
+
+### K165 · `ci-triage` gives one count of required status checks for every repository, but a repository with test groups requires more.
+
+- location: `agents/ci-triage.md:31-32`
+- evidence: the agent says "There are **five required status checks**". `required_checks` of
+  `lib/harness/protection.py` returns the four Julia checks once per group of
+  `test/ci-groups.toml`, the doctests and the jobs of its `workflows`: nine for the groups `core`
+  and `long` (`GROUPED_CHECKS` of the `protection` cases). The count of the base, seven, had the
+  same limit.
+- kind: docs
+- found: 2026-11-16, the critic round of the tiered CI matrix

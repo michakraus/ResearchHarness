@@ -8,7 +8,8 @@
   replace each other's pending run. `Downgrade.yml` runs the downgrade job that `CI.yml` held, with
   the same steps, on a pull request and a push that change `Project.toml` or `test/Project.toml`, on
   every tag, weekly and by hand. `harness workflows` installs it wherever it installs `CI.yml`, and
-  `verify-workflows.jl` compares it byte for byte. `REQUIRED_CHECKS` drops `Julia min` on macOS
+  `verify-workflows.jl` compares it byte for byte; the `workflows` of a `test/ci-groups.toml` may
+  not name it, as they may not name `CI.yml`. `REQUIRED_CHECKS` drops `Julia min` on macOS
   and Windows, so a repository without test groups requires five checks, and a case derives that
   set from the template. Every repository needs `harness workflows --apply`, then `harness
   ci-protection --apply`: until then the old ruleset requires two checks that a pull request no
