@@ -203,7 +203,8 @@ user.
 `harness ci-protection` calls `gh api` to protect the default branch of each repository on GitHub.
 
 The harness needs gh because branch protection is a setting on GitHub, which only the API
-changes. gh holds the user's credentials, so the harness stores no token of its own.
+changes. gh holds the user's credentials, so the harness stores no token of its own. Where the
+user's own broad token is sealed for `ghx`, `harness ci-protection` gives it to gh for its calls.
 
 Call site: `harness ci-protection` (`lib/harness/protection.py`).
 

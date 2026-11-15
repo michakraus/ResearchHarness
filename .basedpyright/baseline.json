@@ -36962,62 +36962,6 @@
                     "endColumn": 19,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportUnknownParameterType",
-                "range": {
-                    "startColumn": 22,
-                    "endColumn": 26,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportMissingParameterType",
-                "range": {
-                    "startColumn": 22,
-                    "endColumn": 26,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 15,
-                    "endColumn": 25,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 38,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 57,
-                    "endColumn": 67,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 45,
-                    "endColumn": 55,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownArgumentType",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
             }
         ],
         "./lib/harness/providers.py": [

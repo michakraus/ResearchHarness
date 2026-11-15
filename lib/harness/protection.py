@@ -13,6 +13,11 @@ Where to run it. Run this yourself, not from an agent shell. In the agent sandbo
 `gh` call of a process succeeds; every later one dies with `x509: OSStatus -26276`, a keychain
 XPC failure, not a certificate problem. A call that fails that way is retried four times.
 
+The token. A ruleset needs the repository permission Administration: write, which the
+organisation tokens of the wrapper ~/.local/bin/gh do not have. Where the user's own broad token
+is sealed in ~/.config/research-harness/sealed/github.age, `github_token` decrypts it once, as
+`ghx` does, and every `gh` call runs the real gh with it. Without that file, gh runs from the PATH.
+
 Required checks. There are two static lists of required checks. The packages and experiments
 with a CI.yml and no test/ci-groups.toml require REQUIRED_CHECKS. CI.yml is byte-identical in
 every repository, its matrix is `version: [min, 1]` rather than version numbers, and its job
@@ -63,6 +68,8 @@ not skipped forever.
 
 import argparse
 import contextlib
+import functools
+import importlib.util
 import io
 import itertools
 import json
@@ -74,7 +81,10 @@ import sys
 import tempfile
 import time
 import tomllib
-from collections.abc import Callable
+import types
+from collections.abc import Callable, Generator
+from importlib.abc import Loader
+from importlib.machinery import ModuleSpec
 from typing import Any, cast
 from unittest import mock
 
@@ -146,12 +156,79 @@ class GhError(Exception):
     """A `gh` call that failed; the message is its first line of output."""
 
 
+# The user's own broad GitHub token, sealed below the home directory: the secret `github` that
+# `ghx` decrypts too.
+SEALED_GITHUB = pathlib.Path(".config", "research-harness", "sealed", "github.age")
+
+
+class GhRunner:
+    """The program of every `gh` call and its environment: `gh` from the PATH with the caller's
+    environment, or, inside `github_token`, the real gh with the sealed token."""
+
+    def __init__(self) -> None:
+        self.program = "gh"
+        self.env: dict[str, str] | None = None
+
+
+RUNNER = GhRunner()
+
+
+@functools.cache
+def sealed() -> types.ModuleType:
+    """scripts/sealed.py, the program of `ghx`, as a module, for its `decrypt`, `program`,
+    `RefusedError` and `GH_REMOVED`. It is in sys.modules before it runs, as its dataclass needs."""
+    path = REPO / "scripts" / "sealed.py"
+    # A path that ends in `.py` always gets a spec with a source loader.
+    spec = cast("ModuleSpec", importlib.util.spec_from_file_location("harness_sealed", path))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    cast("Loader", spec.loader).exec_module(module)
+    return module
+
+
+@contextlib.contextmanager
+def github_token() -> Generator[None]:
+    """Run every `gh` call of the block with the user's own broad token, where the sealed secret
+    ~/.config/research-harness/sealed/github.age exists: decrypt it once, as `ghx` does, with one
+    Touch ID prompt, and run the real gh, the first `gh` on the PATH that is no `#!` script, so
+    that the wrapper ~/.local/bin/gh, which chooses the narrow token of the repository's owner, is
+    skipped. gh gets GH_TOKEN, the secret's token, and a new empty GH_CONFIG_DIR, removed after the
+    block, and none of ghx's removed variables. Without the file, gh runs from the PATH with the
+    caller's environment. A refusal of sealed.py, or a secret of another host than github.com,
+    raises HarnessError."""
+    if not (pathlib.Path.home() / SEALED_GITHUB).is_file():
+        yield
+        return
+    module = sealed()
+    refused = cast("type[Exception]", module.RefusedError)
+    print("ci-protection: decrypting the sealed secret github for every gh call...")
+    try:
+        program = cast("pathlib.Path", module.program("gh", skip_scripts=True))
+        secret = module.decrypt("github")
+    except refused as e:
+        raise HarnessError(f"sealed: {e}") from None
+    token, host = cast("str", secret.token), cast("str", secret.host)
+    if host != "github.com":
+        raise HarnessError(f"sealed: the secret github names the host {host}, not github.com")
+    removed = cast("tuple[str, ...]", module.GH_REMOVED)
+    previous = RUNNER.program, RUNNER.env
+    with tempfile.TemporaryDirectory(prefix="ci-protection.") as config:
+        env = {k: v for k, v in os.environ.items() if k not in removed}
+        RUNNER.program, RUNNER.env = str(program), env | {"GH_TOKEN": token, "GH_CONFIG_DIR": config}
+        try:
+            yield
+        finally:
+            RUNNER.program, RUNNER.env = previous
+
+
 def gh(*args: str, payload: str | None = None) -> str:
-    """Run `gh args` and return its stdout; retry the keychain XPC failure four times."""
+    """Run `gh args` with RUNNER's program and environment and return its stdout; retry the
+    keychain XPC failure four times."""
     out = ""
     for attempt in range(4):
         p = subprocess.run(
-            ["gh", *args],  # noqa: S607 -- gh runs from PATH, where the user installs it
+            [RUNNER.program, *args],
+            env=RUNNER.env,
             input=payload,
             capture_output=True,
             text=True,
@@ -543,8 +620,14 @@ def workflow_checks(path: pathlib.Path) -> list[str]:
     return sorted(found)
 
 
-def cmd_ci_protection(args):
+def cmd_ci_protection(args: argparse.Namespace) -> int:
     verify_workflows()
+    with github_token():
+        return protect(args)
+
+
+def protect(args: argparse.Namespace) -> int:
+    """Plan or write the ruleset, or the removal of classic protection, of every target."""
     changes = failed = 0
     for repo, checks in targets():
         try:
@@ -983,6 +1066,7 @@ def command_cases() -> tuple[int, int]:
             mock.patch.multiple(
                 sys.modules[__name__],
                 verify_workflows=lambda: None,
+                github_token=contextlib.nullcontext,
                 resolve=fake_resolve,
                 ruleset_id=rid,
                 gh=fake_gh,
@@ -1058,10 +1142,114 @@ def command_cases() -> tuple[int, int]:
     return 5, wrong
 
 
+# The token of the fake decryption in `token_cases`; no real token.
+FAKE_SEALED = "fake-sealed-value"
+# A stub of the real gh: one line with its GH_TOKEN, its GITHUB_TOKEN and GH_HOST (or `unset`),
+# the number of entries of its GH_CONFIG_DIR, and that directory.
+GH_STUB = """#!/bin/sh
+printf '%s %s %s %s %s\\n' "${GH_TOKEN-unset}" "${GITHUB_TOKEN-unset}" "${GH_HOST-unset}" \\
+    "$(ls -A "$GH_CONFIG_DIR" | wc -l | tr -d ' ')" "$GH_CONFIG_DIR"
+"""
+
+
+def token_cases() -> tuple[int, int]:
+    """`github_token` in a scratch HOME, with sealed.py's `decrypt` and `program` replaced: no
+    sealed secret leaves gh as it is; a sealed secret is decrypted once and every gh call of the
+    block runs the real gh with its token and a new empty GH_CONFIG_DIR, gone after the block; a
+    secret of another host, and a refusal of sealed.py, raise HarnessError."""
+    wrong = 0
+    total = 0
+
+    def check(label: str, seen: object, *, ok: bool) -> None:
+        nonlocal wrong, total
+        total += 1
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  ci-protection token: {label}")
+        if not ok:
+            print(f"     got {seen!r}")
+
+    module = sealed()
+    refused = cast("type[Exception]", module.RefusedError)
+    with tempfile.TemporaryDirectory() as tmp:
+        home = pathlib.Path(tmp)
+        stub = home / "bin" / "gh"
+        stub.parent.mkdir()
+        stub.write_text(GH_STUB)
+        stub.chmod(0o755)
+        caller = {"HOME": tmp, "GITHUB_TOKEN": "caller", "GH_HOST": "elsewhere.example.net"}
+        decrypted: list[str] = []
+        host = ["github.com"]
+
+        def decrypt(name: str) -> types.SimpleNamespace:
+            decrypted.append(name)
+            if host[0] == "refused":
+                raise refused("age exits 1")
+            return types.SimpleNamespace(user="u", token=FAKE_SEALED, host=host[0])
+
+        def program(_name: str, *, skip_scripts: bool) -> pathlib.Path:
+            return stub if skip_scripts else home
+
+        def entered() -> tuple[str, dict[str, str] | None, str]:
+            """The runner inside `github_token` and the output of one gh call there."""
+            with contextlib.redirect_stdout(io.StringIO()), github_token():
+                return RUNNER.program, RUNNER.env, gh("api", "user")
+
+        with (
+            mock.patch.dict(os.environ, caller),
+            mock.patch.object(module, "decrypt", decrypt),
+            mock.patch.object(module, "program", program),
+        ):
+            with github_token():
+                plain = (RUNNER.program, RUNNER.env)
+            check(
+                "no sealed secret: gh from the PATH with the caller's environment",
+                plain,
+                ok=plain == ("gh", None),
+            )
+            check("no sealed secret: nothing is decrypted", decrypted, ok=decrypted == [])
+
+            (home / SEALED_GITHUB).parent.mkdir(parents=True)
+            (home / SEALED_GITHUB).write_text("")
+            with contextlib.redirect_stdout(io.StringIO()), github_token():
+                lines = [gh("api", "user").split() for _ in range(3)]
+            config = lines[0][4] if lines and len(lines[0]) == 5 else ""
+            check(
+                "a sealed secret: decrypted once, and every gh call runs the real gh with its token, "
+                "without GITHUB_TOKEN and GH_HOST, and with a new empty GH_CONFIG_DIR",
+                (decrypted, lines),
+                ok=decrypted == ["github"] and lines == [[FAKE_SEALED, "unset", "unset", "0", config]] * 3,
+            )
+            check(
+                "a sealed secret: the GH_CONFIG_DIR is gone and the runner is gh again after the block",
+                (config, RUNNER.program, RUNNER.env),
+                ok=bool(config)
+                and not pathlib.Path(config).exists()
+                and (RUNNER.program, RUNNER.env) == ("gh", None),
+            )
+
+            for label, kind, expected in (
+                ("a secret of another host", "gitlab.example.org", "names the host gitlab.example.org"),
+                ("a refusal of sealed.py", "refused", "sealed: age exits 1"),
+            ):
+                host[0] = kind
+                try:
+                    seen: object = entered()
+                    ok = False
+                except HarnessError as e:
+                    seen, ok = str(e), expected in str(e)
+                check(
+                    f"{label}: HarnessError, and the runner stays gh",
+                    seen,
+                    ok=ok and (RUNNER.program, RUNNER.env) == ("gh", None),
+                )
+    return total, wrong
+
+
 def selftest():
-    """Cases for `ruleset_problem`, `targets`, `workflow_checks` and `cmd_ci_protection`."""
+    """Cases for `ruleset_problem`, `targets`, `workflow_checks`, `github_token` and
+    `cmd_ci_protection`."""
     total = wrong = 0
-    for cases in (ruleset_cases, target_cases, workflow_cases, command_cases):
+    for cases in (ruleset_cases, target_cases, workflow_cases, token_cases, command_cases):
         n, w = cases()
         total += n
         wrong += w
