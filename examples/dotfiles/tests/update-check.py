@@ -83,7 +83,8 @@ Checks:
       scratch remote) gh runs `pr create` once. For an https:// origin on a GitLab host (an
       insteadOf rewrite too) whose credential helper in the source gives a password, glab runs
       once with the password as GITLAB_TOKEN and the host as GITLAB_HOST, and the password is on
-      no output; with no password, and for an ssh:// origin, glab runs with its own login; when
+      no output; glab's other token, host, protocol and TLS variables that the caller exports do
+      not reach it; with no password, and for an ssh:// origin, glab runs with its own login; when
       glab fails, absorb exits 1 and names the pushed branch and the command that opens the
       request. It stops without a terminal (before the fetch), on an argument (exit 2), on a
       detached HEAD, on a main ahead of and one diverged from origin/main, on an untracked, a
@@ -1223,13 +1224,30 @@ ABSORB_FILES = {
 GITHUB = "https://github.com/owner/dotfiles.git"
 GITLAB = "https://gitlab.example.org/me/dotfiles.git"
 HELPER_KEY = "fake-absorb-key"  # the password of the test credential helper; no real token
+# The variables of glab that would send the password to another host or in clear text.
+CALLER_GLAB = (
+    "GITLAB_ACCESS_TOKEN",
+    "OAUTH_TOKEN",
+    "GITLAB_URI",
+    "GL_HOST",
+    "GITLAB_API_HOST",
+    "GITLAB_REPO",
+    "GLAB_API_PROTOCOL",
+    "API_PROTOCOL",
+    "GLAB_SKIP_TLS_VERIFY",
+    "SKIP_TLS_VERIFY",
+    "GLAB_CA_CERT",
+    "CA_CERT",
+)
 # A stub of gh or glab: it logs its arguments to <name>.log and its working directory, GITLAB_HOST
-# and GITLAB_TOKEN (the fake test token, compared by the test) to <name>.env, in the world's root.
-# It prints a URL and exits 0, or exits 1 when the file <name>.fail is in the root.
+# and GITLAB_TOKEN (the fake test token, compared by the test) to <name>.env, in the world's root,
+# and the name of each variable of CALLER_GLAB in its environment to <name>.vars. It prints a URL
+# and exits 0, or exits 1 when the file <name>.fail is in the root.
 REQUEST_STUB = """#!/bin/sh
 echo "$*" >> "{root}/{name}.log"
 printf 'cwd=%s host=%s token=%s\\n' "$PWD" "${{GITLAB_HOST-<unset>}}" "${{GITLAB_TOKEN-<unset>}}" \\
     >> "{root}/{name}.env"
+env | sed -nE 's/^({vars})=.*/\\1/p' >> "{root}/{name}.vars"
 if [ -e "{root}/{name}.fail" ]; then
     echo "{name}: could not create the request" >&2
     exit 1
@@ -1246,7 +1264,7 @@ def absorb_world(name):
     real = shutil.which("chezmoi")
     (w.bindir / "chezmoi").write_text(f'#!/bin/sh\necho "$*" >> "{w.log}"\nexec "{real}" "$@"\n')
     for tool in ("gh", "glab"):
-        (w.bindir / tool).write_text(REQUEST_STUB.format(root=w.root, name=tool))
+        (w.bindir / tool).write_text(REQUEST_STUB.format(root=w.root, name=tool, vars="|".join(CALLER_GLAB)))
         (w.bindir / tool).chmod(0o755)
     w.commit("the managed files", key="listed", files=ABSORB_FILES)
     w.push()
@@ -1449,14 +1467,16 @@ def absorb_answers():
 def absorb_requests():
     print("\n== 17: dotfiles-absorb, the merge request on an https:// origin")
 
-    def absorb(name, label, password, *, fail=False, origin=GITLAB):
+    def absorb(name, label, password, *, fail=False, origin=GITLAB, **caller):
         """In a new absorb_world with a live edit of .plain, the origin `origin` (by default an
         https:// origin on a GitLab host) that git rewrites to the scratch remote, and the source's
         own credential helper, which gives `password` (none when empty): run dotfiles-absorb,
         answer y, and return the world, the output, the pushed branch and glab's log. With
-        `fail`, glab exits 1, and absorb must exit 1; otherwise 0."""
+        `fail`, glab exits 1, and absorb must exit 1; otherwise 0. `caller` holds variables that
+        the caller exports."""
         want_code = 1 if fail else 0
         w = absorb_world(name)
+        w.env.update(caller)
         base = w.head()
         must(["git", "config", f"url.{w.remote.as_uri()}.insteadOf", origin], w.env, w.source)
         must(["git", "remote", "set-url", "origin", origin], w.env, w.source)
@@ -1488,6 +1508,19 @@ def absorb_requests():
     check(
         f"the merge request of the branch {branch} is open." in out and HELPER_KEY not in out,
         f"absorb, {label}: the line, and the password is in no output",
+    )
+
+    # A caller that exports the other token, host, protocol and TLS variables of glab: glab gets
+    # the password and the origin's host, and none of them.
+    label = "the caller exports glab's variables"
+    caller = dict.fromkeys(CALLER_GLAB, "elsewhere.example.net")
+    w, out, branch, (args, env) = absorb("c17-gitlab-caller", label, HELPER_KEY, **caller)
+    reached = (w.root / "glab.vars").read_text().split() if (w.root / "glab.vars").exists() else []
+    check(
+        len(args) == 1
+        and env == [f"cwd={w.source} host=gitlab.example.org token={HELPER_KEY}"]
+        and reached == [],
+        f"absorb, {label}: glab runs once with the password and the host, and none of them: {env} {reached}",
     )
 
     label = "the source's credential gives no password"

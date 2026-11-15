@@ -209,11 +209,17 @@ else
             sed -n 's/^password=//p') || token=""
     fi
     # glab sends a token of the environment only to the host of GITLAB_HOST, and needs a remote
-    # of its working directory on that host: the source's origin, here. Without a password, glab
-    # uses its own login.
+    # of its working directory on that host: the source's origin, here. A variable of the caller
+    # that names another API host, the protocol or the TLS check would send the password
+    # elsewhere or in clear text, so glab runs without them. Without a password, glab uses its
+    # own login.
     if [ -n "$token" ]; then
-        GITLAB_TOKEN=$token GITLAB_HOST=$host glab mr create -R "$project" --target-branch main \
-            --source-branch "$branch" --fill --yes || opened=""
+        (
+            unset GITLAB_ACCESS_TOKEN OAUTH_TOKEN GITLAB_URI GL_HOST GITLAB_API_HOST GITLAB_REPO \
+                GLAB_API_PROTOCOL API_PROTOCOL GLAB_SKIP_TLS_VERIFY SKIP_TLS_VERIFY GLAB_CA_CERT CA_CERT
+            GITLAB_TOKEN=$token GITLAB_HOST=$host glab mr create -R "$project" --target-branch main \
+                --source-branch "$branch" --fill --yes
+        ) || opened=""
     else
         glab mr create -R "$project" --target-branch main --source-branch "$branch" --fill --yes || opened=""
     fi

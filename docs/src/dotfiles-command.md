@@ -234,9 +234,11 @@ For an `origin` on `github.com`, it runs `gh pr create -R github.com/<path> --ba
 --source-branch <branch> --fill --yes` in the source. When the `origin` is an `https://` URL, it
 reads the password that git uses for the `origin` from the source's own git credential, as the
 driver does for [`dotfiles merge`](#dotfiles-merge), and gives it to `glab` as `GITLAB_TOKEN`,
-with the host of the `origin` as `GITLAB_HOST`. The password appears in no argument and on no
-output. When the `origin` is not an `https://` URL, or the credential gives no password, `glab`
-uses its own login. `gh` or `glab` prints the request, and then `dotfiles absorb` prints one line
+with the host of the `origin` as `GITLAB_HOST`. That `glab` runs without the caller's other
+token, host, protocol and TLS variables of `glab`, such as `GITLAB_API_HOST` and
+`API_PROTOCOL`: no variable of the caller sends the password to another host or in clear text.
+The password appears in no argument and on no output. When the `origin` is not an `https://` URL, or the
+credential gives no password, `glab` uses its own login. `gh` or `glab` prints the request, and then `dotfiles absorb` prints one line
 that names it. When `gh` or `glab` cannot open the request, `dotfiles absorb` prints one line on
 standard error, which says that the branch is pushed and gives the command that opens the
 request, and exits 1.
@@ -256,8 +258,9 @@ refused push leaves the commit on the local branch, names it with the command th
 and leaves `HEAD` on `main`.
 
 **Reads:** the live files, the source, chezmoi's persistent state, and the source's git
-credential for an `https://` `origin`. **Writes:** a branch of the source and of its `origin`,
-and a pull request or merge request of the `origin`; never a live file.
+credential for an `https://` `origin` that is not on `github.com`. **Writes:** a branch of the
+source and of its `origin`, and a pull request or merge request of the `origin`; never a live
+file.
 
 **Where to run it:** in your own terminal, on the host whose files you edited, then merge the
 request on the template host with `dotfiles merge`.
