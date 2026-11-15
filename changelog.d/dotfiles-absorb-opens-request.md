@@ -7,4 +7,5 @@
   opens it, and exits 1. The `glab` call that holds the password, here and in the fallback of
   `dotfiles merge`, runs without the caller's `glab` variables of another token, host, protocol
   or TLS check, such as `GITLAB_API_HOST` and `API_PROTOCOL`, which sent the password to another
-  host or in clear text.
+  host or in clear text, and with a new empty `GLAB_CONFIG_DIR` in place of the caller's `glab`
+  configuration, whose per-host settings could do the same.
