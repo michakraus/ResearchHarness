@@ -5,15 +5,58 @@ description: The one layout of a Julia repository's tests — groups, runtests.j
 
 # Test files in a Julia repository
 
-Every repository here lays out its tests in one form. `Harness/scripts/test-layout.jl
---check <repository>` prints each violation, tagged with its rule, and exits 1 if there is any.
+Every repository here lays out its tests in one layout, with a serial and a parallel form of
+`runtests.jl`. `Harness/scripts/test-layout.jl --check <repository>` prints each violation,
+tagged with its rule, and exits 1 if there is any.
 
 - **The test dependencies are in `test/Project.toml`.** `Project.toml` has no `[extras]` and no
   `[targets]`.
-- **`runtests.jl` holds no test.** It holds `using SafeTestsets`,
+- **`runtests.jl` holds no test.** In the serial form it holds `using SafeTestsets`,
   `const GROUPS = isempty(ARGS) ? ["core", "slow"] : ARGS` (or a line below), and one
   `if "<group>" in GROUPS` per group. Each `if` holds only
   `@safetestset "<label>" include("<path>")` lines.
+- **A suite whose serial `Pkg.test()` takes more than 10 min on this machine has the parallel
+  form**; a shorter suite keeps the serial form. ParallelTestRunner.jl runs each test file of the
+  parallel form in a worker process, and `test/Project.toml` lists it. `runtests.jl` holds exactly
+  these statements, in this order, compared as expressions, so formatting and comments are free:
+
+  ```julia
+  using ParallelTestRunner
+  using <Package>
+
+  const TESTS = [
+      "core" => [
+          "<label>" => "<path relative to test/>",
+      ],
+      "slow" => [
+          "<label>" => "<path relative to test/>",
+      ],
+  ]
+
+  const SELECTED = filter(!startswith("--"), ARGS)
+  const GROUPS = isempty(SELECTED) ? ["core", "slow"] : SELECTED
+  const UNKNOWN = setdiff(SELECTED, first.(TESTS))
+  isempty(UNKNOWN) ||
+      error("no test group ", join(UNKNOWN, ", "), " in runtests.jl; its groups are ", join(first.(TESTS), ", "))
+
+  runtests(<Package>, filter(startswith("--"), ARGS);
+      testsuite = Dict(label => :(include($(joinpath(@__DIR__, path))))
+                       for (group, files) in TESTS if group in GROUPS for (label, path) in files),
+      serial = [label for (group, files) in TESTS if group in ("metal", "cuda") for (label, _) in files],
+      serial_position = :after,
+      retries = 0,
+      exeflags = ["--threads=$(Threads.nthreads())"],
+      max_default_jobs = max(1, Sys.CPU_THREADS ÷ Threads.nthreads()))
+  ```
+
+  `TESTS` is one literal table, group → label → path. It has a group `core`, each group once, and
+  each group has a file. An argument that starts with `--`, such as `--jobs=4`, goes to the runner;
+  the other arguments select groups, and an unknown group stops the run. The `GROUPS` line takes
+  `SELECTED` for `ARGS`, in each form below. A device group runs alone, after the others. Every
+  other rule here holds for the files of `TESTS` as for those of the `if` blocks.
+- **No runner retries a test: `retries = 0`.** A flaky test, one that fails and then passes on a
+  re-run, is a defect. It gets an issue, and `@test_broken` with that issue on its line until it is
+  fixed.
 - **The groups are `core`, `slow`, `doctests`, `metal`, `cuda` and `broken`**, and the groups of
   `test/ci-groups.toml` below. Empty `ARGS` runs `core` and `slow`, or the groups of that file.
   `doctests` holds `test/quality/doctests.jl` and no other file. The CI Doctests job does not run
@@ -23,8 +66,8 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
   `groups = ["core", "slow", "properties", "long"]`. CI then runs one test job per group, and the
   required checks end in ` - <group>`. The file lists `core`, `slow` and the repository's own
   groups, each a name of lower-case letters and digits, and none of `doctests`, `metal`, `cuda`
-  and `broken`. Each listed group has an `if` in `runtests.jl`, and empty `ARGS` runs exactly
-  them: `const GROUPS = isempty(ARGS) ? ["core", "slow", "properties", "long"] : ARGS`, in the
+  and `broken`. Each listed group has an `if` in `runtests.jl`, or a group in `TESTS`, and empty
+  `ARGS` runs exactly them: `const GROUPS = isempty(ARGS) ? ["core", "slow", "properties", "long"] : ARGS`, in the
   order of the file, so `Pkg.test()` still runs every group. A `metal` group appends `"metal"`
   to the Apple list of the platform line. `verify-workflows.jl` checks the file too.
 - **A group job runs its group alone, so a device group leaves the required macOS jobs.** The file
@@ -53,7 +96,7 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
   tests of a solver package in `test/gpu/`. It has its own environment and its own runner, and no
   rule here applies to its files.
 - **A reached test that fails is `@test_broken`**, with its issue on the same line. A file that
-  cannot load is in `broken`, with its issue on its `@safetestset` line.
+  cannot load is in `broken`, with its issue on its `@safetestset` line, or on its line of `TESTS`.
 - **The device skip is the one `@test_skip` that needs no issue.** It is the whole expression
   `@test_skip Metal.functional()` or `@test_skip CUDA.functional()`, in a file under
   `test/devices/`. `test/devices/metal.jl` runs its tests under `if Metal.functional()` and has
@@ -72,7 +115,8 @@ Every repository here lays out its tests in one form. `Harness/scripts/test-layo
   docs-only dependency keeps its own bound.
 - **Every test file is self-contained.** It has its own `using`, and a fixed seed where it draws
   random numbers.
-- **The label of a `@safetestset` is a plain string**, unique in `runtests.jl`.
+- **The label of a `@safetestset` or of a file of `TESTS` is a plain string**, unique in
+  `runtests.jl`.
 - **A floating-point difference of one or a few ULPs (at least up to `8 ulp`, `8 * eps(real(T))`)
   is acceptable and never blocks.** Assert floating-point identities and directional derivatives
   with `isapprox(a, b; rtol = 8 * eps(real(T)))` rather than `==`, because FMA contraction and
@@ -126,6 +170,7 @@ Run one file, a group, or the files a diff reaches, with `run-tests.jl <reposito
 `run-tests.jl <repository> core` or `run-tests.jl <repository> affected`. `affected` never runs
 the group `doctests`, so a doctest change runs `run-tests.jl <repository> doctests`.
 `--jobs <n>` before the selection runs its files in n worker processes, each file once; with
-`full`, the files of `Pkg.test()`. A `core` run with `--jobs` gives no D6 verdict, because a file's
+`full`, the files of `Pkg.test()`, or in the parallel form one
+`Pkg.test(; test_args = ["--jobs=<n>"])`. A `core` run with `--jobs` gives no D6 verdict, because a file's
 time in a worker is not its cold time in the order of `runtests.jl`. The shared `pre-commit` hook
 runs `test-layout.jl --check` on a commit that touches `test/`.

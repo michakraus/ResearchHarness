@@ -3,8 +3,9 @@
 #
 #   julia --startup-file=no run-tests.jl <package> [--jobs <n>] [affected [<base>] | select [<base>] | full | list | <unit> ...]
 #
-# The package's tests are in the layout of the test convention, which `test-layout.jl` checks and
-# parses; this script reads the layout through the same parser. A repository in another layout
+# The package's tests are in the layout of the test convention, in its serial or its parallel form,
+# which `test-layout.jl` checks and parses; this script reads the layout through the same parser,
+# the files of the parallel form from its table `TESTS`. A repository in another layout
 # is refused, with the violations that make it one, and only `full` runs there.
 #
 # `affected` (the default, base `origin/main`) selects the test files of its groups that the diff against
@@ -41,7 +42,9 @@
 # is cold in its worker. A `core` run with `--jobs` gives no D6 verdict, because a file's time in
 # a worker is not its cold time in the order of `runtests.jl`. `full` with `--jobs` runs the files
 # of `Pkg.test()`, those of the groups of an empty `ARGS`, the same way, so it needs the layout of
-# the convention. `--jobs 1` is the run without it.
+# the convention. On the parallel form of `runtests.jl`, `full --jobs <n>` runs one
+# `Pkg.test(; test_args = ["--jobs=<n>"])` instead, whose ParallelTestRunner starts the n workers;
+# a selection runs in this script's own driver on either form. `--jobs 1` is the run without it.
 #
 # Where another minor version of Julia resolved `Manifest.toml` or `test/Manifest.toml` — a run of
 # `julia +1.11 run-tests.jl` on a worktree that 1.13 resolved — the run goes to a copy without that
@@ -357,10 +360,19 @@ function main(args)
         pick = named(entries, rest; groups = group_names(pkg))
         pick, ["named"]
     end
-    # workers run the files of Pkg.test() through TestEnv, as they run any selection
-    sel === :full && jobs > 1 && (sel = suite(entries; default = default_groups(pkg)); why = [why; "the files of Pkg.test()"])
+    # the parallel form runs its own workers, which take `--jobs=<n>` through Pkg.test(); in the
+    # serial form, workers run the files of Pkg.test() through TestEnv, as they run any selection
+    test_args = String[]
+    if sel === :full && jobs > 1
+        if layout(pkg).form === :parallel
+            test_args = ["--jobs=$jobs"]
+        else
+            sel = suite(entries; default = default_groups(pkg))
+            why = [why; "the files of Pkg.test()"]
+        end
+    end
     # `affected` adds files in the order of the diff's paths; the workers take them in this order
-    jobs > 1 && (sel = in_order(sel, entries))
+    jobs > 1 && sel !== :full && (sel = in_order(sel, entries))
     dir = expanduser("~/Research/.scratch/tests")
     mkpath(dir)
     # the process ID keeps apart two runs of packages of one name, started in one second
@@ -380,8 +392,9 @@ function main(args)
                                  for e in sel])
     end
     if sel === :full
-        cmd = `$(Base.julia_cmd()) --startup-file=no --project=$root -e "using Pkg; Pkg.test()"`
-        println("$name: full suite, Pkg.test() — ", join(why, "; "))
+        call = isempty(test_args) ? "Pkg.test()" : "Pkg.test(; test_args = $(repr(test_args)))"
+        cmd = `$(Base.julia_cmd()) --startup-file=no --project=$root -e "using Pkg; $call"`
+        println("$name: full suite, $call — ", join(why, "; "))
     elseif isempty(sel)
         println("$name: no test file is reachable from the diff. Nothing ran.")
         return 0
@@ -416,7 +429,8 @@ function main(args)
     mode == "select" && return 0
     println("load average ", join(round.(Sys.loadavg(); digits = 2), " "), " at the start")
     t0 = time()
-    ok = if jobs == 1
+    # one process: a selection without workers, or Pkg.test(), whose runner has its own
+    ok = if sel === :full || jobs == 1
         p = open(io -> run(pipeline(ignorestatus(cmd); stdout = io, stderr = io)), log, "w")
         p.exitcode == 0
     else

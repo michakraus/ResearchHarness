@@ -282,9 +282,9 @@ The contract sweep writes a table of its own into its fixture.
 
 ## `Project.toml`
 
-The Julia environment of the scripts of the harness. It names the eight packages that the scripts
+The Julia environment of the scripts of the harness. It names the nine packages that the scripts
 load beyond the standard library, with their `[compat]` bounds: Aqua, ExplicitImports, JET, JSON,
-JuliaFormatter, JuliaSyntax, TestEnv and YAML.
+JuliaFormatter, JuliaSyntax, ParallelTestRunner, TestEnv and YAML.
 
 `harness install --apply` copies the file to `~/.local/share/research-harness/julia/`, or to
 `$RESEARCH_HARNESS_JULIA`, and instantiates it there. Each script that loads one of the packages
