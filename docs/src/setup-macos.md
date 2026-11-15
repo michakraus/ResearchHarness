@@ -138,7 +138,8 @@ session.
   of that owner. A broad login, such as `gh auth login`, gives an agent write access to every
   repository that you can write.
 - **Your own broad tokens**, which only you unlock, with Touch ID or the Mac's password: `ghx`,
-  `glabx` and `git-credential-sealed` use them.
+  `glabx` and `git-credential-sealed` use them, and `harness ci-protection` uses your GitHub
+  token.
 
 [The forge tokens](components/sandbox.md#the-forge-tokens) explains how the harness passes the
 tokens.

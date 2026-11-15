@@ -131,8 +131,8 @@ denies it. No frontend's `own` names it, so each frontend's settings file denies
 although the files allow reads of `~/.config`.
 
 **No frontend can read the sealed secrets.** On macOS, your own broad forge tokens can be secrets
-in `~/.config/research-harness/sealed`, which `ghx`, `glabx` and `git-credential-sealed` decrypt
-with `age` and an `age-plugin-se` identity in the Secure Enclave
+in `~/.config/research-harness/sealed`, which `ghx`, `glabx`, `git-credential-sealed` and
+`harness ci-protection` decrypt with `age` and an `age-plugin-se` identity in the Secure Enclave
 ([The sealed secrets](../components/sandbox.md#the-forge-tokens)). The directory is denied as the
 dotfiles token is: `Read(/{home}/.config/research-harness/sealed/**)` in `permissions.deny`, the
 path in `denyRead` and in `credentials.files`, the guard list of OpenCode, oh-my-pi and

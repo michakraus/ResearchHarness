@@ -367,7 +367,8 @@ not your own broad access. A broad login on the Mac is also the sessions' login:
 and git as you. So your broad tokens are secrets that only you decrypt, with Touch ID or the Mac's
 password, and three names of [`sealed.py`](scripts.md#sealed-py) in `~/.local/bin` use them: `ghx`
 runs gh, and `glabx` runs glab, with your broad token; `git-credential-sealed` is a git credential
-helper that gives one repository its own token. Each run that reads a secret asks for Touch ID. A
+helper that gives one repository its own token. [`harness ci-protection`](../harness-command.md#ci-protection)
+decrypts your GitHub token too, for its rulesets. Each run that reads a secret asks for Touch ID. A
 Touch ID prompt that you did not start comes from a session: refuse it. The secrets are in
 `~/.config/research-harness/sealed/`, which the settings template denies to Claude Code's read
 tools (`permissions.deny`) and to its sandbox (`denyRead` and `credentials.files`), and which no

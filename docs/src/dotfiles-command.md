@@ -140,12 +140,14 @@ merge. Any other argument is a branch name.
 `git credential fill` in the source, and asks `glab` once more, in the source, with that password
 as `GITLAB_TOKEN` and the host of the `origin` as `GITLAB_HOST`. That `glab` runs without the
 caller's other token, host, protocol and TLS variables of `glab`, such as `GITLAB_API_HOST` and
-`API_PROTOCOL`, which would send the password to another host or in clear text. For a personal
-project that the GitLab group token of [The forge tokens](components/sandbox.md#the-forge-tokens)
-cannot read, that credential is a project access token of the project, in a credential helper of
-the source's own git configuration. `dotfiles merge` needs the `read_api` scope (or `api`), and
-[`dotfiles absorb`](#dotfiles-absorb) needs `api` to open the merge request: so the token's scopes
-are `read_repository`, `write_repository` and `api`. The read sets
+`API_PROTOCOL`, which would send the password to another host or in clear text. It also runs with
+a new empty `GLAB_CONFIG_DIR`, removed after the call, so that no per-host setting of the caller's
+`glab` configuration does the same. For a personal project that the GitLab group token of
+[The forge tokens](components/sandbox.md#the-forge-tokens) cannot read, that credential is a
+project access token of the project, in a credential helper of the source's own git configuration.
+`dotfiles merge` needs the `read_api` scope (or `api`), and [`dotfiles absorb`](#dotfiles-absorb)
+needs `api` to open the merge request: so the token's scopes are `read_repository`,
+`write_repository` and `api`. The read sets
 `GIT_ASKPASS` to the empty string, `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`: git runs
 no askpass program, whether the caller's `GIT_ASKPASS` or `SSH_ASKPASS` or a `core.askPass`
 names one, asks nothing in the terminal, and a credential manager opens no dialog. The read never
@@ -236,11 +238,13 @@ commit. `dotfiles absorb` reads both from the commit, because the local branch i
 is `main` by then. For an `origin` on `github.com`, it runs `gh pr create -R github.com/<path>
 --base main --head <branch> --title <subject> --body <body>`. For any other host, it runs `glab mr
 create -R <origin> --target-branch main --source-branch <branch> --title <subject>
---description <body> --yes` in the source. When the `origin` is an `https://` URL, it reads the password that git uses for the `origin` from the source's own git credential, as the
-driver does for [`dotfiles merge`](#dotfiles-merge), and gives it to `glab` as `GITLAB_TOKEN`,
-with the host of the `origin` as `GITLAB_HOST`. That `glab` runs without the caller's other
-token, host, protocol and TLS variables of `glab`, such as `GITLAB_API_HOST` and
-`API_PROTOCOL`: no variable of the caller sends the password to another host or in clear text.
+--description <body> --yes` in the source. When the `origin` is an `https://` URL, it reads the
+password that git uses for the `origin` from the source's own git credential, as the driver does
+for [`dotfiles merge`](#dotfiles-merge), and gives it to `glab` as `GITLAB_TOKEN`, with the host
+of the `origin` as `GITLAB_HOST`. That `glab` runs without the caller's other token, host,
+protocol and TLS variables of `glab`, such as `GITLAB_API_HOST` and `API_PROTOCOL`, and with a new
+empty `GLAB_CONFIG_DIR` in place of the caller's `glab` configuration, removed after the call: no
+variable or per-host setting of the caller sends the password to another host or in clear text.
 The password appears in no argument and on no output. When the `origin` is not an `https://`
 URL, or the credential gives no password, `glab` uses its own login. `gh` or `glab` prints the
 request, and then `dotfiles absorb` prints one line that names it. When `gh` or `glab` cannot open

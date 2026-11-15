@@ -701,8 +701,16 @@ check that never reports leaves every pull request pending.
 Run the ruleset first and `--remove-classic` afterwards, so that a branch is never left
 unprotected.
 
+**The token:** a ruleset needs the repository permission *Administration: write*, which the
+organisation tokens of the wrapper `~/.local/bin/gh` do not have. So where your own broad GitHub
+token is sealed in `~/.config/research-harness/sealed/github.age`, the command decrypts it once,
+as `ghx` does, with one Touch ID prompt, and every `gh` call runs the real `gh` with that token as
+`GH_TOKEN` and a new empty `GH_CONFIG_DIR`, removed at the end. The wrapper and your own `GH_TOKEN`
+and `gh` login are not used then. Without that file, as on Linux, `gh` runs from the `PATH`, with
+your environment.
+
 **Exit status:** 0 when nothing would change, or after `--apply`; 1 when the dry run has a change;
-2 when the workflows are not canonical or a call fails.
+2 when the workflows are not canonical, the sealed token cannot be decrypted, or a call fails.
 
 **Where to run it:** in your own terminal. In a session's sandbox only the first `gh` call of a
 process succeeds.
@@ -1512,12 +1520,22 @@ The subcommand first runs `githooks/verify-workflows.jl`, and refuses when the w
 canonical, because the list of required checks depends on them. It calls `gh api` for each
 repository, and skips a repository that is private or where the user is not an admin. Run it in
 your own terminal: in a sandboxed session, only the first `gh` call of a process succeeds.
+`github_token` runs those calls inside one block: where `~/.config/research-harness/sealed/github.age`
+exists, it loads [`sealed.py`](components/scripts.md#sealed-py) as a module, decrypts the secret
+`github` once with its `decrypt`, and points every call at the real `gh`, which its `program`
+finds, with the token as `GH_TOKEN`, without the variables that `ghx` removes, and with a new
+empty `GH_CONFIG_DIR`, removed after the block.
 
 Its cases check `ruleset_problem` against the ruleset as GitHub returns it, against one break
 of each check, and with the ruleset of each list judged against the other list. They list the
 repositories with a scratch research root, with and without a group file, check that
 `required_checks` refuses each malformed group file, and run the subcommand there with `gh`
-replaced. A case reads `test.yml` with `workflow_checks` and fails when `HARNESS_CHECKS` differs
+replaced. Cases of `github_token`, in a scratch home with `decrypt` and `program` replaced and a
+stub of `gh` that prints its environment, check that no sealed secret leaves `gh` as it is, that
+a sealed secret is decrypted once for every call of the block, with the token, a new empty
+`GH_CONFIG_DIR` gone after the block and no `GITHUB_TOKEN` or `GH_HOST`, and that a secret of
+another host and a refusal of `sealed.py` stop the subcommand. A case reads `test.yml` with
+`workflow_checks` and fails when `HARNESS_CHECKS` differs
 from it, so a renamed or an added job fails `harness test`. The sweep does not run this subcommand, because it
 needs `gh` with a login.
 

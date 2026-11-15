@@ -85,7 +85,8 @@ Checks:
       insteadOf rewrite too) whose credential helper in the source gives a password, glab runs
       once with the password as GITLAB_TOKEN and the host as GITLAB_HOST, and the password is on
       no output; glab's other token, host, protocol and TLS variables that the caller exports do
-      not reach it; with no password, and for an ssh:// origin, glab runs with its own login; when
+      not reach it, and the caller's GLAB_CONFIG_DIR is replaced by a new empty one that is gone
+      after the run; with no password, and for an ssh:// origin, glab runs with its own login; when
       glab fails, and when gh fails on an origin on github.com (with no password), absorb exits 1
       and names the pushed branch and the command that opens the request, which bash parses back
       to the title of a subject with quotes. It stops without a
@@ -1245,7 +1246,8 @@ CALLER_GLAB = (
 # A stub of gh or glab: it logs its arguments to <name>.log, each ended by a NUL and each call by
 # the character RS, and its working directory, GITLAB_HOST and GITLAB_TOKEN (the fake test token,
 # compared by the test) to <name>.env, in the world's root, and the name of each variable of
-# CALLER_GLAB in its environment to <name>.vars. It exits 1 on --fill, which needs the local
+# CALLER_GLAB in its environment to <name>.vars, and whether its GLAB_CONFIG_DIR is unset, an empty
+# directory or other, with its path, to <name>.config. It exits 1 on --fill, which needs the local
 # branch that absorb deletes (and makes glab push HEAD, which is main). It prints a URL and exits
 # 0, or exits 1 when the file <name>.fail is in the root.
 REQUEST_STUB = """#!/bin/sh
@@ -1254,6 +1256,10 @@ printf '\\036' >> "{root}/{name}.log"
 printf 'cwd=%s host=%s token=%s\\n' "$PWD" "${{GITLAB_HOST-<unset>}}" "${{GITLAB_TOKEN-<unset>}}" \\
     >> "{root}/{name}.env"
 env | sed -nE 's/^({vars})=.*/\\1/p' >> "{root}/{name}.vars"
+if [ -z "${{GLAB_CONFIG_DIR+x}}" ]; then config=unset
+elif [ -d "$GLAB_CONFIG_DIR" ] && [ -z "$(ls -A "$GLAB_CONFIG_DIR")" ]; then config=empty
+else config=other; fi
+printf '%s %s\\n' "$config" "${{GLAB_CONFIG_DIR-}}" >> "{root}/{name}.config"
 for arg in "$@"; do
     case $arg in
         -f | --fill | --fill=*)
@@ -1590,17 +1596,29 @@ def absorb_requests():
         f"absorb, {label}: the line, and the password is in no output",
     )
 
-    # A caller that exports the other token, host, protocol and TLS variables of glab: glab gets
-    # the password and the origin's host, and none of them.
+    # A caller that exports the other token, host, protocol and TLS variables of glab, and a
+    # GLAB_CONFIG_DIR whose configuration could name another API host: glab gets the password and
+    # the origin's host, none of the variables, and a new empty configuration directory that is
+    # gone after the run.
     label = "the caller exports glab's variables"
-    caller = dict.fromkeys(CALLER_GLAB, "elsewhere.example.net")
+    caller_config = scratch("c17-caller-glab")
+    (caller_config / "config.yml").write_text("hosts: {}\n")
+    caller = dict.fromkeys(CALLER_GLAB, "elsewhere.example.net") | {"GLAB_CONFIG_DIR": str(caller_config)}
     w, out, branch, (args, env) = absorb("c17-gitlab-caller", label, HELPER_KEY, **caller)
     reached = (w.root / "glab.vars").read_text().split() if (w.root / "glab.vars").exists() else []
+    config = (w.root / "glab.config").read_text().split() if (w.root / "glab.config").exists() else []
     check(
         len(args) == 1
         and env == [f"cwd={w.source} host=gitlab.example.org token={HELPER_KEY}"]
         and reached == [],
         f"absorb, {label}: glab runs once with the password and the host, and none of them: {env} {reached}",
+    )
+    check(
+        len(config) == 2
+        and config[0] == "empty"
+        and config[1] != str(caller_config)
+        and not pathlib.Path(config[1]).exists(),
+        f"absorb, {label}: glab has a new empty GLAB_CONFIG_DIR, gone after the run: {config}",
     )
 
     label = "the source's credential gives no password"

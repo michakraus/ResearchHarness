@@ -23,12 +23,13 @@ once and no credential is read; the credential answers, so glab runs a second ti
 password as GITLAB_TOKEN, the host as GITLAB_HOST and the source as its directory, and the
 password is in no output, no argument and no file, nor, for a caller that exports `token`, in the
 environment of dotfiles-merge; for a caller that exports glab's variables of a token, a host, the
-protocol or the TLS check, none reaches the second glab call; an askpass program of the caller's
-GIT_ASKPASS or SSH_ASKPASS or of the source's core.askPass is not run when the helper returns no
-password; the second answer is not open; and no answer, for each of four reasons (glab answers
-neither call, the helper returns no password, the origin is an SSH address, the origin is an
-http:// URL), stops with one line that names `dotfiles merge <branch>`. It also runs `bash -n` and
-`shellcheck -S warning` on the driver. It exits 0 when every check passes.
+protocol or the TLS check, none reaches the second glab call, and for a caller that exports
+GLAB_CONFIG_DIR, the second call has a new empty one that is gone after the run; an askpass
+program of the caller's GIT_ASKPASS or SSH_ASKPASS or of the source's core.askPass is not run when
+the helper returns no password; the second answer is not open; and no answer, for each of four
+reasons (glab answers neither call, the helper returns no password, the origin is an SSH address,
+the origin is an http:// URL), stops with one line that names `dotfiles merge <branch>`. It also
+runs `bash -n` and `shellcheck -S warning` on the driver. It exits 0 when every check passes.
 """
 
 import os
@@ -70,7 +71,8 @@ def answering(name, variable):
 # GITLAB_TOKEN is unset or empty (none), $EXPECTED_TOKEN (match) or another value (other) to
 # glab.env, so that no log holds the token. It answers $GLAB_TOKEN_ANSWER under the expected token
 # and $GLAB_ANSWER otherwise, and exits 1 on an empty answer. It also logs to glab.vars which of
-# glab's variables that name a token, a host, the protocol or the TLS check reach it.
+# glab's variables that name a token, a host, the protocol or the TLS check reach it, and to
+# glab.config whether its GLAB_CONFIG_DIR is unset, an empty directory or other, and its path.
 GLAB = """#!/bin/bash
 echo "glab $*" >> "$HOME/glab.log"
 if [ -z "${GITLAB_TOKEN-}" ]; then token=none
@@ -83,6 +85,10 @@ for name in GITLAB_ACCESS_TOKEN OAUTH_TOKEN GITLAB_URI GL_HOST GITLAB_API_HOST G
     if [ -n "${!name+x}" ]; then seen="$seen $name"; fi
 done
 printf 'token=%s vars=%s\\n' "$token" "${seen# }" >> "$HOME/glab.vars"
+if [ -z "${GLAB_CONFIG_DIR+x}" ]; then config=unset
+elif [ -d "$GLAB_CONFIG_DIR" ] && [ -z "$(ls -A "$GLAB_CONFIG_DIR")" ]; then config=empty
+else config=other; fi
+printf 'token=%s config=%s %s\\n' "$token" "$config" "${GLAB_CONFIG_DIR-}" >> "$HOME/glab.config"
 if [ "$token" = match ]; then answer=$GLAB_TOKEN_ANSWER; else answer=$GLAB_ANSWER; fi
 [ -n "$answer" ] || exit 1
 printf '%s\\n' "$answer"
@@ -260,6 +266,37 @@ def subcommand_cases(s):
     s.log("glab")
 
 
+def hostile_caller_case(s):
+    """A caller that exports glab's variables of a token, a host, the protocol or the TLS check:
+    none reaches the glab call that holds the password, which would send it elsewhere or in clear
+    text. The caller's GLAB_CONFIG_DIR, whose glab configuration could name another API host for
+    the origin's host, is replaced by a new empty directory, which is gone after the run."""
+    caller_config = s.tmp / "caller-glab"
+    caller_config.mkdir(exist_ok=True)
+    (caller_config / "config.yml").write_text("hosts: {}\n")
+    hostile = dict.fromkeys(GLAB_HOSTILE, "elsewhere.invalid") | {"GLAB_CONFIG_DIR": str(caller_config)}
+    p = s.run("merge", "31", keyed="opened feature-x", helper=KEY, extra=hostile)
+    keyed_calls = [line for line in s.log("glab.vars").splitlines() if line.startswith("token=match ")]
+    configs = [line.split() for line in s.log("glab.config").splitlines()]
+    keyed_configs = [c[1:] for c in configs if c[0] == "token=match"]
+    check(
+        p.stdout.endswith("dotfiles-merge feature-x\n") and keyed_calls == ["token=match vars="],
+        f"a caller that exports glab's host, protocol and TLS variables: none reaches the glab call "
+        f"with the password: {keyed_calls}",
+    )
+    check(
+        configs[:1] == [["token=none", "config=other", str(caller_config)]]
+        and len(keyed_configs) == 1
+        and keyed_configs[0][0] == "config=empty"
+        and keyed_configs[0][1] != str(caller_config)
+        and not pathlib.Path(keyed_configs[0][1]).exists(),
+        f"a caller that exports GLAB_CONFIG_DIR: glab's own login keeps it, and the glab call with "
+        f"the password has a new empty one that is gone after the run: {configs}",
+    )
+    for log in ("glab", "glab.env", "git-credential.log", "helper.env"):
+        s.log(log)
+
+
 def fallback_cases(s):
     """merge with a number on another host when glab's own login cannot read the merge request:
     glab answers first, the source's git credential answers, the second answer is not open, and
@@ -311,22 +348,10 @@ def fallback_cases(s):
         p.stdout.endswith("dotfiles-merge feature-x\n") and KEY not in merge_env,
         f"a caller that exports token: the password is not in dotfiles-merge's environment: {merge_env!r}",
     )
-    for log in ("glab", "glab.env", "git-credential.log", "helper.env", "glab.vars"):
+    for log in ("glab", "glab.env", "git-credential.log", "helper.env", "glab.vars", "glab.config"):
         s.log(log)
 
-    # A caller that exports glab's variables of a token, a host, the protocol or the TLS check:
-    # none reaches the glab call that holds the password, which would send it elsewhere or in
-    # clear text.
-    hostile = dict.fromkeys(GLAB_HOSTILE, "elsewhere.invalid")
-    p = s.run("merge", "31", keyed="opened feature-x", helper=KEY, extra=hostile)
-    keyed_calls = [line for line in s.log("glab.vars").splitlines() if line.startswith("token=match ")]
-    check(
-        p.stdout.endswith("dotfiles-merge feature-x\n") and keyed_calls == ["token=match vars="],
-        f"a caller that exports glab's host, protocol and TLS variables: none reaches the glab call "
-        f"with the password: {keyed_calls}",
-    )
-    for log in ("glab", "glab.env", "git-credential.log", "helper.env"):
-        s.log(log)
+    hostile_caller_case(s)
 
     # The helper returns no password, so git would ask for one: an askpass program of the caller's
     # GIT_ASKPASS, of the source's core.askPass or of the caller's SSH_ASKPASS is never run.
