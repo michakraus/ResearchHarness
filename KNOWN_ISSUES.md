@@ -960,10 +960,13 @@
   calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
   `matcher calls 471, 7.20 seconds`. The matcher calls stay at their bound, so the guard is right
   and only its time is close to the limit. The case measures wall time while the other parts of
-  `harness test` run in parallel. The case also breaks the rule that no test depends on
-  wall-clock time: the bound of the matcher calls (line 1756, `0 <= calls <= indexed`) already
-  checks the guard's work, so `seconds <= MIB_LIMIT` on the same line adds only a dependence on
-  the load of the machine, and the `timeout=MIB_LIMIT` of line 1745 makes a slow run a failure.
+  `harness test` run in parallel. So the verdict of the case depends on wall-clock time: the
+  bound of the matcher calls (line 1756, `0 <= calls <= indexed`) already checks the guard's work,
+  so `seconds <= MIB_LIMIT` on the same line adds only a dependence on the load of the machine,
+  and the `timeout=MIB_LIMIT` of line 1745 makes a slow run a failure. The cases of the commands
+  of 1 MiB at line 2691 depend on it the same way: `guard_run(..., limit=MIB_LIMIT)` passes the
+  limit as `timeout=` (line 2402) and returns `timeout` past it (line 2406), which fails
+  `got == expected`.
 - kind: defect
 - found: #282
 
