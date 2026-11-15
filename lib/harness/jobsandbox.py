@@ -138,14 +138,14 @@ level. `write_zshrc` takes `linux`, which defaults to the running system: with i
 holds no `~/.zshrc` gives `:NotBound` (the probe file's `NotBound`) and gets none, because the
 job's `tmpfs` home on Linux holds the host's file only where it is bound; without it, the append
 creates the file. Without `julia` on the PATH they print a skip line. `OPEN_GAPS` of the probe
-file names the negative probes that the profile does not stop, which
-report `:allowed` under it: none. The cases check that value, that the file's header comment names
-`OPEN_GAPS` and each open gap and expects no exception class of one, that it expects
-`:ProcessFailedException` of `appleevent` and names its event, `name of startup disk`, that it
-expects an `IOError` class of `connect_remote` and `:DNSError` of `resolve_name`, that the
-network probes default to 127.0.0.1:2828, 1.1.1.1:443 and julialang.org (NETWORK_DEFAULTS), and
-that the default command of `appleevent` asks the Finder for `name of startup disk`: AppleScript
-answers `get name` of an application from the script itself and sends no Apple Event.
+file names the negative probes that the profile does not stop, which report `:allowed` under it:
+none. The cases check that value, that the file's header comment names `OPEN_GAPS` and each open
+gap and expects no exception class of one, that it expects `:ProcessFailedException` of
+`appleevent` and names its event, `name of startup disk`, that it expects an `IOError` class of
+`connect_remote` and `:DNSError` of `resolve_name`, that the network probes default to
+127.0.0.1:2828, 1.1.1.1:443 and julialang.org (NETWORK_DEFAULTS), and that the default command
+of `appleevent` asks the Finder for `name of startup disk`: AppleScript answers `get name` of an
+application from the script itself and sends no Apple Event.
 """
 
 import dataclasses
