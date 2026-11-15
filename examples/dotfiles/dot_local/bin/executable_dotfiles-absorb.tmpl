@@ -12,7 +12,10 @@
 # (a local change of its source file included), are listed with their hunk and the command
 # `chezmoi merge` for them. It shows what it would commit and asks; on y it makes the
 # branch absorb/<host>-<UTC time>, runs `chezmoi re-add`, commits, pushes the branch, switches back
-# to main, and prints the command that opens the pull request or merge request.
+# to main, and opens the pull request (gh, for an origin on github.com) or merge request (glab).
+# For an https:// origin on another host, glab gets the password of the source's git credential
+# for the origin as GITLAB_TOKEN, as the driver reads it for dotfiles merge; without one, glab uses
+# its own login. When the request does not open, it prints the command that opens it and exits 1.
 set -euo pipefail
 
 {{ template "dotfiles-update-steps.sh" . }}
@@ -185,8 +188,39 @@ path=${path%.git}
 
 echo "dotfiles-absorb: the commit $commit is pushed as the branch $branch; main is unchanged at $(git rev-parse --short HEAD)."
 echo "dotfiles-absorb: until the request is merged, chezmoi diff and dotfiles update show these edits reverted: answer n to apply."
+
+# The request, opened by gh for an origin on github.com and by glab for any other host. gh and
+# glab print what they opened.
+opened=1
 if [ "$host" = github.com ]; then
-    echo "dotfiles-absorb: open the pull request with: gh pr create -R github.com/$path --base main --head $branch --fill"
+    request="pull request"
+    by_hand="gh pr create -R github.com/$path --base main --head $branch --fill"
+    gh pr create -R "github.com/$path" --base main --head "$branch" --fill || opened=""
 else
-    echo "dotfiles-absorb: open the merge request with: glab mr create -R $project --target-branch main --source-branch $branch --fill"
+    request="merge request"
+    by_hand="glab mr create -R $project --target-branch main --source-branch $branch --fill"
+    token=""
+    if [[ "$project" == https://* ]]; then
+        # The password that git uses for the origin, read as the driver reads it for dotfiles
+        # merge: no terminal prompt, no askpass program, no credential manager dialog, and no
+        # approve or reject. A project access token with the api scope opens the request.
+        token=$(printf 'url=%s\n\n' "$project" |
+            GIT_ASKPASS="" GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never git -C "$DOTFILES_SOURCE" credential fill 2>/dev/null |
+            sed -n 's/^password=//p') || token=""
+    fi
+    # glab sends a token of the environment only to the host of GITLAB_HOST, and needs a remote
+    # of its working directory on that host: the source's origin, here. Without a password, glab
+    # uses its own login.
+    if [ -n "$token" ]; then
+        GITLAB_TOKEN=$token GITLAB_HOST=$host glab mr create -R "$project" --target-branch main \
+            --source-branch "$branch" --fill --yes || opened=""
+    else
+        glab mr create -R "$project" --target-branch main --source-branch "$branch" --fill --yes || opened=""
+    fi
+    unset token
 fi
+if [ -z "$opened" ]; then
+    echo "dotfiles-absorb: the branch $branch is pushed, but the $request could not be opened; open it with: $by_hand" >&2
+    exit 1
+fi
+echo "dotfiles-absorb: the $request of the branch $branch is open."

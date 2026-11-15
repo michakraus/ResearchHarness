@@ -73,16 +73,23 @@ Checks:
       absorb/<host>-<time> that is pushed, unsigned, with HEAD back on main and the remote's main
       unchanged; a live edit of a template, and a file changed live and in the source, are listed
       with `chezmoi merge` and not re-added; a source change not applied is not absorbed; no
-      `chezmoi apply` runs and no live file changes. On n, an empty line or the end of input
-      nothing is pushed and the source is as before. With no live edit, or only a template's, it
-      asks nothing and exits 0, and a live symlink is not absorbed. A template merged into the
-      source by hand is committed, unsigned under commit.gpgsign = true, and an origin on
-      github.com (an insteadOf rewrite to the scratch remote) gets the gh command. It stops
-      without a terminal (before the fetch), on an argument (exit 2), on a detached HEAD, on a
-      main ahead of and one diverged from origin/main, on an untracked, a deleted, a staged
-      deleted, an added and a renamed file, on a review quit early (the line), and on a chezmoi
-      diff that fails (its status), each before the question; a main behind origin/main is
-      allowed, and a refused push leaves the local branch, named, and HEAD on main.
+      `chezmoi apply` runs and no live file changes. After the push it opens the request, with
+      stubs of gh and glab that log their arguments, working directory, GITLAB_HOST and
+      GITLAB_TOKEN: for an origin that is a local path, glab runs once in the source with its own
+      login. On n, an empty line or the end of input nothing is pushed and the source is as
+      before. With no live edit, or only a template's, it asks nothing and exits 0, and a live
+      symlink is not absorbed. A template merged into the source by hand is committed, unsigned
+      under commit.gpgsign = true, and for an origin on github.com (an insteadOf rewrite to the
+      scratch remote) gh runs `pr create` once. For an https:// origin on a GitLab host (an
+      insteadOf rewrite too) whose credential helper in the source gives a password, glab runs
+      once with the password as GITLAB_TOKEN and the host as GITLAB_HOST, and the password is on
+      no output; with no password, and for an ssh:// origin, glab runs with its own login; when
+      glab fails, absorb exits 1 and names the pushed branch and the command that opens the
+      request. It stops without a terminal (before the fetch), on an argument (exit 2), on a
+      detached HEAD, on a main ahead of and one diverged from origin/main, on an untracked, a
+      deleted, a staged deleted, an added and a renamed file, on a review quit early (the line),
+      and on a chezmoi diff that fails (its status), each before the question; a main behind
+      origin/main is allowed, and a refused push leaves the local branch, named, and HEAD on main.
 """
 
 import json
@@ -1214,14 +1221,33 @@ ABSORB_FILES = {
     "dot_unapplied": "unapplied\n",
 }
 GITHUB = "https://github.com/owner/dotfiles.git"
+GITLAB = "https://gitlab.example.org/me/dotfiles.git"
+HELPER_KEY = "fake-absorb-key"  # the password of the test credential helper; no real token
+# A stub of gh or glab: it logs its arguments to <name>.log and its working directory, GITLAB_HOST
+# and GITLAB_TOKEN (the fake test token, compared by the test) to <name>.env, in the world's root.
+# It prints a URL and exits 0, or exits 1 when the file <name>.fail is in the root.
+REQUEST_STUB = """#!/bin/sh
+echo "$*" >> "{root}/{name}.log"
+printf 'cwd=%s host=%s token=%s\\n' "$PWD" "${{GITLAB_HOST-<unset>}}" "${{GITLAB_TOKEN-<unset>}}" \\
+    >> "{root}/{name}.env"
+if [ -e "{root}/{name}.fail" ]; then
+    echo "{name}: could not create the request" >&2
+    exit 1
+fi
+echo "https://example.org/{name}/request/1"
+"""
 
 
 def absorb_world(name):
     """A world whose chezmoi stub logs each call and runs the real chezmoi, with ABSORB_FILES in
-    the source and applied to the scratch HOME, and an empty log."""
+    the source and applied to the scratch HOME, and an empty log. Stubs of gh and glab
+    (REQUEST_STUB) are on the PATH."""
     w = World(name)
     real = shutil.which("chezmoi")
     (w.bindir / "chezmoi").write_text(f'#!/bin/sh\necho "$*" >> "{w.log}"\nexec "{real}" "$@"\n')
+    for tool in ("gh", "glab"):
+        (w.bindir / tool).write_text(REQUEST_STUB.format(root=w.root, name=tool))
+        (w.bindir / tool).chmod(0o755)
     w.commit("the managed files", key="listed", files=ABSORB_FILES)
     w.push()
     w.sync()
@@ -1247,6 +1273,16 @@ def local_absorbs(w):
 def at_remote(w, rev):
     """The text of `rev` in the remote, without its last newline."""
     return must(["git", "--git-dir", str(w.remote), "show", rev], w.env)
+
+
+def request_log(w, tool):
+    """The lines of <tool>.log and <tool>.env of the stub of gh or glab, which are then removed."""
+    lines = []
+    for suffix in ("log", "env"):
+        path = w.root / f"{tool}.{suffix}"
+        lines.append(path.read_text().splitlines() if path.exists() else [])
+        path.unlink(missing_ok=True)
+    return lines
 
 
 def source_kept(w, label, base):
@@ -1308,14 +1344,24 @@ def clause_17():
 
 
 def absorb_output(w, out, live):
-    """The lines of clause 17's run, no chezmoi apply, and the live files unchanged."""
+    """The lines of clause 17's run, the merge request that glab opens with its own login (the
+    origin is a local path, not https://), no gh, no chezmoi apply, and the live files unchanged."""
+    branch = "".join(ref.removeprefix("refs/heads/") for ref in remote_absorbs(w))
     for line in (
         "merge it with: chezmoi merge ~/.tmpl",
         "merge it with: chezmoi merge ~/.both",
         "not absorbed (chezmoi status  M): ~/.unapplied",
-        f"glab mr create -R {w.remote} --target-branch main --source-branch absorb/",
+        "https://example.org/glab/request/1",
+        f"the merge request of the branch {branch} is open.",
     ):
         check(line in out, f"absorb: the output has {line!r}")
+    args, env = request_log(w, "glab")
+    want = f"mr create -R {w.remote} --target-branch main --source-branch {branch} --fill --yes"
+    check(
+        args == [want] and env == [f"cwd={w.source} host=<unset> token=<unset>"],
+        f"absorb: glab runs once, {want!r}, in the source, with its own login: {args} {env}",
+    )
+    check(request_log(w, "gh") == [[], []], "absorb: gh does not run")
     check("apply" not in w.calls(), f"absorb: no chezmoi apply ({w.calls()})")
     check(
         all((w.home / name).read_text() == text for name, text in live.items()),
@@ -1388,12 +1434,91 @@ def absorb_answers():
             at_remote(w, f"{branches[0]}:dot_tmpl.tmpl") == "host live",
             "absorb, a merged template: the source's change is committed",
         )
-    line = "gh pr create -R github.com/owner/dotfiles --base main --head absorb/"
+    check("~/.tmpl" not in out, "absorb, a merged template: the output has no ~/.tmpl")
+    branch = "".join(ref.removeprefix("refs/heads/") for ref in branches)
+    args, env = request_log(w, "gh")
+    want = f"pr create -R github.com/owner/dotfiles --base main --head {branch} --fill"
     check(
-        line in out and "~/.tmpl" not in out,
-        f"absorb, a merged template: the output has {line!r}, no ~/.tmpl",
+        args == [want] and len(env) == 1 and f"the pull request of the branch {branch} is open." in out,
+        f"absorb, an origin on github.com: gh runs once, {want!r}, and the line: {args}",
     )
+    check(request_log(w, "glab") == [[], []], "absorb, an origin on github.com: glab does not run")
     source_kept(w, "absorb, a merged template", base)
+
+
+def absorb_requests():
+    print("\n== 17: dotfiles-absorb, the merge request on an https:// origin")
+
+    def absorb(name, label, password, *, fail=False, origin=GITLAB):
+        """In a new absorb_world with a live edit of .plain, the origin `origin` (by default an
+        https:// origin on a GitLab host) that git rewrites to the scratch remote, and the source's
+        own credential helper, which gives `password` (none when empty): run dotfiles-absorb,
+        answer y, and return the world, the output, the pushed branch and glab's log. With
+        `fail`, glab exits 1, and absorb must exit 1; otherwise 0."""
+        want_code = 1 if fail else 0
+        w = absorb_world(name)
+        base = w.head()
+        must(["git", "config", f"url.{w.remote.as_uri()}.insteadOf", origin], w.env, w.source)
+        must(["git", "remote", "set-url", "origin", origin], w.env, w.source)
+        lines = "echo username=oauth2" + (f" && echo password={password}" if password else "")
+        helper = f'!f() {{ test "$1" = get && {lines}; }}; f'
+        must(["git", "config", "credential.helper", helper], w.env, w.source)
+        if fail:
+            (w.root / "glab.fail").write_text("")
+        (w.home / ".plain").write_text("plain live\n")
+        code, out = w.run("dotfiles-absorb", answers="y\n")
+        branches = remote_absorbs(w)
+        check(
+            code == want_code and len(branches) == 1,
+            f"absorb, {label}: exit {code}, {want_code}, one branch on the remote {branches}",
+        )
+        source_kept(w, f"absorb, {label}", base)
+        check(request_log(w, "gh") == [[], []], f"absorb, {label}: gh does not run")
+        branch = "".join(ref.removeprefix("refs/heads/") for ref in branches)
+        return w, out, branch, request_log(w, "glab")
+
+    label = "the source's credential gives a password"
+    w, out, branch, (args, env) = absorb("c17-gitlab", label, HELPER_KEY)
+    want = f"mr create -R {GITLAB} --target-branch main --source-branch {branch} --fill --yes"
+    check(
+        args == [want] and env == [f"cwd={w.source} host=gitlab.example.org token={HELPER_KEY}"],
+        f"absorb, {label}: glab runs once, {want!r}, in the source, with the password as "
+        f"GITLAB_TOKEN and the host as GITLAB_HOST: {args} {env}",
+    )
+    check(
+        f"the merge request of the branch {branch} is open." in out and HELPER_KEY not in out,
+        f"absorb, {label}: the line, and the password is in no output",
+    )
+
+    label = "the source's credential gives no password"
+    w, out, branch, (args, env) = absorb("c17-gitlab-login", label, "")
+    want = f"mr create -R {GITLAB} --target-branch main --source-branch {branch} --fill --yes"
+    check(
+        args == [want] and env == [f"cwd={w.source} host=<unset> token=<unset>"],
+        f"absorb, {label}: glab runs once, {want!r}, with its own login: {args} {env}",
+    )
+
+    # An ssh:// origin: the credential is not read, though the helper would give a password.
+    label = "an ssh:// origin"
+    ssh = "ssh://git@gitlab.example.org/me/dotfiles.git"
+    w, out, branch, (args, env) = absorb("c17-gitlab-ssh", label, HELPER_KEY, origin=ssh)
+    want = f"mr create -R {ssh} --target-branch main --source-branch {branch} --fill --yes"
+    check(
+        args == [want] and env == [f"cwd={w.source} host=<unset> token=<unset>"],
+        f"absorb, {label}: glab runs once, {want!r}, with its own login: {args} {env}",
+    )
+
+    label = "glab cannot open the request"
+    w, out, branch, (args, env) = absorb("c17-gitlab-fail", label, HELPER_KEY, fail=True)
+    by_hand = f"glab mr create -R {GITLAB} --target-branch main --source-branch {branch} --fill"
+    check(
+        len(args) == 1
+        and f"the branch {branch} is pushed, but the merge request could not be opened" in out
+        and re.search(f"open it with: {re.escape(by_hand)}\r?$", out, re.MULTILINE)
+        and "is open." not in out
+        and HELPER_KEY not in out,
+        f"absorb, {label}: exit 1, the pushed branch and {by_hand!r}: {out[-400:]!r}",
+    )
 
 
 def absorb_edges():
@@ -1618,6 +1743,7 @@ def main():
             clause_16,
             clause_17,
             absorb_answers,
+            absorb_requests,
             absorb_edges,
         ):
             try:
