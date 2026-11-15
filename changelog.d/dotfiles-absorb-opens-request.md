@@ -4,4 +4,7 @@
   `GITLAB_TOKEN`, as `dotfiles merge` reads it, so the dotfiles project access token (scopes
   `read_repository`, `write_repository` and `api`) opens the request; otherwise `glab` uses its
   own login. When the request does not open, it names the pushed branch and the command that
-  opens it, and exits 1.
+  opens it, and exits 1. The `glab` call that holds the password, here and in the fallback of
+  `dotfiles merge`, runs without the caller's `glab` variables of another token, host, protocol
+  or TLS check, such as `GITLAB_API_HOST` and `API_PROTOCOL`, which sent the password to another
+  host or in clear text.

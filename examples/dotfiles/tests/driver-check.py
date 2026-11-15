@@ -67,13 +67,20 @@ def answering(name, variable):
 # A stub of glab: log the arguments to glab.log, and the working directory, GITLAB_HOST and whether
 # GITLAB_TOKEN is unset or empty (none), $EXPECTED_TOKEN (match) or another value (other) to
 # glab.env, so that no log holds the token. It answers $GLAB_TOKEN_ANSWER under the expected token
-# and $GLAB_ANSWER otherwise, and exits 1 on an empty answer.
+# and $GLAB_ANSWER otherwise, and exits 1 on an empty answer. It also logs to glab.vars which of
+# glab's variables that name a token, a host, the protocol or the TLS check reach it.
 GLAB = """#!/bin/bash
 echo "glab $*" >> "$HOME/glab.log"
 if [ -z "${GITLAB_TOKEN-}" ]; then token=none
 elif [ "$GITLAB_TOKEN" = "$EXPECTED_TOKEN" ]; then token=match
 else token=other; fi
 printf 'cwd=%s host=%s token=%s\\n' "$PWD" "${GITLAB_HOST-}" "$token" >> "$HOME/glab.env"
+seen=""
+for name in GITLAB_ACCESS_TOKEN OAUTH_TOKEN GITLAB_URI GL_HOST GITLAB_API_HOST GITLAB_REPO \\
+    GLAB_API_PROTOCOL API_PROTOCOL GLAB_SKIP_TLS_VERIFY SKIP_TLS_VERIFY GLAB_CA_CERT CA_CERT; do
+    if [ -n "${!name+x}" ]; then seen="$seen $name"; fi
+done
+printf 'token=%s vars=%s\\n' "$token" "${seen# }" >> "$HOME/glab.vars"
 if [ "$token" = match ]; then answer=$GLAB_TOKEN_ANSWER; else answer=$GLAB_ANSWER; fi
 [ -n "$answer" ] || exit 1
 printf '%s\\n' "$answer"
@@ -108,6 +115,23 @@ MERGE = """#!/bin/bash
 echo "dotfiles-merge $*"
 echo "token=${token-}" >> "$HOME/merge.env"
 """
+
+# glab's variables that name another token, another API host, the protocol or the TLS check: the
+# driver runs the glab call that holds the password without them.
+GLAB_HOSTILE = (
+    "GITLAB_ACCESS_TOKEN",
+    "OAUTH_TOKEN",
+    "GITLAB_URI",
+    "GL_HOST",
+    "GITLAB_API_HOST",
+    "GITLAB_REPO",
+    "GLAB_API_PROTOCOL",
+    "API_PROTOCOL",
+    "GLAB_SKIP_TLS_VERIFY",
+    "SKIP_TLS_VERIFY",
+    "GLAB_CA_CERT",
+    "CA_CERT",
+)
 
 # The password that the helper returns and the stub of glab expects in GITLAB_TOKEN.
 KEY = "test-token"
@@ -284,6 +308,20 @@ def fallback_cases(s):
     check(
         p.stdout.endswith("dotfiles-merge feature-x\n") and KEY not in merge_env,
         f"a caller that exports token: the password is not in dotfiles-merge's environment: {merge_env!r}",
+    )
+    for log in ("glab", "glab.env", "git-credential.log", "helper.env", "glab.vars"):
+        s.log(log)
+
+    # A caller that exports glab's variables of a token, a host, the protocol or the TLS check:
+    # none reaches the glab call that holds the password, which would send it elsewhere or in
+    # clear text.
+    hostile = dict.fromkeys(GLAB_HOSTILE, "elsewhere.invalid")
+    p = s.run("merge", "31", keyed="opened feature-x", helper=KEY, extra=hostile)
+    keyed_calls = [line for line in s.log("glab.vars").splitlines() if line.startswith("token=match ")]
+    check(
+        p.stdout.endswith("dotfiles-merge feature-x\n") and keyed_calls == ["token=match vars="],
+        f"a caller that exports glab's host, protocol and TLS variables: none reaches the glab call "
+        f"with the password: {keyed_calls}",
     )
     for log in ("glab", "glab.env", "git-credential.log", "helper.env"):
         s.log(log)

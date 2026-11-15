@@ -138,10 +138,12 @@ merge. Any other argument is a branch name.
 `glab` first asks with its own login. When that login cannot read the merge request and the
 `origin` is an `https://` URL, the driver reads the password that git uses for the `origin`, with
 `git credential fill` in the source, and asks `glab` once more, in the source, with that password
-as `GITLAB_TOKEN` and the host of the `origin` as `GITLAB_HOST`. For a personal project that the
-GitLab group token of [The forge tokens](components/sandbox.md#the-forge-tokens) cannot read,
-that credential is a project access token of the project, in a credential helper of the source's
-own git configuration. `dotfiles merge` needs the `read_api` scope (or `api`), and
+as `GITLAB_TOKEN` and the host of the `origin` as `GITLAB_HOST`. That `glab` runs without the
+caller's other token, host, protocol and TLS variables of `glab`, such as `GITLAB_API_HOST` and
+`API_PROTOCOL`, which would send the password to another host or in clear text. For a personal
+project that the GitLab group token of [The forge tokens](components/sandbox.md#the-forge-tokens)
+cannot read, that credential is a project access token of the project, in a credential helper of
+the source's own git configuration. `dotfiles merge` needs the `read_api` scope (or `api`), and
 [`dotfiles absorb`](#dotfiles-absorb) needs `api` to open the merge request: so the token's scopes
 are `read_repository`, `write_repository` and `api`. The read sets
 `GIT_ASKPASS` to the empty string, `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`: git runs
