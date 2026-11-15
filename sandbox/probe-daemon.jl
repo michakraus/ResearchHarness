@@ -22,12 +22,12 @@
 # a file that every tree of the harness holds. A write probe deletes what it created; the probe of
 # ~/.zshrc opens the file to append and writes nothing. On Linux, where the job's home is a `tmpfs`
 # that holds only the job's binds, `write_zshrc` gives `:NotBound` where that home holds no
-# ~/.zshrc: the probe then measures nothing, and its result is neither a pass nor a gap.
-# `connect_loopback` connects to Kaimon's
-# own port, 127.0.0.1:2828, given as a string, so that `Sockets.getaddrinfo` reads the address
-# before the connect, as HTTP.jl does for Kaimon's clients of Qdrant and Ollama; a libc that cannot
-# read it without the resolver gives `:DNSError`. `connect_remote` connects to 1.1.1.1:443, an
-# address that answers, so a profile that lets it through gives `:allowed` and not a timeout.
+# ~/.zshrc as a regular file: the probe then measures nothing, and its result is neither a pass
+# nor a gap. `connect_loopback` connects to Kaimon's own port, 127.0.0.1:2828, given as a string,
+# so that `Sockets.getaddrinfo` reads the address before the connect, as HTTP.jl does for Kaimon's
+# clients of Qdrant and Ollama; a libc that cannot read it without the resolver gives `:DNSError`.
+# `connect_remote` connects to 1.1.1.1:443, an address that answers, so a profile that lets it
+# through gives `:allowed` and not a timeout.
 #
 # `OPEN_GAPS` names the negative probes that the sandbox does not stop, which report `:allowed`
 # under it: none on macOS; on Linux, none recorded. The event of `appleevent` is
@@ -46,7 +46,7 @@ const METAL = Base.PkgId(Base.UUID("dde4c033-4e86-420c-a63e-0dd931031962"), "Met
 """Raised by `metal` when `Metal.functional()` is false."""
 struct NotFunctional <: Exception end
 
-"""Raised by `write_zshrc` on Linux when the home holds no `~/.zshrc`: it cannot reach the host's file."""
+"""Raised by `write_zshrc` on Linux when `~/.zshrc` is not a regular file: it cannot reach the host's."""
 struct NotBound <: Exception end
 
 """`:allowed` when `f()` returns, else the name of the class of the exception that it throws."""
