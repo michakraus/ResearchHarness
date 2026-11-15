@@ -142,12 +142,12 @@ as `GITLAB_TOKEN` and the host of the `origin` as `GITLAB_HOST`. That `glab` run
 caller's other token, host, protocol and TLS variables of `glab`, such as `GITLAB_API_HOST` and
 `API_PROTOCOL`, which would send the password to another host or in clear text. It also runs with
 a new empty `GLAB_CONFIG_DIR`, removed after the call, so that no per-host setting of the caller's
-`glab` configuration does the same. For a personal
-project that the GitLab group token of [The forge tokens](components/sandbox.md#the-forge-tokens)
-cannot read, that credential is a project access token of the project, in a credential helper of
-the source's own git configuration. `dotfiles merge` needs the `read_api` scope (or `api`), and
-[`dotfiles absorb`](#dotfiles-absorb) needs `api` to open the merge request: so the token's scopes
-are `read_repository`, `write_repository` and `api`. The read sets
+`glab` configuration does the same. For a personal project that the GitLab group token of
+[The forge tokens](components/sandbox.md#the-forge-tokens) cannot read, that credential is a
+project access token of the project, in a credential helper of the source's own git configuration.
+`dotfiles merge` needs the `read_api` scope (or `api`), and [`dotfiles absorb`](#dotfiles-absorb)
+needs `api` to open the merge request: so the token's scopes are `read_repository`,
+`write_repository` and `api`. The read sets
 `GIT_ASKPASS` to the empty string, `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`: git runs
 no askpass program, whether the caller's `GIT_ASKPASS` or `SSH_ASKPASS` or a `core.askPass`
 names one, asks nothing in the terminal, and a credential manager opens no dialog. The read never
