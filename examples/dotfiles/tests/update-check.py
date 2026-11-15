@@ -75,8 +75,9 @@ Checks:
       with `chezmoi merge` and not re-added; a source change not applied is not absorbed; no
       `chezmoi apply` runs and no live file changes. After the push it opens the request, with
       stubs of gh and glab that log their arguments, working directory, GITLAB_HOST and
-      GITLAB_TOKEN: for an origin that is a local path, glab runs once in the source with its own
-      login. On n, an empty line or the end of input nothing is pushed and the source is as
+      GITLAB_TOKEN, and that fail on --fill: for an origin that is a local path, glab runs once in
+      the source with its own login, with the pushed commit's subject as the title and its body as
+      the text. On n, an empty line or the end of input nothing is pushed and the source is as
       before. With no live edit, or only a template's, it asks nothing and exits 0, and a live
       symlink is not absorbed. A template merged into the source by hand is committed, unsigned
       under commit.gpgsign = true, and for an origin on github.com (an insteadOf rewrite to the
@@ -86,8 +87,9 @@ Checks:
       no output; glab's other token, host, protocol and TLS variables that the caller exports do
       not reach it; with no password, and for an ssh:// origin, glab runs with its own login; when
       glab fails, absorb exits 1 and names the pushed branch and the command that opens the
-      request. It stops without a terminal (before the fetch), on an argument (exit 2), on a
-      detached HEAD, on a main ahead of and one diverged from origin/main, on an untracked, a
+      request, which bash parses back to the title of a subject with quotes. It stops without a
+      terminal (before the fetch), on an argument (exit 2), on a detached HEAD, on a main ahead
+      of and one diverged from origin/main, on an untracked, a
       deleted, a staged deleted, an added and a renamed file, on a review quit early (the line),
       and on a chezmoi diff that fails (its status), each before the question; a main behind
       origin/main is allowed, and a refused push leaves the local branch, named, and HEAD on main.
@@ -1239,15 +1241,26 @@ CALLER_GLAB = (
     "GLAB_CA_CERT",
     "CA_CERT",
 )
-# A stub of gh or glab: it logs its arguments to <name>.log and its working directory, GITLAB_HOST
-# and GITLAB_TOKEN (the fake test token, compared by the test) to <name>.env, in the world's root,
-# and the name of each variable of CALLER_GLAB in its environment to <name>.vars. It prints a URL
-# and exits 0, or exits 1 when the file <name>.fail is in the root.
+# A stub of gh or glab: it logs its arguments to <name>.log, each ended by a NUL and each call by
+# the character RS, and its working directory, GITLAB_HOST and GITLAB_TOKEN (the fake test token,
+# compared by the test) to <name>.env, in the world's root, and the name of each variable of
+# CALLER_GLAB in its environment to <name>.vars. It exits 1 on --fill, which needs the local
+# branch that absorb deletes (and makes glab push HEAD, which is main). It prints a URL and exits
+# 0, or exits 1 when the file <name>.fail is in the root.
 REQUEST_STUB = """#!/bin/sh
-echo "$*" >> "{root}/{name}.log"
+printf '%s\\0' "$@" >> "{root}/{name}.log"
+printf '\\036' >> "{root}/{name}.log"
 printf 'cwd=%s host=%s token=%s\\n' "$PWD" "${{GITLAB_HOST-<unset>}}" "${{GITLAB_TOKEN-<unset>}}" \\
     >> "{root}/{name}.env"
 env | sed -nE 's/^({vars})=.*/\\1/p' >> "{root}/{name}.vars"
+for arg in "$@"; do
+    case $arg in
+        -f | --fill | --fill=*)
+            echo "{name}: --fill needs the local branch, which is deleted" >&2
+            exit 1
+            ;;
+    esac
+done
 if [ -e "{root}/{name}.fail" ]; then
     echo "{name}: could not create the request" >&2
     exit 1
@@ -1294,13 +1307,47 @@ def at_remote(w, rev):
 
 
 def request_log(w, tool):
-    """The lines of <tool>.log and <tool>.env of the stub of gh or glab, which are then removed."""
-    lines = []
-    for suffix in ("log", "env"):
-        path = w.root / f"{tool}.{suffix}"
-        lines.append(path.read_text().splitlines() if path.exists() else [])
-        path.unlink(missing_ok=True)
-    return lines
+    """The calls of the stub of gh or glab, each the list of its arguments, and the lines of its
+    <tool>.env; both files are then removed."""
+    log, env = w.root / f"{tool}.log", w.root / f"{tool}.env"
+    calls = log.read_text().split("\x1e")[:-1] if log.exists() else []
+    lines = env.read_text().splitlines() if env.exists() else []
+    log.unlink(missing_ok=True)
+    env.unlink(missing_ok=True)
+    return [[call.split("\0")[:-1] for call in calls], lines]
+
+
+def pushed_message(w, branch):
+    """The subject and the body of the commit of `branch` on the remote, the body without its
+    last newlines, as the shell's command substitution gives it."""
+    git = ["git", "--git-dir", str(w.remote), "log", "-1"]
+    subject = must([*git, "--format=%s", f"refs/heads/{branch}"], w.env)
+    body = subprocess.run(
+        [*git, "--format=%b", f"refs/heads/{branch}"],
+        capture_output=True,
+        text=True,
+        env=w.env,
+        timeout=60,
+        check=True,
+    ).stdout.rstrip("\n")
+    return subject, body
+
+
+def glab_args(project, branch, subject, body):
+    """The arguments with which absorb runs glab."""
+    return [
+        *("mr", "create", "-R", project, "--target-branch", "main", "--source-branch", branch),
+        *("--title", subject, "--description", body, "--yes"),
+    ]
+
+
+def shell_words(command, env):
+    """The words into which bash parses `command`, a line that absorb prints."""
+    script = f"set -- {command}\nprintf '%s\\0' \"$@\""
+    result = subprocess.run(
+        ["/bin/bash", "-c", script], capture_output=True, text=True, env=env, timeout=60, check=False
+    )
+    return result.stdout.split("\0")[:-1] if result.returncode == 0 else [f"<bash: {result.stderr.strip()}>"]
 
 
 def source_kept(w, label, base):
@@ -1374,10 +1421,16 @@ def absorb_output(w, out, live):
     ):
         check(line in out, f"absorb: the output has {line!r}")
     args, env = request_log(w, "glab")
-    want = f"mr create -R {w.remote} --target-branch main --source-branch {branch} --fill --yes"
+    subject, body = pushed_message(w, branch)
+    want = glab_args(str(w.remote), branch, subject, body)
     check(
         args == [want] and env == [f"cwd={w.source} host=<unset> token=<unset>"],
         f"absorb: glab runs once, {want!r}, in the source, with its own login: {args} {env}",
+    )
+    check(not any("--fill" in call for call in args), f"absorb: glab gets no --fill: {args}")
+    check(
+        subject == f"Absorb the live edits of {TEMPLATE_HOST}" and body != "",
+        f"absorb: the title and the text are the pushed commit's subject and body: {subject!r} {body!r}",
     )
     check(request_log(w, "gh") == [[], []], "absorb: gh does not run")
     check("apply" not in w.calls(), f"absorb: no chezmoi apply ({w.calls()})")
@@ -1455,51 +1508,75 @@ def absorb_answers():
     check("~/.tmpl" not in out, "absorb, a merged template: the output has no ~/.tmpl")
     branch = "".join(ref.removeprefix("refs/heads/") for ref in branches)
     args, env = request_log(w, "gh")
-    want = f"pr create -R github.com/owner/dotfiles --base main --head {branch} --fill"
+    subject, body = pushed_message(w, branch)
+    want = [
+        *("pr", "create", "-R", "github.com/owner/dotfiles", "--base", "main", "--head", branch),
+        *("--title", subject, "--body", body),
+    ]
     check(
         args == [want] and len(env) == 1 and f"the pull request of the branch {branch} is open." in out,
         f"absorb, an origin on github.com: gh runs once, {want!r}, and the line: {args}",
+    )
+    check(
+        not any("--fill" in call for call in args)
+        and subject.startswith("Absorb the live edits of ")
+        and body,
+        f"absorb, an origin on github.com: no --fill, the commit's subject and body: {args}",
     )
     check(request_log(w, "glab") == [[], []], "absorb, an origin on github.com: glab does not run")
     source_kept(w, "absorb, a merged template", base)
 
 
+# A commit-msg hook of the source: with ABSORB_SUBJECT in the environment, it makes that the
+# subject of the commit, and keeps the body.
+SUBJECT_HOOK = """#!/bin/sh
+[ -n "${ABSORB_SUBJECT-}" ] || exit 0
+{ printf '%s\\n' "$ABSORB_SUBJECT"; sed 1d "$1"; } > "$1.new" && mv "$1.new" "$1"
+"""
+
+
+def absorb(name, label, password, *, fail=False, origin=GITLAB, **caller):
+    """In a new absorb_world with a live edit of .plain, the origin `origin` (by default an
+    https:// origin on a GitLab host) that git rewrites to the scratch remote, and the source's
+    own credential helper, which gives `password` (none when empty): run dotfiles-absorb,
+    answer y, and return the world, the output, the pushed branch and glab's log. With
+    `fail`, glab exits 1, and absorb must exit 1; otherwise 0. `caller` holds variables that
+    the caller exports; ABSORB_SUBJECT among them is the subject of absorb's commit
+    (SUBJECT_HOOK)."""
+    want_code = 1 if fail else 0
+    w = absorb_world(name)
+    w.env.update(caller)
+    base = w.head()
+    must(["git", "config", f"url.{w.remote.as_uri()}.insteadOf", origin], w.env, w.source)
+    must(["git", "remote", "set-url", "origin", origin], w.env, w.source)
+    lines = "echo username=oauth2" + (f" && echo password={password}" if password else "")
+    helper = f'!f() {{ test "$1" = get && {lines}; }}; f'
+    must(["git", "config", "credential.helper", helper], w.env, w.source)
+    hook = w.source / ".git" / "hooks" / "commit-msg"
+    hook.parent.mkdir(exist_ok=True)
+    hook.write_text(SUBJECT_HOOK)
+    hook.chmod(0o755)
+    if fail:
+        (w.root / "glab.fail").write_text("")
+    (w.home / ".plain").write_text("plain live\n")
+    code, out = w.run("dotfiles-absorb", answers="y\n")
+    branches = remote_absorbs(w)
+    check(
+        code == want_code and len(branches) == 1,
+        f"absorb, {label}: exit {code}, {want_code}, one branch on the remote {branches}",
+    )
+    source_kept(w, f"absorb, {label}", base)
+    check(request_log(w, "gh") == [[], []], f"absorb, {label}: gh does not run")
+    branch = "".join(ref.removeprefix("refs/heads/") for ref in branches)
+    return w, out, branch, request_log(w, "glab")
+
+
 def absorb_requests():
     print("\n== 17: dotfiles-absorb, the merge request on an https:// origin")
 
-    def absorb(name, label, password, *, fail=False, origin=GITLAB, **caller):
-        """In a new absorb_world with a live edit of .plain, the origin `origin` (by default an
-        https:// origin on a GitLab host) that git rewrites to the scratch remote, and the source's
-        own credential helper, which gives `password` (none when empty): run dotfiles-absorb,
-        answer y, and return the world, the output, the pushed branch and glab's log. With
-        `fail`, glab exits 1, and absorb must exit 1; otherwise 0. `caller` holds variables that
-        the caller exports."""
-        want_code = 1 if fail else 0
-        w = absorb_world(name)
-        w.env.update(caller)
-        base = w.head()
-        must(["git", "config", f"url.{w.remote.as_uri()}.insteadOf", origin], w.env, w.source)
-        must(["git", "remote", "set-url", "origin", origin], w.env, w.source)
-        lines = "echo username=oauth2" + (f" && echo password={password}" if password else "")
-        helper = f'!f() {{ test "$1" = get && {lines}; }}; f'
-        must(["git", "config", "credential.helper", helper], w.env, w.source)
-        if fail:
-            (w.root / "glab.fail").write_text("")
-        (w.home / ".plain").write_text("plain live\n")
-        code, out = w.run("dotfiles-absorb", answers="y\n")
-        branches = remote_absorbs(w)
-        check(
-            code == want_code and len(branches) == 1,
-            f"absorb, {label}: exit {code}, {want_code}, one branch on the remote {branches}",
-        )
-        source_kept(w, f"absorb, {label}", base)
-        check(request_log(w, "gh") == [[], []], f"absorb, {label}: gh does not run")
-        branch = "".join(ref.removeprefix("refs/heads/") for ref in branches)
-        return w, out, branch, request_log(w, "glab")
-
     label = "the source's credential gives a password"
     w, out, branch, (args, env) = absorb("c17-gitlab", label, HELPER_KEY)
-    want = f"mr create -R {GITLAB} --target-branch main --source-branch {branch} --fill --yes"
+    want = glab_args(GITLAB, branch, *pushed_message(w, branch))
     check(
         args == [want] and env == [f"cwd={w.source} host=gitlab.example.org token={HELPER_KEY}"],
         f"absorb, {label}: glab runs once, {want!r}, in the source, with the password as "
@@ -1525,7 +1602,7 @@ def absorb_requests():
 
     label = "the source's credential gives no password"
     w, out, branch, (args, env) = absorb("c17-gitlab-login", label, "")
-    want = f"mr create -R {GITLAB} --target-branch main --source-branch {branch} --fill --yes"
+    want = glab_args(GITLAB, branch, *pushed_message(w, branch))
     check(
         args == [want] and env == [f"cwd={w.source} host=<unset> token=<unset>"],
         f"absorb, {label}: glab runs once, {want!r}, with its own login: {args} {env}",
@@ -1535,22 +1612,38 @@ def absorb_requests():
     label = "an ssh:// origin"
     ssh = "ssh://git@gitlab.example.org/me/dotfiles.git"
     w, out, branch, (args, env) = absorb("c17-gitlab-ssh", label, HELPER_KEY, origin=ssh)
-    want = f"mr create -R {ssh} --target-branch main --source-branch {branch} --fill --yes"
+    want = glab_args(ssh, branch, *pushed_message(w, branch))
     check(
         args == [want] and env == [f"cwd={w.source} host=<unset> token=<unset>"],
         f"absorb, {label}: glab runs once, {want!r}, with its own login: {args} {env}",
     )
 
+
+def absorb_by_hand():
+    print("\n== 17: dotfiles-absorb, the request that does not open")
+    # A subject with the shell's quotes and specials: the command by hand that absorb prints parses
+    # back, in bash, to the words that open the request with that title.
     label = "glab cannot open the request"
-    w, out, branch, (args, env) = absorb("c17-gitlab-fail", label, HELPER_KEY, fail=True)
-    by_hand = f"glab mr create -R {GITLAB} --target-branch main --source-branch {branch} --fill"
+    title = """Absorb O'Brien's "edits" of $HOME & `date`; *"""
+    w, out, branch, (args, _) = absorb("c17-gitlab-fail", label, HELPER_KEY, fail=True, ABSORB_SUBJECT=title)
+    subject, body = pushed_message(w, branch)
     check(
-        len(args) == 1
-        and f"the branch {branch} is pushed, but the merge request could not be opened" in out
-        and re.search(f"open it with: {re.escape(by_hand)}\r?$", out, re.MULTILINE)
+        args == [glab_args(GITLAB, branch, subject, body)] and subject == title,
+        f"absorb, {label}: glab runs once with the hook's subject as the title: {args}",
+    )
+    printed = re.search(r"open it with: (.*?)\r?$", out, re.MULTILINE)
+    words = shell_words(printed.group(1), w.env) if printed else []
+    want = [
+        *("glab", "mr", "create", "-R", GITLAB, "--target-branch", "main", "--source-branch", branch),
+        *("--title", title),
+    ]
+    check(
+        f"the branch {branch} is pushed, but the merge request could not be opened" in out
+        and words == want
         and "is open." not in out
         and HELPER_KEY not in out,
-        f"absorb, {label}: exit 1, the pushed branch and {by_hand!r}: {out[-400:]!r}",
+        f"absorb, {label}: exit 1, the pushed branch and a command that bash parses to {want!r}: "
+        f"{words!r} {out[-400:]!r}",
     )
 
 
@@ -1777,6 +1870,7 @@ def main():
             clause_17,
             absorb_answers,
             absorb_requests,
+            absorb_by_hand,
             absorb_edges,
         ):
             try:

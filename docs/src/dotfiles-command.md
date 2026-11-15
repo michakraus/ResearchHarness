@@ -229,19 +229,23 @@ re-adds the files, commits every change of the source there, unsigned, pushes th
 back to `main`, deletes the local branch, and opens the request. The commit is unsigned because
 only the signed merge of `dotfiles merge` counts on `main`.
 
-For an `origin` on `github.com`, it runs `gh pr create -R github.com/<path> --base main --head
-<branch> --fill`. For any other host, it runs `glab mr create -R <origin> --target-branch main
---source-branch <branch> --fill --yes` in the source. When the `origin` is an `https://` URL, it
+The title of the request is the subject of the pushed commit, and its text is the body of that
+commit. `dotfiles absorb` reads both from the commit, because the local branch is gone and `HEAD`
+is `main` by then. For an `origin` on `github.com`, it runs `gh pr create -R github.com/<path>
+--base main --head <branch> --title <subject> --body <body>`. For any other host, it runs `glab mr
+create -R <origin> --target-branch main --source-branch <branch> --title <subject> --description
+<body> --yes` in the source. When the `origin` is an `https://` URL, it
 reads the password that git uses for the `origin` from the source's own git credential, as the
 driver does for [`dotfiles merge`](#dotfiles-merge), and gives it to `glab` as `GITLAB_TOKEN`,
 with the host of the `origin` as `GITLAB_HOST`. That `glab` runs without the caller's other
 token, host, protocol and TLS variables of `glab`, such as `GITLAB_API_HOST` and
 `API_PROTOCOL`: no variable of the caller sends the password to another host or in clear text.
-The password appears in no argument and on no output. When the `origin` is not an `https://` URL, or the
-credential gives no password, `glab` uses its own login. `gh` or `glab` prints the request, and then `dotfiles absorb` prints one line
-that names it. When `gh` or `glab` cannot open the request, `dotfiles absorb` prints one line on
-standard error, which says that the branch is pushed and gives the command that opens the
-request, and exits 1.
+The password appears in no argument and on no output. When the `origin` is not an `https://`
+URL, or the credential gives no password, `glab` uses its own login. `gh` or `glab` prints the
+request, and then `dotfiles absorb` prints one line that names it. When `gh` or `glab` cannot open
+the request, `dotfiles absorb` prints one line on standard error, which says that the branch is
+pushed and gives the command that opens the request, and exits 1. That command gives the title,
+quoted for the shell, and no text: `gh` or `glab` asks for the text when you run it.
 
 To take a template's edit too, answer `n`, run `chezmoi merge ~/<target>` for each template that
 it lists, and run `dotfiles absorb` again. Until the request is merged and applied, `chezmoi diff`

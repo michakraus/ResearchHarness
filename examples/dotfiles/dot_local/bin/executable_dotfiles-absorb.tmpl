@@ -190,15 +190,20 @@ echo "dotfiles-absorb: the commit $commit is pushed as the branch $branch; main 
 echo "dotfiles-absorb: until the request is merged, chezmoi diff and dotfiles update show these edits reverted: answer n to apply."
 
 # The request, opened by gh for an origin on github.com and by glab for any other host. gh and
-# glab print what they opened.
+# glab print what they opened. Its title and text are the subject and the body of the pushed
+# commit: the local branch is gone and HEAD is main, so neither tool can fill them from the
+# branch's commits. The command by hand gives the title, quoted for the shell; the tool asks for
+# the text.
+title=$(git log -1 --format=%s "$commit")
+text=$(git log -1 --format=%b "$commit")
 opened=1
 if [ "$host" = github.com ]; then
     request="pull request"
-    by_hand="gh pr create -R github.com/$path --base main --head $branch --fill"
-    gh pr create -R "github.com/$path" --base main --head "$branch" --fill || opened=""
+    by_hand="gh pr create -R github.com/$path --base main --head $branch --title $(printf '%q' "$title")"
+    gh pr create -R "github.com/$path" --base main --head "$branch" --title "$title" --body "$text" || opened=""
 else
     request="merge request"
-    by_hand="glab mr create -R $project --target-branch main --source-branch $branch --fill"
+    by_hand="glab mr create -R $project --target-branch main --source-branch $branch --title $(printf '%q' "$title")"
     token=""
     if [[ "$project" == https://* ]]; then
         # The password that git uses for the origin, read as the driver reads it for dotfiles
@@ -218,10 +223,11 @@ else
             unset GITLAB_ACCESS_TOKEN OAUTH_TOKEN GITLAB_URI GL_HOST GITLAB_API_HOST GITLAB_REPO \
                 GLAB_API_PROTOCOL API_PROTOCOL GLAB_SKIP_TLS_VERIFY SKIP_TLS_VERIFY GLAB_CA_CERT CA_CERT
             GITLAB_TOKEN=$token GITLAB_HOST=$host glab mr create -R "$project" --target-branch main \
-                --source-branch "$branch" --fill --yes
+                --source-branch "$branch" --title "$title" --description "$text" --yes
         ) || opened=""
     else
-        glab mr create -R "$project" --target-branch main --source-branch "$branch" --fill --yes || opened=""
+        glab mr create -R "$project" --target-branch main --source-branch "$branch" --title "$title" \
+            --description "$text" --yes || opened=""
     fi
     unset token
 fi
