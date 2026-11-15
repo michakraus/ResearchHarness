@@ -58,12 +58,14 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   pre-commit hook of a base checks its installed copy.
 - githooks/verify-workflows.jl, where `julia` is on the PATH and the harness's Julia environment
   holds a Project.toml: a clean fixture passes, and prints the required checks of
-  `protection.REQUIRED_CHECKS`; a drifted Downgrade.yml, a CI.yml whose test-other job has
-  another name, a drifted Dependents.yml, a missing dependents.jl, a Dependents.yml in an
-  unlisted repository and a listed base without dependents.toml each fail with a line that names
-  the repository; an experiment that `dependents_bases` names is no base; without
-  `dependents_bases`, the fixture of the other templates passes, and so it does with a profile
-  without `docs_exceptions` and `docs_additions`.
+  `protection.REQUIRED_CHECKS`, and for a repository with the groups `core` and `slow` those of
+  `protection.required_checks`; a drifted Downgrade.yml, a CI.yml whose test-other job has
+  another name, a CI.yml without a test-other job, a drifted Dependents.yml, a missing
+  dependents.jl, a Dependents.yml in an unlisted repository and a listed base without
+  dependents.toml each fail with a line that names the repository; an experiment that
+  `dependents_bases` names is no base; without `dependents_bases`, the fixture of the other
+  templates passes, and so it does with a profile without `docs_exceptions` and
+  `docs_additions`.
 """
 
 import argparse
@@ -1246,11 +1248,12 @@ def renamed_other() -> str:
     return text[:name] + text[name:].replace("name: Julia ", "name: Other Julia ", 1)
 
 
-def printed_checks(out: str) -> list[str]:
-    """The list of required checks that verify-workflows.jl prints for a repository without
-    test/ci-groups.toml: the indented lines below its heading, up to the first blank line."""
+def printed_checks(out: str, heading_start: str = "Required status checks (") -> list[str]:
+    """A list of required checks that verify-workflows.jl prints: the indented lines below the
+    heading that starts with `heading_start`, up to the first blank line. The default heading is
+    the one of a repository without test/ci-groups.toml."""
     lines = out.splitlines()
-    heading = next((i for i, line in enumerate(lines) if line.startswith("Required status checks (")), None)
+    heading = next((i for i, line in enumerate(lines) if line.startswith(heading_start)), None)
     if heading is None:
         return []
     found: list[str] = []
@@ -1281,6 +1284,25 @@ def verify_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
         p.returncode == 0 and sorted(printed) == sorted(protection.REQUIRED_CHECKS),
         f"verify-workflows prints the required checks of harness ci-protection -> {p.returncode}, {printed}",
     )
+    grouped = repos["Other"]
+    runtests = (
+        "using SafeTestsets\n"
+        'const GROUPS = isempty(ARGS) ? ["core", "slow"] : ARGS\n'
+        'if "core" in GROUPS\n    @safetestset "A" include("a.jl")\nend\n'
+        'if "slow" in GROUPS\n    @safetestset "B" include("b.jl")\nend\n'
+    )
+    with (
+        changed_file(grouped / "test" / "ci-groups.toml", 'groups = ["core", "slow"]\n'),
+        changed_file(grouped / "test" / "runtests.jl", runtests),
+    ):
+        p = verify(julia, root, listed, quiet=False)
+        expected = protection.required_checks(grouped)
+    printed = printed_checks(p.stdout, "Required status checks of Other,")
+    check(
+        p.returncode == 0 and bool(printed) and sorted(printed) == sorted(expected),
+        f"verify-workflows prints the required checks of harness ci-protection for a repository with "
+        f"the groups core and slow -> {p.returncode}, {printed}",
+    )
     workflow = repos["Base"] / ".github" / "workflows" / "Dependents.yml"
     for label, path, text, repo, phrase in (
         (
@@ -1296,6 +1318,13 @@ def verify_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
             renamed_other(),
             "Other",
             "CI.yml test-other job name is",
+        ),
+        (
+            "a CI.yml without a test-other job",
+            repos["Other"] / ".github" / "workflows" / "CI.yml",
+            CI_YML.read_text().replace("\n    test-other:\n", "\n    test-others:\n"),
+            "Other",
+            "CI.yml has no `test-other` job",
         ),
         (
             "a drifted Dependents.yml",
