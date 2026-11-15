@@ -895,8 +895,29 @@ const PARALLEL_CASES = [
         ["[D8] base/options.jl is listed more than once"]),
     ("a broken file with its issue on the line of its group",
         prt("   # issue #12" => "", PBROKEN => "    \"broken\" => [   # issue #12\n"),
-        ["[D10] base/old_api.jl is in `broken` with no issue on its line"])
+        ["[D10] base/old_api.jl is in `broken` with no issue on its line"]),
+    ("a statement that the parser warns about",
+        Changes("test/runtests.jl" => PARALLEL * "try nothing finally nothing catch end\n"),
+        ["[D2] runtests.jl:32: try is not a statement of the parallel form"]),
+    ("the two `using` joined by `;`",
+        prt("using ParallelTestRunner\nusing Fixture\n" => "using ParallelTestRunner; using Fixture\n"),
+        ["[D2] runtests.jl:1: toplevel is not a statement of the parallel form",
+            "[D2] runtests.jl has no `using ParallelTestRunner` of the parallel form",
+            "[D2] runtests.jl has no `using Fixture` of the parallel form"])
 ]
+
+@testset "the parallel form names the package of Project.toml" begin
+    other = Changes("Project.toml" =>
+        replace(ROOT_PROJECT, "name = \"Fixture\"" => "name = \"Other\""))
+    code, lines = check(fixture(merge(other,
+        prt("using Fixture\n" => "using Other\n", PRUNTESTS =>
+            replace(PRUNTESTS, "Fixture" => "Other")))))
+    @test code == 0
+    @test isempty(lines)
+    code, lines = check(fixture(merge(other, prt())))
+    @test code == 1
+    @test any(l -> endswith(l, ": [D2] runtests.jl has no `using Other` of the parallel form"), lines)
+end
 
 @testset "the parallel form: a Project.toml with no name" begin
     code, lines = check(fixture(merge(prt(),

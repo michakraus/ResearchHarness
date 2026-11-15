@@ -292,7 +292,7 @@ puts that environment on its load path. No `Manifest.toml` is committed.
 
 The scripts never use this file in place. A session can edit the checkout, and the update job runs
 outside the sandbox, so the job must install only the packages that the installed copy names.
-[Dependencies](../dependencies.md#aqua-explicitimports-jet-json-juliaformatter-juliasyntax-testenv-and-yaml) says what each package does.
+[Dependencies](../dependencies.md#aqua-explicitimports-jet-json-juliaformatter-juliasyntax-paralleltestrunner-testenv-and-yaml) says what each package does.
 
 ## `fatou.toml`
 

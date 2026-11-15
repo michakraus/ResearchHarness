@@ -85,8 +85,16 @@ function parallel_runtests(package, table, default)
     replace(PARALLEL_RUNTESTS, "PACKAGE" => package, "TABLE" => table, "DEFAULT" => default)
 end
 
-"Whether the parsed `runtests` is in the parallel form: it has `using ParallelTestRunner`."
-is_parallel(runtests) = any(==(:(using ParallelTestRunner)), runtests.args)
+"""
+Whether the parsed `runtests` is in the parallel form: it has `using ParallelTestRunner`, also
+among statements joined by `;` on one line, which parse to one `toplevel` statement.
+"""
+function is_parallel(runtests)
+    any(
+        s -> s == :(using ParallelTestRunner) ||
+             s isa Expr && s.head === :toplevel && is_parallel(s),
+        runtests.args)
+end
 
 "Whether the statement `s` is `const <name> = …`."
 function is_def(s, name)
@@ -137,12 +145,15 @@ end
 
 """
 The line of each `"<label>" => "<path>"` pair of the first `TESTS` of `file`, in order.
-`Meta.parseall` puts no line number inside a vector, so the lines come from the syntax tree.
+`Meta.parseall` puts no line number inside a vector, so the lines come from the syntax tree. A
+warning of the parser does not stop it, as it does not stop `Meta.parseall` in `parsefile`: the
+statement it warns about is judged as any other.
 """
 function tests_lines(file)
     JS = Base.JuliaSyntax
     kids = JS.children
-    tree = JS.parseall(JS.SyntaxNode, read(file, String); filename = file)
+    tree = JS.parseall(JS.SyntaxNode, read(file, String); filename = file,
+        ignore_warnings = true)
     for s in kids(tree)
         is_def(Expr(s), :TESTS) || continue
         table = kids(kids(s)[1])[2]
@@ -365,10 +376,7 @@ end
 
 "The definitions of `GROUPS` among the statements of `runtests`, without line numbers."
 function groups_defs(runtests)
-    [Base.remove_linenums!(deepcopy(s))
-     for s in runtests.args
-     if s isa Expr && s.head === :const && s.args[1] isa Expr &&
-            s.args[1].head === :(=) && s.args[1].args[1] === :GROUPS]
+    [Base.remove_linenums!(deepcopy(s)) for s in runtests.args if is_def(s, :GROUPS)]
 end
 
 """
@@ -669,8 +677,7 @@ function violations(repo)
                 "using" in seen &&
                     v("D2", "runtests.jl:$line: `using SafeTestsets` is repeated")
                 push!(seen, "using")
-            elseif s isa Expr && s.head === :const && s.args[1] isa Expr &&
-                   s.args[1].head === :(=) && s.args[1].args[1] === :GROUPS
+            elseif is_def(s, :GROUPS)
                 "GROUPS" in seen && v("D5", "runtests.jl:$line: GROUPS is defined again")
                 push!(seen, "GROUPS")
             elseif s isa Expr && s.head === :if && group_of(s.args[1]) !== nothing
