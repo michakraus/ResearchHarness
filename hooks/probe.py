@@ -20,7 +20,8 @@ The hooks run against a fixture `HOME`, never the real one, so the cases mean th
 every machine and in CI. Each Python hook runs with this interpreter, `sys.executable`, not
 with its shebang, and each call has a timeout. Each fixture home in which the guard of Claude
 Code, OpenCode or oh-my-pi runs holds a `.ssh` that the guard cannot list, as under `agentbox`,
-so that its launcher check passes there.
+so that its launcher check passes there; only the cases of the launcher check add homes whose
+`.ssh` it can list.
 """
 
 import ast
