@@ -2922,9 +2922,12 @@ def launcher_cases(report: Callable[..., None]) -> None:
     cx_here = str(pathlib.Path(cx_dir).resolve().relative_to(here, walk_up=True))
     cx_empty_home = launcher_home(fixture_dir / "launcher-cx-empty")
     cx_list_home = launcher_home(fixture_dir / "launcher-cx-list")
+    cx_bytes_home = launcher_home(fixture_dir / "launcher-cx-bytes")
+    cx_bytes = claudex_home(cx_bytes_home, enabled=b'{"sandbox": {"enabled": true}} \xff')
     for frontend, home, config, want in (
         ("claude", cx_empty_home, claudex_home(cx_empty_home, enabled=b"{}"), "deny"),
         ("claude", cx_list_home, claudex_home(cx_list_home, enabled=b'{"sandbox": [true]}'), "deny"),
+        ("claude", cx_bytes_home, cx_bytes, "deny"),
         ("claude", cx_on, cx_dir, "pass"),
         ("claude", cx_on, cx_dir[1:], "pass"),
         ("claude", cx_on, "/" + str(cx_link), "pass"),
@@ -2942,9 +2945,10 @@ def launcher_cases(report: Callable[..., None]) -> None:
     ):
         environ = {"CLAUDE_CONFIG_DIR": config}
         verdict = launcher.outside(frontend, home, environ, "darwin")
-        # A refusal names `agentbox <frontend>`, and `claudex` and `~/.config/claudex` exactly when it
-        # refuses Claude Code.
-        named = want == "pass" or f"`agentbox {frontend}`" in verdict.reason
+        # A refusal asks for `agentbox <frontend>`, a refusal of Claude Code for `claudex` too, and it
+        # names `claudex` and `~/.config/claudex` exactly when it refuses Claude Code.
+        ways = "`agentbox claude`, or with `claudex`" if frontend == "claude" else f"`agentbox {frontend}`."
+        named = want == "pass" or ways in verdict.reason
         claudex_named = frontend == "claude" and want == "deny"
         report(
             ok=verdict.decision == want
