@@ -150,11 +150,14 @@ tokens.
    resource owner to that organisation or to your account, select all repositories, and give the
    token these permissions:
 
-   - Read access to Dependabot alerts, artifact metadata, commit statuses and metadata
+   - Read access to administration, Dependabot alerts, artifact metadata, commit statuses and
+     metadata
    - Read and write access to actions, code, discussions, issues, pull requests, repository
      creation and workflows
 
-   Give the token no Gists permission. An organisation can require that it approves a token.
+   Administration read lets an agent read a repository's Actions settings, such as the workflow
+   token permissions that decide whether TagBot may create a release. Give the token no Gists
+   permission. An organisation can require that it approves a token.
 2. On GitLab, make one group access token of the group, with the scopes `api`, `read_repository`
    and `write_repository`, and a role that can create projects in the group. By GitLab's default,
    that role is Maintainer; the group's setting *Roles allowed to create projects* decides it.
