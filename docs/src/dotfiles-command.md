@@ -235,9 +235,8 @@ The title of the request is the subject of the pushed commit, and its text is th
 commit. `dotfiles absorb` reads both from the commit, because the local branch is gone and `HEAD`
 is `main` by then. For an `origin` on `github.com`, it runs `gh pr create -R github.com/<path>
 --base main --head <branch> --title <subject> --body <body>`. For any other host, it runs `glab mr
-create -R <origin> --target-branch main --source-branch <branch> --title <subject> --description
-<body> --yes` in the source. When the `origin` is an `https://` URL, it
-reads the password that git uses for the `origin` from the source's own git credential, as the
+create -R <origin> --target-branch main --source-branch <branch> --title <subject>
+--description <body> --yes` in the source. When the `origin` is an `https://` URL, it reads the password that git uses for the `origin` from the source's own git credential, as the
 driver does for [`dotfiles merge`](#dotfiles-merge), and gives it to `glab` as `GITLAB_TOKEN`,
 with the host of the `origin` as `GITLAB_HOST`. That `glab` runs without the caller's other
 token, host, protocol and TLS variables of `glab`, such as `GITLAB_API_HOST` and
