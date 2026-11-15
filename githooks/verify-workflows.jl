@@ -26,8 +26,8 @@
 #      other repository. The content of dependents.toml is not checked here: `harness dependents`
 #      writes it from the census and reports a stale copy.
 #   2. CI.yml parses, and the names of its jobs `test`, `test-other` and `doctest` are exactly the
-#      strings that harness ci-protection requires. A rename here silently invalidates branch protection in every
-#      repository, so it is asserted against a literal rather than derived.
+#      strings that harness ci-protection requires. A rename here silently invalidates branch
+#      protection in every repository, so it is asserted against a literal rather than derived.
 #   3. No Register.yml, no register.yml, no Documentation.yml, no Documentation.yaml, no
 #      CompatHelper.yml, in the working tree and on the default branch. Register.yml is removed on
 #      purpose (dispatching it uses up a version number); the Documentation

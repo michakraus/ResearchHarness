@@ -28,7 +28,7 @@ A red check that an entry there explains is `expected red`, with the entry's id 
 ## The uniform-CI facts this depends on
 
 `CI.yml`, `.github/dependabot.yml` and `codecov.yml` are byte-identical across every repository, installed
-from `~/Research/Harness/githooks/workflows/`. There are **seven required status checks**, and
+from `~/Research/Harness/githooks/workflows/`. There are **five required status checks**, and
 their names were chosen so a matrix or Julia-version change cannot invalidate them.
 
 Two consequences you must use:

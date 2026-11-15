@@ -440,8 +440,8 @@ of each repository that has a tracked `docs/make.jl`.
 It does not go into a repository that the profile key `docs_exceptions` or `docs_additions`
 names. Such a repository keeps its own file: its documentation is a pipeline of several jobs, or
 it needs an extra step. The doctests do not run here; the `doctest` job of `CI.yml` runs them. It
-runs on the events of `CI.yml` but the weekly one, on Ubuntu with Julia `1`. The checkout does not keep the
-token: the deploy pushes from a new repository of its own, with `DOCUMENTER_KEY` or
+runs on the events of `CI.yml` but the weekly one, on Ubuntu with Julia `1`. The checkout does
+not keep the token: the deploy pushes from a new repository of its own, with `DOCUMENTER_KEY` or
 `GITHUB_TOKEN`. A private repository names `devbranch` in its `deploydocs` call: without it,
 Documenter reads the default branch with `git remote show origin`, which needs the token there,
 and falls back to `master`.
@@ -489,10 +489,10 @@ julia verify-workflows.jl --quiet    # only deviations and the summary
 It checks these points:
 
 1. `CI.yml`, `Downgrade.yml`, `dependabot.yml`, `TagBot.yml` and `codecov.yml` are
-   byte-identical to the templates, in the working tree. `TagBot.yml` must be absent in an experiment.
-   `Dependents.yml` and `dependents.jl` are byte-identical in each base of `dependents_bases`,
-   which also has `.github/dependents.toml`, and absent from every other repository. The content
-   of `dependents.toml` is the check of `harness dependents`.
+   byte-identical to the templates, in the working tree. `TagBot.yml` must be absent in an
+   experiment. `Dependents.yml` and `dependents.jl` are byte-identical in each base of
+   `dependents_bases`, which also has `.github/dependents.toml`, and absent from every other
+   repository. The content of `dependents.toml` is the check of `harness dependents`.
 2. The same files on the default branch, for a repository that is on another branch.
 3. The names of the jobs `test`, `test-other` and `doctest` of `CI.yml` are the names of the
    required checks.

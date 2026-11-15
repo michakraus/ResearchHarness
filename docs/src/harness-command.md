@@ -624,8 +624,9 @@ harness workflows [--apply]
 
 Copies the canonical files of `githooks/workflows/` into each package and experiment that has a
 `Project.toml`: `CI.yml`, `Downgrade.yml`, `dependabot.yml` and `codecov.yml` into each,
-`TagBot.yml` into each package, and `Documenter.yml` where a tracked `docs/make.jl` exists. A repository that the profile
-keys `docs_exceptions` or `docs_additions` name keeps its own documentation workflow. It copies
+`TagBot.yml` into each package, and `Documenter.yml` where a tracked `docs/make.jl` exists. A
+repository that the profile keys `docs_exceptions` or `docs_additions` name keeps its own
+documentation workflow. It copies
 `Dependents.yml` to `.github/workflows/Dependents.yml` and `dependents.jl` to
 `.github/dependents.jl` of each base that the profile key `dependents_bases` names, and deletes
 both from every other repository. It deletes the retired `CompatHelper.yml`.
