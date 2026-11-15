@@ -23,9 +23,12 @@
 # ~/.zshrc opens the file to append and writes nothing. On Linux, where the job's home is a `tmpfs`
 # that holds only the job's binds, `write_zshrc` gives `:NotBound` where that home holds no
 # ~/.zshrc as a regular file: the probe then measures nothing, and its result is neither a pass
-# nor a gap. `connect_loopback` connects to Kaimon's own port, 127.0.0.1:2828, given as a string,
-# so that `Sockets.getaddrinfo` reads the address before the connect, as HTTP.jl does for Kaimon's
-# clients of Qdrant and Ollama; a libc that cannot read it without the resolver gives `:DNSError`.
+# nor a gap. A read probe gives `:NotAFile` where its path opens as something other than a regular
+# file, such as a directory: the probe then measures nothing, and its result is neither a pass nor
+# a gap, as `:NotBound`. `connect_loopback` connects to Kaimon's own port, 127.0.0.1:2828, given as
+# a string, so that `Sockets.getaddrinfo` reads the address before the connect, as HTTP.jl does
+# for Kaimon's clients of Qdrant and Ollama; a libc that cannot read it without the resolver gives
+# `:DNSError`.
 # `connect_remote` connects to 1.1.1.1:443, an address that answers, so a profile that lets it
 # through gives `:allowed` and not a timeout.
 #
@@ -49,6 +52,9 @@ struct NotFunctional <: Exception end
 """Raised by `write_zshrc` on Linux when `~/.zshrc` is not a regular file: it cannot reach the host's."""
 struct NotBound <: Exception end
 
+"""Raised by `read_only` where the opened path is not a regular file, such as a directory."""
+struct NotAFile <: Exception end
+
 """`:allowed` when `f()` returns, else the name of the class of the exception that it throws."""
 function attempt(f)
     try
@@ -68,8 +74,18 @@ function first_file(dir)
     error("$dir holds no file")
 end
 
-"""Read `path` whole and drop its bytes."""
-read_only(path) = (read(path); nothing)
+"""
+Open `path`, read it whole and drop its bytes: `NotAFile` when the open stream is not a regular
+file. The check reads the stream after the open, so a sandbox that refuses the open keeps its own
+class, and a link to a regular file reads as that file.
+"""
+function read_only(path)
+    open(path) do io
+        isfile(stat(io)) || throw(NotAFile())
+        read(io)
+    end
+    return nothing
+end
 
 """Create the file `path`, then delete it."""
 function create_delete(path)
