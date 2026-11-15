@@ -54,7 +54,8 @@ another value in the file stays. A settings file that cannot be merged exits wit
 before anything is written.
 
 claudex runs Claude Code with CLAUDE_CONFIG_DIR=~/.config/claudex, where Claude Code reads its
-own settings.json and reaches the other files of ~/.claude by a second name. So
+own settings.json, and where links of its launcher give the other files of ~/.claude a second
+name. So
 ~/.config/claudex/settings.json is the second file of the layer, merged from the same rendered
 template, and each file's plan line and diff carry its own path. In both files, each deny rule
 of the template on a path below ~/.claude/ or on ~/.claude.json has its twin below
@@ -581,8 +582,8 @@ def hook_command(command: str, profile: render_profile.Profile, python: str) -> 
 
 
 # The configuration directory of claudex, relative to the home: claudex runs Claude Code with
-# CLAUDE_CONFIG_DIR set to it, so Claude Code reads its settings.json there, and the other files of
-# ~/.claude are reached there by a second name.
+# CLAUDE_CONFIG_DIR set to it, so Claude Code reads its settings.json there, and links of its
+# launcher give the other files of ~/.claude a second name there.
 CLAUDEX = ".config/claudex"
 # The deny rules that name a settings file below any `.claude` directory, and their twins below
 # ~/.config/claudex, which `**/.claude/` does not match.
