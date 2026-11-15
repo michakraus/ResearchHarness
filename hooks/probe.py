@@ -132,8 +132,8 @@ ENV = {**CLEAN, "HOME": HOME}
 # The `.ssh` of each fixture home in which a guard case of Claude Code, OpenCode or oh-my-pi runs: a
 # directory with mode 000, which the guard cannot list, as under `agentbox`, whose sandbox denies
 # `~/.ssh`. On macOS the guard refuses every call of those frontends when it can list `~/.ssh`
-# (`guard/launcher.py`). `main` gives each one mode 700 again before it removes the fixture, because
-# `shutil.rmtree` cannot remove a directory that it cannot list.
+# (`guard/launcher.py`). `main` gives each one mode 700 again before it removes the fixture, so that
+# the removal need not go through a directory that it cannot list.
 CLOSED_SSH: list[pathlib.Path] = []
 # The launcher check answers on macOS alone; on another platform it passes every call, so there each
 # case of the launcher that runs the guard in a process of its own expects the decision of the corpus.
@@ -558,12 +558,13 @@ STAMP = ".harness-install.json"
 # therefore hold JavaScript syntax only. A home holds the extension in `extensions/`, or the plugins
 # in `plugins/`, beside the path list that `harness install` renders with the dummy profile and the
 # home, with this interpreter as its `python`; a copy of the guard package in `hooks/guard/`, never a
-# link; and `.ssh/` with mode 000 (CLOSED_SSH), `.omp/`, `Research/P/.git/` and `bin/`. The groups `omp` and `opencode` run each
-# record of their frontend in `tests/guard/corpus.jsonl` through the extension or the plugin and the
-# guard, and the edges of the transport that a record cannot hold: an interpreter that is missing, a
-# guard that exits 3 after its answer, prints `{`, is killed after its answer or does not answer in
-# time, a path list that is missing, malformed or without `python`, and a message that the guard
-# cannot read. The timeout case runs a copy whose timeout is 0.3 s, so that it costs no 10 s.
+# link; and `.ssh/` with mode 000 (CLOSED_SSH), `.omp/`, `Research/P/.git/` and `bin/`. The groups
+# `omp` and `opencode` run each record of their frontend in `tests/guard/corpus.jsonl` through the
+# extension or the plugin and the guard, and the edges of the transport that a record cannot hold: an
+# interpreter that is missing, a guard that exits 3 after its answer, prints `{`, is killed after its
+# answer or does not answer in time, a path list that is missing, malformed or without `python`, and
+# a message that the guard cannot read. The timeout case runs a copy whose timeout is 0.3 s, so that
+# it costs no 10 s.
 #
 # An oh-my-pi record holds `tool`, `input`, the `decision` and, where it needs them, `cwd`, the
 # session's working directory (CWD by default), and `agent`, the kind of the context's agent. An

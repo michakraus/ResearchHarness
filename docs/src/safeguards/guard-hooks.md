@@ -444,7 +444,7 @@ cannot be read counts as no sandbox. For OpenCode and oh-my-pi nothing else coun
 Antigravity's table runs no such check. Antigravity's terminal sandbox holds its shell commands in
 the CLI and in the desktop app, and its shell tool cannot run under `agentbox`.
 
-The check refuses nothing on Linux, where no launcher runs the frontends yet. On macOS it also
+The check refuses nothing on Linux, where no launcher runs the frontends. On macOS it also
 refuses a guard that a plain terminal runs by hand, as in the example above, because `~/.ssh` is
 readable there.
 
