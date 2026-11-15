@@ -636,7 +636,7 @@ def token_source() -> str:
     if RUNNER.env is not None:
         return "the sealed secret github, ~/.config/research-harness/sealed/github.age"
     return (
-        "the token that gh from the PATH chose: the wrapper ~/.local/bin/gh gives the organisation "
+        "the one that gh from the PATH chose: the wrapper ~/.local/bin/gh gives the organisation "
         "token of the owner, else GH_TOKEN, GITHUB_TOKEN or gh's login. On macOS, seal your own "
         "broad token in ~/.config/research-harness/sealed/github.age"
     )
@@ -1359,8 +1359,8 @@ def token_cases() -> tuple[int, int]:
 
 
 def selftest():
-    """Cases for `ruleset_problem`, `targets`, `workflow_checks`, `github_token` and
-    `cmd_ci_protection`."""
+    """Cases for `ruleset_problem`, `targets`, `workflow_checks`, `github_token`,
+    `cmd_ci_protection` and the message of `protect` for a refused write."""
     total = wrong = 0
     for cases in (ruleset_cases, target_cases, workflow_cases, token_cases, command_cases, denied_cases):
         n, w = cases()
