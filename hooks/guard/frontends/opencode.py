@@ -7,6 +7,9 @@ and reads one object on stdout, `{"block": <bool>, "reason": <text>}`, after exi
 reason of a block, which refuses the call. OpenCode has no way for a plugin to ask the user, so an
 `ask` is a block whose reason tells the model to ask the user in chat.
 
+THE LAUNCHER. Before it reads its lists or the message, the table puts every call to the launcher
+check (`launcher.outside`), and returns its refusal of a session outside `agentbox`.
+
 THE LISTS. The table reads `guard-paths.json` beside the plugin, its `deny`, and the optional list
 `$OPENCODE_CONFIG_DIR/guard-paths.json`, a further `deny` and an `allow`, before it reads the tool:
 a list that is missing or cannot be used refuses every call. The path list reads OpenCode's form of
@@ -27,6 +30,7 @@ string `command` or with one of more than MAX_COMMAND bytes of UTF-8.
 import functools
 import os
 import re
+import sys
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import TextIO
@@ -42,6 +46,7 @@ from guard import (
     git_push_delete,
     git_writes,
     kaimon_session,
+    launcher,
     no_blind_stage,
     no_shell_file_write,
     path_list,
@@ -143,8 +148,12 @@ def shell_calls(tool_input: dict[str, JsonValue], directory: str | None) -> list
 
 
 def decide(data: bytes) -> Verdict:
-    """The guard's verdict on the message bytes `data`: the strongest verdict of the checks of the
-    tool on each form of the call; a pass for a tool that the table does not name."""
+    """The guard's verdict on the message bytes `data`: the launcher check's refusal, else the
+    strongest verdict of the checks of the tool on each form of the call; a pass for a tool that the
+    table does not name."""
+    refused = launcher.outside("opencode", str(Path.home()), os.environ, sys.platform)
+    if refused.decision == "deny":
+        return refused
     found = lists()
     if isinstance(found, str):
         return Verdict("deny", found)

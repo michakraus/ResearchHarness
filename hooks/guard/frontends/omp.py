@@ -7,6 +7,9 @@ reads one object on stdout, `{"block": <bool>, "reason": <text>}`, after exit 0,
 oh-my-pi's own answer to a `tool_call` handler. The extension asks no user, so an `ask` is a block
 whose reason tells the model to ask the user in chat.
 
+THE LAUNCHER. Before it reads its lists or the message, the table puts every call to the launcher
+check (`launcher.outside`), and returns its refusal of a session outside `agentbox`.
+
 THE LISTS. The table reads `guard-paths.json` beside the extension before it reads the tool: `deny`,
 with oh-my-pi's own directory but the copies that it reads (OWN_READABLE), for every call; `edit`,
 with the whole of that directory, and then `ask`, for an `edit` and a `write`. A list that is
@@ -33,7 +36,9 @@ or `write` that names no path.
 """
 
 import functools
+import os
 import re
+import sys
 import urllib.parse
 from collections.abc import Callable
 from pathlib import Path
@@ -50,6 +55,7 @@ from guard import (
     git_push_delete,
     git_writes,
     kaimon_session,
+    launcher,
     no_blind_stage,
     no_shell_file_write,
     path_list,
@@ -286,8 +292,11 @@ def call_of(tool: str, tool_input: dict[str, JsonValue], cwd: str | None, caller
 
 
 def decide(data: bytes) -> Verdict:
-    """The guard's verdict on the message bytes `data`: the strongest verdict of the checks of the
-    tool; a pass for a tool that the table does not name."""
+    """The guard's verdict on the message bytes `data`: the launcher check's refusal, else the
+    strongest verdict of the checks of the tool; a pass for a tool that the table does not name."""
+    refused = launcher.outside("omp", str(Path.home()), os.environ, sys.platform)
+    if refused.decision == "deny":
+        return refused
     found = lists()
     if isinstance(found, str):
         return Verdict("deny", found)

@@ -417,6 +417,42 @@ the check names passes. The refusal of a missing key, like that of a dead key, n
 live sessions, sorted and each once, or says that none is live; when the directory cannot be
 listed, it names none. The messages name the rule of `skills/build-part/evidence.md`.
 
+### The launcher check
+
+`launcher.py` refuses every call of a Claude Code, OpenCode or oh-my-pi session that runs outside
+`agentbox`. Outside it no sandbox holds the frontend's file tools, its hooks and its MCP servers,
+and OpenCode and oh-my-pi have no sandbox of their own. The tables of the three frontends run the
+check first, before they read the payload or their path lists, so a session outside `agentbox`
+gets the check's reason for every tool, also for a tool that no other check reads.
+
+The check tests behaviour, not a variable such as `SANDBOX_RUNTIME`, which anyone can set. Under
+`agentbox` the sandbox of each frontend denies `~/.ssh`, and the guard, a child of the frontend,
+cannot list it. So the guard lists `~/.ssh`, and the listing gives one of three answers:
+
+- it fails with `PermissionError`: a sandbox holds the session, and the other checks decide;
+- it fails with another error, such as a home without `~/.ssh`: the guard cannot tell, and it
+  refuses the call with a reason that names `~/.ssh`;
+- it returns: the session runs outside `agentbox`, and the guard refuses the call. The reason
+  tells the agent to stop and to ask the user to start the session again with
+  `agentbox <frontend>`.
+
+One sandbox other than `agentbox` counts: Claude Code's own, in the Code tab of the Claude desktop
+app. There `CLAUDE_CODE_ENTRYPOINT` is `claude-desktop`, and the check passes when
+`~/.claude/settings.json` holds `sandbox.enabled` as `true`. A settings file that is missing or
+cannot be read counts as no sandbox. For OpenCode and oh-my-pi nothing else counts.
+
+Antigravity's table runs no such check. Antigravity's terminal sandbox holds its shell commands in
+the CLI and in the desktop app, and its shell tool cannot run under `agentbox`.
+
+The check refuses nothing on Linux, where no launcher runs the frontends yet. On macOS it also
+refuses a guard that a plain terminal runs by hand, as in the example above, because `~/.ssh` is
+readable there.
+
+The probe runs the guard of the three frontends in fixture homes whose `.ssh` has mode 000, so
+that the guard cannot list it, as under `agentbox`. Its groups `commands`, `omp` and `opencode`
+test the three answers and the Code tab, and the group `antigravity` a record of the corpus in a
+home whose `.ssh` the guard can list.
+
 ### The path list and oh-my-pi's own rows
 
 `path_list.py` refuses a call that reaches a path of the frontend's `guard-paths.json`: for
