@@ -3042,8 +3042,9 @@ def probe_cases(case: Case, root: pathlib.Path) -> None:
         ok=all(got.get(n) == want for n, want in refused.items()),
     )
     case(
-        f"write_zshrc on Linux opens no ~/.zshrc that the home does not hold, and its linux "
-        f"defaults to the running system: {got.get('unbound_zshrc')} {got.get('default_zshrc')}",
+        f"write_zshrc on Linux opens no ~/.zshrc that the home does not hold, and its default "
+        f"gives the result of linux = Sys.islinux(): "
+        f"{got.get('unbound_zshrc')} {got.get('default_zshrc')}",
         ok=got.get("unbound_zshrc") == "false" and got.get("default_zshrc") == "true",
     )
     case(

@@ -1008,3 +1008,15 @@
   branch is unchanged.
 - kind: defect
 - found: 2026-11-15, the spec of part D4 of the sandbox plan
+
+### K165 · A read probe of a fixed path gives `:allowed` where a directory stands at that path.
+
+- location: `sandbox/probe-daemon.jl:72`
+- evidence: `read_only` calls `read(path)`, which on macOS returns no bytes for a directory and
+  throws nothing. With a directory at `home/.claude.json` and at `home/.config/gh/hosts.yml`,
+  `read_claude_json(home)` and `read_gh_hosts(home)` give `allowed` on the base `557824e0`, and
+  `read_research(home)` gives `allowed` with a directory at `home/Research/Harness/README.md`. A
+  negative probe then reports a gap and a positive probe a pass that no read of a file measured.
+  Every tree of the harness holds a regular `README.md` there.
+- kind: defect
+- found: 2026-11-15, the critic of part D4 of the sandbox plan
