@@ -556,6 +556,20 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `DimensionMismatch`, and the pair that the tests try still passes. Dispatch on one argument and
   leave the other `AbstractArray`, so the guard runs first, then test every mixed pair of shapes
   (D verify 3, *Extend the Lagrangian network package with the methods of the literature*)
+- an order of entries that the tests check only inside one item: a contract check that lists its
+  violations property by property, with a `:shadowed` entry before the entry of the same
+  property's call, passed every test with each `:shadowed` entry moved to the front of the list.
+  Test a fixture whose entries span several items and kinds, such as a throw in an earlier property
+  and a shadow in a later one (J6a round 1, *Strengthen the Julia coding layer of the harness*)
+- a test fixture that defines a function or a type in `Main`: the test files of a group share one
+  process, so the binding stays for every later file and can change what a later check reads. Run
+  a check that needs a definition in `Main` in a fresh process (`Base.julia_cmd()` with the active
+  project), and keep the other fixtures in the test file's own module (J6a round 1, same task)
+- a report that names the place where a fact is seen, not where it comes from: a check that walks
+  a submodule and its parents named the module that held the binding, so a submodule with `using
+  ..Parent: name` read as the module that defines its own `name`. Name the owner
+  (`parentmodule(f)` of the bound function), and test a binding that a module imports from its
+  parent (J6a round 1, same task)
 
 ## A tool that reads files or a tree
 
