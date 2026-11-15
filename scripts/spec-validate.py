@@ -279,19 +279,21 @@ def git(args: list[str], cwd: str) -> subprocess.CompletedProcess[bytes]:
     """Run git with the user's configuration, whose filters (Git LFS) `git archive` applies. A
     process that may not read a file that the global configuration includes (a Kaimon session,
     where a check that needs Metal runs) stops git with exit status 128 and `unable to access`;
-    then git runs once more without the global configuration. A git that runs longer than 60 s
-    raises `TimeoutExpired`."""
+    then git runs once more without the global configuration. Both runs set `LC_ALL=C`, because a
+    git built with translations words that message in the user's language. A run longer than 60 s
+    raises `TimeoutExpired`, so the two runs together take at most 120 s."""
     command = [shutil.which("git") or "git", *args]
-    p = subprocess.run(command, cwd=cwd, capture_output=True, check=False, timeout=60)
+    env = {**os.environ, "LC_ALL": "C"}
+    p = subprocess.run(command, cwd=cwd, env=env, capture_output=True, check=False, timeout=60)
     if p.returncode == GIT_FATAL and b"unable to access" in p.stderr:
-        env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull}
+        env["GIT_CONFIG_GLOBAL"] = os.devnull
         p = subprocess.run(command, cwd=cwd, env=env, capture_output=True, check=False, timeout=60)
     return p
 
 
 def status(tree: str) -> str | None:
-    """`git status --porcelain` of a git tree, or None for any other tree and for a git that runs
-    longer than 60 s. An ignored file is not a change: `run-tests.jl` resolves a `Manifest.toml`
+    """`git status --porcelain` of a git tree, or None for any other tree and for a git run that
+    takes longer than 60 s. An ignored file is not a change: `run-tests.jl` resolves a `Manifest.toml`
     into the package root, and every tree's `.gitignore` names it."""
     try:
         p = git(["status", "--porcelain"], tree)
@@ -302,7 +304,8 @@ def status(tree: str) -> str | None:
 
 def export(repo: str, base: str, tree: str) -> str | None:
     """Write the files of the commit `base` of the checkout `repo` into `tree`; the error, or None.
-    A `git archive` that fails or runs longer than 60 s is an error; a `tar` that fails raises."""
+    A `git archive` that fails, or one of whose runs takes longer than 60 s, is an error; a `tar`
+    that fails raises."""
     try:
         archive = git(["archive", base], repo)
     except subprocess.TimeoutExpired:

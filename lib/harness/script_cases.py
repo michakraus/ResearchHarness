@@ -874,6 +874,27 @@ def unreadable_include_cases(check: Callable[[object, str], None], tmp: pathlib.
             got == (None, "") and (tree / "a.txt").read_text() == "a\n",
             f"an unreadable include: export and status read the repository without it -> {got}",
         )
+        # a git with translations words `unable to access` in the user's language, so both runs
+        # must ask for the C locale, or the fallback does not see the message
+        runs: list[dict[str, str]] = []
+
+        def recorded(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+            runs.append(cast("dict[str, str]", kwargs.get("env") or {}))
+            if len(runs) == 1:
+                return subprocess.CompletedProcess(
+                    command, 128, b"", b"fatal: unable to access 'x': denied\n"
+                )
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+
+        with (
+            mock.patch.dict(os.environ, {**env, "LC_ALL": "de_DE.UTF-8"}, clear=True),
+            mock.patch.object(subprocess, "run", recorded),
+        ):
+            validate.status(str(repo))
+        check(
+            len(runs) == 2 and all(r.get("LC_ALL") == "C" for r in runs),
+            f"an unreadable include: both git runs set LC_ALL=C -> {[r.get('LC_ALL') for r in runs]}",
+        )
     finally:
         secret.chmod(0o600)  # not private: gives the fixture back the read access that the case took
 
