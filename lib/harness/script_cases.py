@@ -20,9 +20,10 @@ runs them.
   spec-bundle.py copies the spec and names `$SPEC`.
 - A git of spec-validate.py and spec-bundle.py that runs past its timeout gives the answer of a git
   that fails: no status, a rule-9 error, and no commit.
-- In a home whose `.gitconfig` includes a file that the process may not read, git exits 128, and
-  spec-validate.py's export and status, which run git without the global configuration, still read
-  the repository.
+- In a home whose `.gitconfig` sets a smudge filter and includes a second file: while that file is
+  readable, spec-validate.py's export applies the filter; when the process may not read it, git
+  exits 128, and the export and status run git again without the global configuration and still
+  read the repository.
 - The fix round's mutants: skills/build-part/evidence.md defines them in one section, with its
   four rules, and both builders and both build skills point at it.
 - scripts/probe-agentbox.py in a scratch home, with a stub for `srt`, `agentbox` and every program
@@ -827,29 +828,38 @@ def timeout_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
 
 
 def unreadable_include_cases(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
-    """A home whose `.gitconfig` includes a file that the process may not read, as in a Kaimon
-    session: git itself stops with status 128, and spec-validate.py's export and status, which run
-    git without the global configuration, still read the repository."""
+    """A home whose `.gitconfig` sets a smudge filter and includes a second file. While the process
+    may read that file, spec-validate.py's export runs git with the user's configuration and
+    applies the filter, as Git LFS needs. When it may not, as in a Kaimon session, git itself stops
+    with status 128, and the export and status run git once more without the global configuration
+    and still read the repository."""
     validate = script(SPEC_VALIDATE)
     git = shutil.which("git") or "git"
     plain = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull}
-    repo, home, tree = tmp / "repo", tmp / "home", tmp / "tree"
-    for d in (repo, home, tree):
+    repo, home, tree, filtered = tmp / "repo", tmp / "home", tmp / "tree", tmp / "filtered"
+    for d in (repo, home, tree, filtered):
         d.mkdir()
     (repo / "a.txt").write_text("a\n")
+    (repo / ".gitattributes").write_text("a.txt filter=x\n")
     for args in (
         ["init", "-q"],
-        ["add", "a.txt"],
+        ["add", "a.txt", ".gitattributes"],
         ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "a"],
     ):
         subprocess.run([git, *args], cwd=repo, env=plain, check=True, capture_output=True, timeout=60)
     secret = home / "forge.gitconfig"
     secret.write_text("[user]\n\tname = t\n")
-    (home / ".gitconfig").write_text(f"[include]\n\tpath = {secret}\n")
+    (home / ".gitconfig").write_text(f'[filter "x"]\n\tsmudge = tr a b\n[include]\n\tpath = {secret}\n')
+    env = {**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")}
+    env.pop("GIT_CONFIG_GLOBAL", None)
+    with mock.patch.dict(os.environ, env, clear=True):
+        got = validate.export(str(repo), "HEAD", str(filtered))
+    check(
+        got is None and (filtered / "a.txt").read_text() == "b\n",
+        f"a readable global configuration: the export applies its smudge filter -> {got}",
+    )
     secret.chmod(0)
     try:
-        env = {**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")}
-        env.pop("GIT_CONFIG_GLOBAL", None)
         bare = subprocess.run(
             [git, "archive", "HEAD"], cwd=repo, env=env, capture_output=True, check=False, timeout=60
         )
@@ -859,9 +869,10 @@ def unreadable_include_cases(check: Callable[[object, str], None], tmp: pathlib.
         )
         with mock.patch.dict(os.environ, env, clear=True):
             got = (validate.export(str(repo), "HEAD", str(tree)), validate.status(str(repo)))
+        # the fallback drops the global filter, so the content comes out as it is stored
         check(
             got == (None, "") and (tree / "a.txt").read_text() == "a\n",
-            f"export and status without the global configuration read the repository -> {got}",
+            f"an unreadable include: export and status read the repository without it -> {got}",
         )
     finally:
         secret.chmod(0o600)  # not private: gives the fixture back the read access that the case took
