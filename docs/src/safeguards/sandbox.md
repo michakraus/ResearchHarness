@@ -308,9 +308,6 @@ These sandboxes are decided, and none of them runs yet:
 - **Masked keys** ([planned](../planned.md#masked-keys)): the API keys stay in their denied files,
   and the launcher gives them to `srt` as masked variables; the `gh` and `glab` tokens leave the
   key store for masked variables too.
-- **A token per owner** ([planned](../planned.md#token-per-owner), waits for your tokens): a
-  fine-grained forge token for each organisation, so that a command can write only where the task
-  needs it.
 - **Kaimon without the network on Linux** ([planned](../planned.md#kaimon-without-network)): the
   Kaimon server under `bwrap` reaches only the loopback addresses and its own sockets, as on macOS.
 - **A credential proxy** ([planned](../planned.md#credential-proxy), optional and last): a proxy

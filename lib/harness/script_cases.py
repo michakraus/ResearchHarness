@@ -192,6 +192,7 @@ SEALED_AGE = """\
 if [ -f '{root}/age.block' ]; then exec /bin/sleep 3600; fi
 if [ -f '{root}/age.interrupt' ]; then kill -INT 0; exit 0; fi
 /bin/cat '{root}/age.out'
+if [ -f '{root}/age.err' ]; then /bin/cat '{root}/age.err' >&2; fi
 if [ -f '{root}/age.status' ]; then exit "$(/bin/cat '{root}/age.status')"; fi
 exit 0
 """
@@ -2293,11 +2294,23 @@ class SealedHome:
         """The PATH of the directories `dirs` below the root."""
         return ":".join(str(self.root / d) for d in dirs)
 
-    def age(self, out: str | bytes, status: int = 0, *, block: bool = False, interrupt: bool = False) -> None:
-        """Set what the stub `age` does: print `out` and exit `status`, or block until it is killed,
-        or send SIGINT."""
+    def age(
+        self,
+        out: str | bytes,
+        status: int = 0,
+        *,
+        err: str = "",
+        block: bool = False,
+        interrupt: bool = False,
+    ) -> None:
+        """Set what the stub `age` does: print `out`, and `err` on stderr, and exit `status`, or
+        block until it is killed, or send SIGINT."""
         (self.root / "age.out").write_bytes(out.encode() if isinstance(out, str) else out)
         (self.root / "age.status").write_text(f"{status}\n")
+        if err:
+            (self.root / "age.err").write_text(err)
+        else:
+            (self.root / "age.err").unlink(missing_ok=True)
         for name, on in (("age.block", block), ("age.interrupt", interrupt)):
             if on:
                 (self.root / name).write_text("")
@@ -2712,6 +2725,29 @@ def sealed_refusal_cases(check: Callable[[object, str], None], tmp: pathlib.Path
             and not (how.get("no age") and seen.age),
             f"sealed.py, {label}: exit 2, one line `sealed: …` that names {named}, no gh or glab, no token "
             f"and nothing on stdout: {seen.status}, {len(seen.runs)}, {seen.age}, {seen.stdout!r}, "
+            f"{seen.stderr!r}",
+        )
+    # The refusal of a failed age names age's last error line, not the footer that age writes after
+    # it, and else age's last line that is not empty.
+    footer = "age: report unexpected or unhelpful errors at https://filippo.io/age/report"
+    for err, want, label in [
+        (
+            f"age: error: no identity matched any of the recipients\n{footer}\n",
+            "age: error: no identity matched any of the recipients",
+            "an error line, then the footer",
+        ),
+        (f"age: error: first\nage: error: second\n{footer}\n", "age: error: second", "two error lines"),
+        ("plugin failed\n\n", "plugin failed", "no error line, a last empty line"),
+    ]:
+        home.age(f"https://x:{token}@github.com\n", 1, err=err)
+        seen = home.run("ghx", "api", "user")
+        check(
+            seen.status == SEALED_REFUSED
+            and seen.stderr.count("\n") == 1
+            and seen.stderr.startswith("sealed: age exits 1 on ")
+            and seen.stderr.endswith(f": {want}\n")
+            and not seen.runs,
+            f"sealed.py, age fails with {label}: the refusal ends with {want!r}: {seen.status}, "
             f"{seen.stderr!r}",
         )
     other = home.root / "bin" / "sealed"

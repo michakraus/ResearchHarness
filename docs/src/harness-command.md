@@ -1780,7 +1780,9 @@ that the group or others can read, a file name that is no owner's name, a line t
 `https://<user>:<token>@<host>` of its directory, and a host directory whose name is no host name
 in lower case. Its cases run `git credential fill` and `reject` against the rendered file with
 stub store files, and `harness install` on scratch homes. [The forge
-tokens](components/sandbox.md#the-forge-tokens) describes the store and your steps.
+tokens](components/sandbox.md#the-forge-tokens) describes the store, and *The organisation
+tokens* of [setup-macos.md](setup-macos.md#the-organisation-tokens) and
+[setup-linux.md](setup-linux.md#the-organisation-tokens) give your steps.
 
 ### `providers.py`
 

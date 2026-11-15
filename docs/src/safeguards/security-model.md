@@ -142,6 +142,5 @@ each sandbox item in more detail.
   only the loopback addresses and Kaimon's own sockets stay reachable, as on macOS.
 - **The desktop apps under an outer sandbox** ([planned](../planned.md#desktop-apps)), and
   **a Linux launcher** ([planned](../planned.md#linux-launcher)).
-- **Masked keys** ([planned](../planned.md#masked-keys)), and **a forge token per owner**
-  ([planned](../planned.md#token-per-owner)).
+- **Masked keys** ([planned](../planned.md#masked-keys)).
 - **A credential proxy** ([planned](../planned.md#credential-proxy), optional and last).

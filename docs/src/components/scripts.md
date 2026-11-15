@@ -711,9 +711,9 @@ macOS. The `gh_token` cases of `lib/harness/script_cases.py` run it with a stub 
 
 ## `sealed.py`
 
-`sealed.py` runs gh, glab and git with the user's own broad tokens, which only the user's Touch ID
-decrypts. It is one script with three names, and the base name of the path that it runs as
-chooses what it does:
+`sealed.py` runs gh, glab and git with the user's own broad tokens, which only the user decrypts,
+with Touch ID or the Mac's password. It is one script with three names, and the base name of the
+path that it runs as chooses what it does:
 
 ```bash
 ghx <the arguments of gh>
@@ -761,7 +761,7 @@ cause, and runs no gh or glab:
 |:--|:--|
 | the secret is no file | the file |
 | no `age` on the `PATH` | `age` and the file |
-| `age` does not start, fails, or runs past the time limit | `age`, its status or the limit, and the file |
+| `age` does not start, fails, or runs past the time limit | `age`, its status or the limit, and the file; for a failure also age's last `age: error:` line, else its last line that is not empty |
 | `age` prints no UTF-8 | the file |
 | the plain text is not one line `https://<user>:<token>@<host>`, with no path, query or fragment and no control character in the user or the token | the file |
 | the secret names another host than `github.com` for `ghx`, or than the URL's for the helper | the host |

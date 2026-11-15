@@ -1331,10 +1331,10 @@ On Linux, install it as the documentation of chezmoi shows for your distribution
 
 In an SSH session on Linux, no Secret Service provider, such as GNOME Keyring, is available. `gh`
 and git need no keyring: they reach the forges through the token store, one file for each token,
-which you write as [The forge tokens](components/sandbox.md#the-forge-tokens) says; `gh` holds no
-login of its own. `glab`'s login holds the group token (step 5 there). Over SSH, `glab` cannot
-store that token in the system keyring, so it keeps it in `~/.config/glab-cli/config.yml` when
-you answer no to its question about a keyring. The settings do not let a session read the store
+which you write as [The organisation tokens](setup-linux.md#the-organisation-tokens) says; `gh`
+holds no login of its own. `glab`'s login holds the group token (step 5 there). Over SSH, `glab`
+cannot store that token in the system keyring, so it keeps it in `~/.config/glab-cli/config.yml`
+when you answer no to its question about a keyring. The settings do not let a session read the store
 or that file. `gh`, git and `glab` run outside the sandbox, so they still read them.
 
 In Claude Code, `/login` prints a URL. Open it on another machine, and paste the code that it
