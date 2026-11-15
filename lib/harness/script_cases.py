@@ -864,7 +864,7 @@ def unreadable_include_cases(check: Callable[[object, str], None], tmp: pathlib.
             f"export and status without the global configuration read the repository -> {got}",
         )
     finally:
-        secret.chmod(0o600)
+        secret.chmod(0o600)  # not private: gives the fixture back the read access that the case took
 
 
 def probe_home(tmp: pathlib.Path, config: dict[str, object], omit: tuple[str, ...] = ()) -> pathlib.Path:
