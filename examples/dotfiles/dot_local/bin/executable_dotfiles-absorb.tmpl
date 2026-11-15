@@ -216,14 +216,19 @@ else
     # glab sends a token of the environment only to the host of GITLAB_HOST, and needs a remote
     # of its working directory on that host: the source's origin, here. A variable of the caller
     # that names another API host, the protocol or the TLS check would send the password
-    # elsewhere or in clear text, so glab runs without them. Without a password, glab uses its
-    # own login.
+    # elsewhere or in clear text, so glab runs without them. A per-host setting of the caller's
+    # glab configuration could do the same, so glab gets a new empty configuration directory,
+    # removed after it. Without a password, glab uses its own login.
     if [ -n "$token" ]; then
         (
             unset GITLAB_ACCESS_TOKEN OAUTH_TOKEN GITLAB_URI GL_HOST GITLAB_API_HOST GITLAB_REPO \
                 GLAB_API_PROTOCOL API_PROTOCOL GLAB_SKIP_TLS_VERIFY SKIP_TLS_VERIFY GLAB_CA_CERT CA_CERT
-            GITLAB_TOKEN=$token GITLAB_HOST=$host glab mr create -R "$project" --target-branch main \
-                --source-branch "$branch" --title "$title" --description "$text" --yes
+            config=$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-glab.XXXXXX") || exit 1
+            GITLAB_TOKEN=$token GITLAB_HOST=$host GLAB_CONFIG_DIR=$config glab mr create -R "$project" \
+                --target-branch main --source-branch "$branch" --title "$title" --description "$text" --yes
+            glab_exit=$?
+            rm -rf "$config"
+            exit "$glab_exit"
         ) || opened=""
     else
         glab mr create -R "$project" --target-branch main --source-branch "$branch" --title "$title" \
