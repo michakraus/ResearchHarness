@@ -206,6 +206,7 @@ def cmd_wiki_lint_hook(args):
 def cmd_workflows(args: argparse.Namespace) -> int:
     for f in (
         "CI.yml",
+        "Downgrade.yml",
         "dependabot.yml",
         "TagBot.yml",
         "Documenter.yml",
@@ -222,6 +223,7 @@ def cmd_workflows(args: argparse.Namespace) -> int:
         print(f"{repo.name:<28} {kind}")
         plan = [
             ("CI.yml", ".github/workflows/CI.yml"),
+            ("Downgrade.yml", ".github/workflows/Downgrade.yml"),
             ("dependabot.yml", ".github/dependabot.yml"),
             ("codecov.yml", "codecov.yml"),
         ]

@@ -137,9 +137,10 @@ tolerance. The session writes the decision into the task file with your name and
 the spec of part B in the spec-delta format, sets its `sections` cell to `spec, §V, §L`, and, with
 your yes, gives it the tier `reviewed`, because nothing in it is open any more.
 
-CI runs on the pull request of part A: the tests on Julia `min` and `1` on three systems, the
-downgrade job and the doctests ([Tests and CI](tests-and-ci.md#the-ci-of-a-package)). You read the
-diff and the evidence table of the critic, and merge on GitHub.
+CI runs on the pull request of part A: the tests on Julia `min` and `1` on Ubuntu, then on Julia
+`1` on macOS and Windows, and the doctests
+([Tests and CI](tests-and-ci.md#the-ci-of-a-package)). You read the diff and the evidence table
+of the critic, and merge on GitHub.
 
 ## 6. The rest of the task
 
