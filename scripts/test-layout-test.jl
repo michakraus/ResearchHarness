@@ -963,7 +963,7 @@ end
 end
 
 """
-Run the template of test-layout.jl on a fixture package whose table is `table`, with `args`,
+Run `test/runtests.jl` of the fixture package `dir`, the template of test-layout.jl, with `args`,
 with the harness's Julia environment in the load path; return (exit code, output).
 """
 function run_template(dir, args...)
