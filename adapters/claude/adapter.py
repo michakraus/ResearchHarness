@@ -55,10 +55,9 @@ before anything is written.
 
 claudex runs Claude Code with CLAUDE_CONFIG_DIR=~/.config/claudex, where Claude Code reads its
 own settings.json, and where links of its launcher give the other files of ~/.claude a second
-name. So
-~/.config/claudex/settings.json is the second file of the layer, merged from the same rendered
-template, and each file's plan line and diff carry its own path. In both files, each deny rule
-of the template on a path below ~/.claude/ or on ~/.claude.json has its twin below
+name. So ~/.config/claudex/settings.json is the second file of the layer, merged from the same
+rendered template, and each file's plan line and diff carry its own path. In both files, each
+deny rule of the template on a path below ~/.claude/ or on ~/.claude.json has its twin below
 ~/.config/claudex/ right after it, and so have the sandbox's read denies of ~/.claude.json,
 ~/.claude/backups and ~/.claude/.credentials.json (`claudex_twins`). The twins of the two deny
 rules on **/.claude/settings*.json, which `**/.claude/` cannot match below ~/.config/claudex/, are
@@ -664,12 +663,13 @@ def settings_file(root, profile, overlay):
     the template, indented by 2, mode 0644. Exits 2, before anything is written, on a file that is
     a symlink, is not a regular file, cannot be read, is not UTF-8 or JSON (`json_object`), is not
     a JSON object, or holds an owned key whose value is not an object. The plan entry and the diff
-    header name the file below the home, `~/.claude/settings.json` for `root` ~/.claude.
+    header name the file with the home written as `~`, `~/.claude/settings.json` for `root`
+    ~/.claude.
     """
     import difflib
 
     live = cast("pathlib.Path", root / "settings.json")
-    label = f"~/{live.relative_to(pathlib.Path.home()).as_posix()}"
+    label = frontends.home_form(live)
     # One lstat, so that a stat the sandbox denies is "cannot be read" on every Python, never "missing".
     try:
         st = os.lstat(live)
@@ -2493,8 +2493,8 @@ def layer_cases(check, tmp):
             and labels.count("~/.config/claudex/settings.json") == 1
             and not claudex.exists()
         ),
-        f"the dry run plans ~/.claude/settings.json, then ~/.config/claudex/settings.json, then the other files "
-        f"of the layer, and writes nothing: {code}, {labels[:3]}",
+        f"the dry run plans ~/.claude/settings.json, then ~/.config/claudex/settings.json, then the "
+        f"other files of the layer, and writes nothing: {code}, {labels[:3]}",
     )
     # A missing claudex settings.json is created with the keys of the template, indented by 2, mode
     # 0644 under a umask of 077, the same bytes as a new ~/.claude/settings.json.
@@ -2587,9 +2587,9 @@ def layer_cases(check, tmp):
                 and not any("claudex" in r for r in deny[314:])
                 and len(set(deny)) == len(deny)
             ),
-            f"{label}: each rendered deny rule of the template that names ~/.claude/ or ~/.claude.json has its "
-            f"twin below ~/.config/claudex right after it, the two **/.claude/settings*.json rules add none again, "
-            f"314 rules before the network's denies, none twice, and no other rule has a twin: {len(deny)}, "
+            f"{label}: each rendered deny rule of the template that names ~/.claude/ or ~/.claude.json "
+            f"has its twin below ~/.config/claudex right after it, the two **/.claude/settings*.json "
+            f"rules add none again, 314 rules before the network's denies, none twice, and no other rule has a twin: {len(deny)}, "
             f"{[p for p in pairs if p not in wanted][:2]}, {[p for p in wanted if p not in pairs][:2]}",
         )
         case(
@@ -2618,7 +2618,8 @@ def layer_cases(check, tmp):
                 "Edit(/{home}/.config/claudex/settings.local.json)",
             ]
         ),
-        f"claudex_twins gives each **/.claude/settings*.json rule its twin below ~/.config/claudex: {starred_alone}",
+        f"claudex_twins gives each **/.claude/settings*.json rule its twin below ~/.config/claudex: "
+        f"{starred_alone}",
     )
     after_home = claudex_twins(
         ["Edit(/{home}/.claude/settings.json)", "Edit(**/.claude/settings.json)"], "/{home}"
@@ -2638,6 +2639,14 @@ def layer_cases(check, tmp):
     case(
         lambda: claudex_twins(held_already, "/{home}") == held_already,
         f"claudex_twins adds no twin that the rules hold already: {claudex_twins(held_already, '/{home}')}",
+    )
+    # A root outside the home keeps its full path as the label.
+    away_root = base / "away"
+    with mock.patch.dict(os.environ, HOME=str(base / "home")):
+        away = cast("tuple[Any, ...]", settings_file(away_root, claudex_profile, base / "network.toml"))
+    case(
+        lambda: away[3] == str(away_root / "settings.json"),
+        f"settings_file labels the settings.json of a root outside the home with its full path: {away[3]}",
     )
 
     # A claudex settings.json with a key of its own and a stale owned section is merged, not
@@ -2667,8 +2676,8 @@ def layer_cases(check, tmp):
             and merged == json_value((claude / "settings.json").read_text(), "settings.json")
             and len(list(claudex.glob("settings.json.bak-*"))) == 1
         ),
-        f"--apply keeps the key `model` of a claudex settings.json, replaces its stale `permissions` from the "
-        f"template, and keeps the old file as a backup: {code}, {list(merged)[:3]}, {tail(text)}",
+        f"--apply keeps the key `model` of a claudex settings.json, replaces its stale `permissions` "
+        f"from the template, and keeps the old file as a backup: {code}, {list(merged)[:3]}, {tail(text)}",
     )
 
     # A claudex settings.json that is no JSON exits 2 with one line naming it, before anything is written.
@@ -2684,8 +2693,8 @@ def layer_cases(check, tmp):
             and "is not JSON" in lines[0]
             and scratch.snapshot(base) == before
         ),
-        f"a ~/.config/claudex/settings.json that is not JSON exits 2 with one line that names it, and no file "
-        f"changes: {code}, {lines[-3:]}",
+        f"a ~/.config/claudex/settings.json that is not JSON exits 2 with one line that names it, "
+        f"and no file changes: {code}, {lines[-3:]}",
     )
 
     # A settings.json that cannot be merged exits 2 with one line naming it and the reason, before
