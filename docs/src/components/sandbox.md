@@ -184,7 +184,9 @@ With at least one frontend chosen, the install also copies the launcher `sandbox
 mode 755, a directory that a session cannot write ([The forge tokens](#the-forge-tokens)). On
 macOS it also copies `scripts/sealed.py` there three times, as `ghx`, `glabx` and
 `git-credential-sealed`, each with mode 755 (*The sealed secrets* below). With `claude` chosen it
-writes Claude Code's override beside the settings files:
+also copies the launcher `sandbox/claudex` to `~/.local/bin/claudex`, mode 755, on every platform
+([The launcher `claudex`](../safeguards/sandbox.md#the-launcher-claudex)), and writes Claude
+Code's override beside the settings files:
 
 ```text
 ~/.config/research-harness/sandbox/claude-inner-off.json   {"sandbox": {"enabled": false}}

@@ -53,9 +53,10 @@ repository's owner, on macOS only scripts/sealed.py at `~/.local/bin/ghx`, `~/.l
 and `~/.local/bin/git-credential-sealed`, each mode 755, which run gh and glab, and answer git as
 a credential helper, with the user's own secrets that Touch ID decrypts, and, with `claude`
 chosen, Claude Code's override `claude-inner-off.json` in the same directory as the files, which
-the launcher passes to Claude Code to turn its own sandbox off, and, on every platform, the
-launcher sandbox/claudex at `~/.local/bin/claudex`, mode 755, which starts Claude Code outside
-`agentbox`, with its own sandbox, in the configuration directory `~/.config/claudex`.
+the launcher passes to Claude Code to turn its own sandbox off. With `claude` chosen it also plans,
+on every platform, the launcher sandbox/claudex at `~/.local/bin/claudex`, mode 755, which starts
+Claude Code outside `agentbox`, with its own sandbox, in the configuration directory
+`~/.config/claudex`.
 
 The module has no subcommand; its cases run in `harness test`.
 """
@@ -94,7 +95,7 @@ LAUNCHER_PATH = pathlib.PurePosixPath(".local", "bin", "agentbox")
 LAUNCHER_MODE = 0o755
 # The launcher that starts Claude Code outside agentbox, with Claude Code's own sandbox, in the
 # configuration directory CLAUDEX_DIR, and where the install puts it, beside agentbox, with
-# agentbox's mode.
+# agentbox's mode; both paths are relative to the home directory.
 CLAUDEX = REPO / "sandbox" / "claudex"
 CLAUDEX_PATH = pathlib.PurePosixPath(".local", "bin", "claudex")
 CLAUDEX_DIR = pathlib.PurePosixPath(".config", "claudex")

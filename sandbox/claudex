@@ -25,11 +25,13 @@
 # or --settings=...: Claude Code keeps only the last --settings, so the caller's could turn its own
 # sandbox off; and when a name of the link set is in ~/.config/claudex as anything but a symbolic
 # link whose target is exactly $HOME/.claude/<name>, or $HOME/.claude/<name> does not exist. It
-# also exits 2 with one line when ln cannot make a link.
+# also exits 2 with one line, and starts nothing, when ln cannot make a link; the links that it
+# made before that one stay.
 #
-# The checks and the links run in subshells, so the script assigns no variable of its own: it
-# exports CLAUDE_CONFIG_DIR, and every other variable of the caller reaches the program unchanged.
-# It ends in exec, so the program's exit status is the script's.
+# The checks and the links run in subshells, so that outside a subshell the script assigns no
+# shell variable other than CLAUDE_CONFIG_DIR, which it exports, and every other variable of the
+# caller reaches the program unchanged. It ends in exec, so the program's exit status is the
+# script's.
 
 refuse() {
     printf 'claudex: %s\n' "$1" >&2
