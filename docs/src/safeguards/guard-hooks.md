@@ -519,8 +519,29 @@ standard error, because Julia does not check `[compat]` at `using`, and a stale 
 old dependencies. On `WorktreeRemove` it runs `git worktree remove` without `--force`, so git
 refuses a worktree with changes, and the branch stays.
 
+**The hook finds the repository by reading files, before any `git` runs.** The directory, `cwd`
+or the worktree to remove, must lie below `~/Research`. The first `.git` above it must be a
+directory, or the `.git` file of a linked worktree, `gitdir: <repository>/.git/worktrees/<name>`,
+whose admin directory holds `commondir` `../..` and `gitdir` that names the worktree, as git
+writes them. A `.git` that is a symbolic link is refused, and so is a worktree path that is a
+symbolic link. `git` then runs only in the main checkout, and every `git` gets
+`-c core.hooksPath=/dev/null -c core.fsmonitor=false`, so that no hook of the repository and no
+fsmonitor daemon runs.
+
+**Under `agentbox`, a broker outside the sandbox runs the `git` work.** `srt` denies writes to
+every `.githooks`, so a `git worktree add` inside it fails. `agentbox` starts the broker
+`worktree.py --serve <socket> --parent <pid>` outside `srt`, with its socket in
+`~/.local/state/research-harness/broker/`, and exports the socket's path as `AGENTBOX_BROKER`.
+With `AGENTBOX` set, the hook runs no `git`: it sends its payload to that socket as one JSON line,
+and the broker runs the create or the remove above in a process of its own and replies with the
+path or the error. The broker answers a request larger than 64 KiB, one that is no JSON object,
+and one of another event with an error, and exits, removing its socket, when its parent ends. The
+broker covers the worktrees of the hook only: a `git pull`, `git switch` or `git rebase` inside
+`agentbox` that changes `.githooks/` still fails.
+
 It fails closed: on each error it exits with status 1 and gives the reason, and it creates no
-worktree. Test it:
+worktree. Under `AGENTBOX`, a missing or empty `AGENTBOX_BROKER`, a broker that does not answer
+and a reply with an error each count as an error. Test it:
 
 ```bash
 echo '{"hook_event_name":"WorktreeCreate","cwd":"/","name":"x"}' | ./worktree.py ; echo "exit $?"
