@@ -395,9 +395,8 @@ def plan_files(
     and mode None. Then, where `chosen` holds claude, Claude Code's override INNER_OFF, mode None;
     then the launcher sandbox/agentbox at ~/.local/bin/agentbox, mode 755; then, where `chosen`
     holds claude, on every platform, the launcher sandbox/claudex at ~/.local/bin/claudex, mode
-    755; then the gh wrapper
-    scripts/gh-token.py at ~/.local/bin/gh, mode 755; then, on macOS (`sys.platform` "darwin")
-    only, scripts/sealed.py at ~/.local/bin/ghx, ~/.local/bin/glabx and
+    755; then the gh wrapper scripts/gh-token.py at ~/.local/bin/gh, mode 755; then, on macOS
+    (`sys.platform` "darwin") only, scripts/sealed.py at ~/.local/bin/ghx, ~/.local/bin/glabx and
     ~/.local/bin/git-credential-sealed, each mode 755, in that order. With no frontend chosen it
     plans nothing, so an overlay that the install does not read stops nothing."""
     names = [name for name in frontends.FRONTENDS if name in chosen]

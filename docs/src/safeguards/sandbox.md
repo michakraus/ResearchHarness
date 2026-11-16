@@ -181,8 +181,8 @@ directory also holds its own login, so you log in once with `/login` in `claudex
 **Its protection is weaker than that of `agentbox`.** Claude Code's sandbox wraps the `Bash`
 commands only. Claude Code itself, its file tools, its hooks and the MCP servers that it starts run
 outside any sandbox; the permission lists and the [guard hooks](guard-hooks.md) check the file
-tools, and are no boundary. Under `agentbox`, one sandbox wraps all of them. So start `agentbox claude` where it can run,
-and `claudex` for work that cannot run under `agentbox`.
+tools, and are no boundary. Under `agentbox`, one sandbox wraps all of them. So start
+`agentbox claude` where it can run, and `claudex` for work that cannot run under `agentbox`.
 
 **It links the layer.** On each start, `claudex` makes each missing link of its link set in
 `~/.config/claudex`, to the same name in `~/.claude`: `agents`, `commands`, `hooks`,
@@ -194,11 +194,10 @@ no `statusLine`; set one there to use the linked `statusline-command.sh`.
 **It refuses.** `claudex` exits 2 with one line on stderr, and starts nothing and makes no link,
 when `AGENTBOX` is set; when `~/.config/claudex/settings.json` is not a file; when `claude` is
 not on the `PATH` without the `cmux-cli-shims` entries, or is no absolute path there, as `agentbox`
-finds it; when you pass
-`--settings`, because Claude Code keeps only the last one, which could turn its sandbox off; and
-when a name of the link set is in `~/.config/claudex` as anything but a link to
-`~/.claude/<name>`, or `~/.claude/<name>` does not exist. It checks every name before it makes a
-link.
+finds it; when you pass `--settings`, because Claude Code keeps only the last one, which could
+turn its sandbox off; and when a name of the link set is in `~/.config/claudex` as anything but a
+link to `~/.claude/<name>`, or `~/.claude/<name>` does not exist. It checks every name before it
+makes a link.
 
 **The guard passes it.** The [launcher check](guard-hooks.md#the-launcher-check) refuses a Claude
 Code session outside `agentbox`, and passes one whose `CLAUDE_CONFIG_DIR` is `~/.config/claudex`

@@ -28,7 +28,7 @@ What it installs:
   sandbox/claudex                  -> ~/.local/bin/claudex, mode 755, the launcher that starts
                                       Claude Code with its own sandbox in ~/.config/claudex; with
                                       agentbox, where `[setup]` chooses `claude`
-  scripts/gh-token.py             -> ~/.local/bin/gh, mode 755, which runs gh with the token of
+  scripts/gh-token.py              -> ~/.local/bin/gh, mode 755, which runs gh with the token of
                                       the repository's owner; with the launcher
   scripts/sealed.py                -> ~/.local/bin/ghx, ~/.local/bin/glabx and
                                       ~/.local/bin/git-credential-sealed, each mode 755, which run
