@@ -36,7 +36,8 @@ Two consequences you must use:
 
 - a check that is **missing** is a different finding from a check that **failed** — a missing
   required context usually means workflow drift, not a code problem. `verify-workflows.jl` is the
-  drift check;
+  drift check. The exception: `test-other` starts only after every Ubuntu `Julia` job passes, so a
+  red Ubuntu job leaves the macOS and Windows checks missing;
 - a failure that appears in *all* repositories at once is almost never 39 bugs. Suspect the shared
   workflow, an action version, or the registry.
 
