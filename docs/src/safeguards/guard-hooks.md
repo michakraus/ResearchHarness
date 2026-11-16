@@ -524,7 +524,9 @@ or the worktree to remove, must lie below `~/Research`. The first `.git` above i
 directory, or the `.git` file of a linked worktree, `gitdir: <repository>/.git/worktrees/<name>`,
 whose admin directory holds `commondir` `../..` and `gitdir` that names the worktree, as git
 writes them. A `.git` that is a symbolic link is refused, and so is a worktree path that is a
-symbolic link. `git` then runs only in the main checkout, and every `git` gets
+symbolic link. A worktree made with `--relative-paths`, or in a repository or git config with
+`worktree.useRelativePaths=true`, is refused, even one the hook made itself; leave the setting
+off. `git` then runs only in the main checkout, and every `git` gets
 `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, so that no hook of the repository and no
 fsmonitor daemon runs.
 
@@ -536,9 +538,12 @@ With `AGENTBOX` set, the hook runs no `git`: it sends its payload to that socket
 and the broker runs the create or the remove above in a process of its own, with
 `GIT_TERMINAL_PROMPT=0`, and replies with the path or the error. The broker answers a request
 larger than 64 KiB, one that is no JSON object, one of another event, and one whose process
-cannot start with an error, and exits, removing its socket, when its parent ends or on `SIGTERM`
-or `SIGHUP`. The broker covers the worktrees of the hook only: a `git pull`, `git switch` or
-`git rebase` inside `agentbox` that changes `.githooks/` still fails.
+cannot start with an error. An idle broker exits and removes its socket within 5 seconds after
+its parent ends. When the parent ends during a request, the broker does not stop the request: it
+reads the request (at most `LOCAL`, 60 s), runs the create or remove to its end or to `WORK`
+(400 s), then looks at its parent and exits without taking another connection. `SIGTERM` and
+`SIGHUP` still end it at once. The broker covers the worktrees of the hook only: a `git pull`,
+`git switch` or `git rebase` inside `agentbox` that changes `.githooks/` still fails.
 
 It fails closed: on each error it exits with status 1 and gives the reason, and it creates no
 worktree. Under `AGENTBOX`, a missing or empty `AGENTBOX_BROKER`, a broker that does not answer

@@ -40,9 +40,15 @@ the broker outside srt, as this script:
 It binds `<socket>` with mode 600, replacing a stale socket and refusing any other file there,
 serves one connection at a time, runs each create or remove as this script in a process of its
 own, without `AGENTBOX` and with `GIT_TERMINAL_PROMPT=0`, and answers a request that is larger
-than 64 KiB, no JSON object, or of another `hook_event_name` with an `error`. It looks at its
-parent every second between two requests, and exits, removing its socket, once its parent is no
-longer `<pid>`, or on SIGTERM or SIGHUP.
+than 64 KiB, no JSON object, or of another `hook_event_name` with an `error`. An idle broker
+exits and removes its socket within 5 seconds after its parent ends. When the parent ends during
+a request, the broker does not stop the request: it reads the request (at most `LOCAL`, 60 s),
+runs the create or remove to its end or to `WORK` (400 s), then looks at its parent and exits
+without taking another connection. SIGTERM and SIGHUP still end it at once.
+
+A worktree made with `--relative-paths`, or in a repository or git config with
+`worktree.useRelativePaths=true`, is refused, even one this hook made itself: `main_checkout`
+accepts only the absolute paths that git writes by default.
 
 **It fails closed.** Every error exits 1 with the reason on stderr, and Claude Code then
 reports the hook as failed. No worktree is better than one in the wrong place or on the

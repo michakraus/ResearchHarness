@@ -64,12 +64,14 @@ The module has no subcommand; its cases run in `harness test`.
 """
 
 import copy
+import errno
 import json
 import os
 import pathlib
 import re
 import secrets
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -1977,6 +1979,43 @@ class Box:
         return {k: v for k, v in pairs if k not in SHELL_SET}
 
 
+def unix_bind(path: str) -> None:
+    """Bind an AF_UNIX socket at `path`, and close it."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.bind(path)
+
+
+def bind_verdict(bind: Callable[[str], None], *, ci: bool) -> tuple[str, str]:
+    """Whether the cases that bind an AF_UNIX socket run here, from one `bind` at a short path in a
+    fresh private temporary directory: ("run", ""), or ("skip", <errno text>) where it raises
+    PermissionError, as in a session's sandbox; with `ci`, which says that CI runs the cases, a
+    refusal is ("wrong", <errno text>)."""
+    with tempfile.TemporaryDirectory() as directory:
+        try:
+            bind(str(pathlib.Path(directory, "s")))
+        except PermissionError as err:
+            return ("wrong" if ci else "skip"), err.strerror or str(err)
+    return "run", ""
+
+
+def bind_verdict_cases(check: Check) -> None:
+    """`bind_verdict` with an injected bind: a refused bind gives skip, and wrong where CI is set; a
+    bind that succeeds gives run."""
+
+    def refused(path: str) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted", path)
+
+    got = [
+        bind_verdict(refused, ci=False),
+        bind_verdict(lambda _: None, ci=False),
+        bind_verdict(refused, ci=True),
+    ]
+    check(
+        got == [("skip", "Operation not permitted"), ("run", ""), ("wrong", "Operation not permitted")],
+        f"a refused bind gives skip, and wrong where CI is set; a bind that succeeds gives run: {got}",
+    )
+
+
 def agentbox_cases(check: Check, root: pathlib.Path) -> None:
     """sandbox/agentbox, run as a program on a fresh `Box` below `root` per case: its mode; for each
     frontend, the arguments that srt sees, with the caller's `a b`, `--`, the empty string, `--model`
@@ -1985,7 +2024,22 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
     (`Box.broker`) added; `resolution_cases`; `cache_cases`; `forge_cases`; `broker_cases`; srt's
     exit status; each
     refusal, which exits 2, starts no srt, makes nothing in TMPDIR and prints one line on stderr
-    that names its cause; and the usage."""
+    that names its cause; and the usage. A run whose broker starts binds an AF_UNIX socket: where
+    `bind_verdict` gives skip, the cases of such runs print one skip line and do not run, and where
+    it gives wrong, one wrong case says so and they run."""
+    bind_verdict_cases(check)
+    verdict, why = bind_verdict(unix_bind, ci="CI" in os.environ)
+    bound = verdict != "skip"
+    check(
+        verdict != "wrong",
+        f"the probe bind of an AF_UNIX socket succeeds, or is refused where CI is not set: {verdict} {why}",
+    )
+    if not bound:
+        print(
+            f"skip  sandbox: AF_UNIX bind refused in this environment ({why}); the agentbox cases of "
+            "srt's arguments and environment for each frontend, forge_cases and the started cases "
+            "of broker_cases do not run"
+        )
     script = REPO / "sandbox" / "agentbox"
     mode = stat.S_IMODE(script.stat().st_mode) if script.is_file() else None
     # Git stores only the execute bit, so the checkout's write bits follow its umask; the install
@@ -2017,16 +2071,19 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
             *tail,
         ]
         got = box.argv()
-        check(
-            p.returncode == 0 and got == want and p.stderr == "",
-            f"agentbox {name}: srt gets its settings file, --, the program, {extra or 'nothing'} and each "
-            f"argument as one: {p.returncode}, {got}, {p.stderr.strip()!r}",
-        )
+        if bound:
+            check(
+                p.returncode == 0 and got == want and p.stderr == "",
+                f"agentbox {name}: srt gets its settings file, --, the program, {extra or 'nothing'} and "
+                f"each argument as one: {p.returncode}, {got}, {p.stderr.strip()!r}",
+            )
         parent = (box.home / "srt-parent").read_text().strip() if got is not None else None
         check(
             parent == str(os.getpid()),
             f"agentbox {name} execs srt, whose parent is then the caller: {parent}, caller {os.getpid()}",
         )
+        if not bound:
+            continue
         seen = box.environment() if got is not None else {}
         caches = box.caches()
         check(
@@ -2042,8 +2099,9 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
 
     resolution_cases(check, root / "resolution")
     cache_cases(check, root / "caches")
-    forge_cases(check, root / "forge")
-    broker_cases(check, root / "broker")
+    if bound:
+        forge_cases(check, root / "forge")
+    broker_cases(check, root / "broker", bound=bound)
 
     box = Box.fresh(root, "status")
     p = box.run("opencode", STUB_STATUS=str(STUB_EXIT))
@@ -2702,15 +2760,16 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
         )
 
 
-def broker_cases(check: Check, root: pathlib.Path) -> None:
+def broker_cases(check: Check, root: pathlib.Path, *, bound: bool) -> None:
     """The worktree broker of a run. For each frontend: the stub interpreter gets `<hook> --serve
     <home>/BROKER_DIR/<pid>.sock --parent <pid>`, `<pid>` being the process ID that srt runs as;
     srt's environment holds AGENTBOX_BROKER as that path, which is a socket; the directory has mode
     700, also where it had another; broker.log is in the run directory; stderr is empty. With no
     interpreter, an interpreter that is not executable, no hook file, a file where the directory
     belongs, or an interpreter that binds nothing: srt runs, with no AGENTBOX_BROKER, also where the
-    caller set one, and stderr holds one line that names the cause."""
-    for name in ("claude", "opencode", "omp", "agy"):
+    caller set one, and stderr holds one line that names the cause. The started cases bind a
+    socket, and run only where `bound` says that this environment allows it."""
+    for name in ("claude", "opencode", "omp", "agy") if bound else ():
         box = Box.fresh(root / "started", name)
         directory = box.home / BROKER_DIR
         if name == "omp":

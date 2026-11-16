@@ -26,6 +26,7 @@ so that its launcher check passes there; only the cases of the launcher check ad
 
 import ast
 import contextlib
+import errno
 import getpass
 import importlib.util
 import io
@@ -465,6 +466,8 @@ WT_SOCKETS = FIXTURE.name + "/s"
 WT_ENV = {**WORKTREE_ENV, "HOME": WT_HOME, "PATH": WT_BIN + ":" + WORKTREE_ENV.get("PATH", "/usr/bin:/bin")}
 # The options before the subcommand of every git that `worktree.py` starts.
 WT_OPTIONS = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+# The `.git` line of a worktree that `git worktree add --relative-paths` makes in the fixture.
+WT_RELATIVE = "gitdir: ../../Repo/.git/worktrees/Repo-rel"
 # The script of a broker's parent: a shell that starts `worktree.py --serve` as its child, with its
 # output in a log file, prints the broker's process ID, and runs until its own stdin ends.
 BROKER_PARENT = '"$0" "$1" --serve "$2" --parent $$ > "$3" 2>&1 < /dev/null & echo "$!"; read -r line'
@@ -504,12 +507,15 @@ def worktree_fixture() -> None:
     run("clone", "-q", "--bare", str(source), origin)
     pathlib.Path(WT_ROOT).mkdir(parents=True)
     run("clone", "-q", origin, WT_REPO)
-    for name in ("common", "gitdir", "via"):
+    for name in ("common", "gitdir", "via", "rel"):
         run("-C", WT_REPO, "worktree", "add", "-q", "--detach", f"{WT_ROOT}/Repo-{name}")
     admin = pathlib.Path(WT_REPO, ".git", "worktrees")
     common = pathlib.Path(WT_REPO, ".git").resolve()
     (admin / "Repo-common" / "commondir").write_text(f"{common}\n", encoding="utf-8")
     (admin / "Repo-gitdir" / "gitdir").write_text(f"{FIXTURE.name}/elsewhere/.git\n", encoding="utf-8")
+    # The two files as `git worktree add --relative-paths` writes them.
+    pathlib.Path(WT_ROOT, "Repo-rel", ".git").write_text(WT_RELATIVE + "\n", encoding="utf-8")
+    (admin / "Repo-rel" / "gitdir").write_text("../../../.worktrees/Repo-rel/.git\n", encoding="utf-8")
     run("-C", WT_REPO, "config", "core.hooksPath", ".githooks")
     pathlib.Path(WT_R, "Linked").mkdir()
     pathlib.Path(WT_R, "Linked", ".git").symlink_to(pathlib.Path(WT_REPO, ".git"))
@@ -611,6 +617,25 @@ def answers(path: pathlib.Path) -> bool:
         except OSError:
             return False
     return True
+
+
+def unix_bind(path: str) -> None:
+    """Bind an AF_UNIX socket at `path`, and close it."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.bind(path)
+
+
+def bind_verdict(bind: Callable[[str], None], *, ci: bool) -> tuple[str, str]:
+    """Whether the cases that bind an AF_UNIX socket run here, from one `bind` at a short path in a
+    fresh private temporary directory: ("run", ""), or ("skip", <errno text>) where it raises
+    PermissionError, as in a session's sandbox; with `ci`, which says that CI runs the cases, a
+    refusal is ("wrong", <errno text>)."""
+    with tempfile.TemporaryDirectory() as directory:
+        try:
+            bind(str(pathlib.Path(directory, "s")))
+        except PermissionError as err:
+            return ("wrong" if ci else "skip"), err.strerror or str(err)
+    return "run", ""
 
 
 def request(path: pathlib.Path, data: bytes) -> dict[str, Any] | None:
@@ -754,6 +779,7 @@ def worktree_git_cases() -> tuple[int, int]:
     repository check and of a worktree path that is a link, which start no git; the client's
     refusals under `AGENTBOX`; the life of a broker; and the options of every git that the hook
     starts, recorded in this process: (number of cases, number wrong)."""
+    verdict, why = bind_verdict(unix_bind, ci="CI" in os.environ)
     worktree_fixture()
     total = wrong = 0
 
@@ -762,6 +788,24 @@ def worktree_git_cases() -> tuple[int, int]:
         total += 1
         wrong += not ok
         print(f"{'ok ' if ok else 'BAD'}  [worktree ]  {label}")
+
+    report(
+        verdict != "wrong",
+        f"the probe bind of an AF_UNIX socket succeeds, or is refused where CI is not set: {verdict} {why}",
+    )
+
+    def refused(path: str) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted", path)
+
+    got = [
+        bind_verdict(refused, ci=False),
+        bind_verdict(lambda _: None, ci=False),
+        bind_verdict(refused, ci=True),
+    ]
+    report(
+        got == [("skip", "Operation not permitted"), ("run", ""), ("wrong", "Operation not permitted")],
+        f"a refused bind gives skip, and wrong where CI is set; a bind that succeeds gives run: {got}",
+    )
 
     marker = pathlib.Path(WT_MARKER)
 
@@ -818,6 +862,17 @@ def worktree_git_cases() -> tuple[int, int]:
         pathlib.Path(WT_ROOT, "Repo-linked").is_symlink()
         and not any(pathlib.Path(FIXTURE.name, "wt-empty").iterdir()),
         "the worktree path that is a link stays a link to an empty directory",
+    )
+    proc, started = worktree_run(remove("rel"), WT_ENV)
+    report(
+        proc is not None
+        and proc.returncode == 1
+        and proc.stderr.count("\n") == 1
+        and WT_RELATIVE in proc.stderr
+        and not started
+        and pathlib.Path(WT_ROOT, "Repo-rel").is_dir(),
+        f"a worktree made with --relative-paths: exits 1 with a line that names its gitdir line, "
+        f"and starts no git: {said(proc)}, {started}",
     )
 
     hook = load_module("worktree_recorded", WORKTREE)
@@ -881,6 +936,47 @@ def worktree_git_cases() -> tuple[int, int]:
     client_refused(
         "AGENTBOX=1 and a socket path that does not exist", {"AGENTBOX": "1", "AGENTBOX_BROKER": none}, none
     )
+    regular = pathlib.Path(WT_SOCKETS, "b3.sock")
+    regular.write_text("keep\n", encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, WORKTREE, "--serve", str(regular), "--parent", str(os.getpid())],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env=WT_ENV,
+        timeout=TIMEOUT,
+        check=False,
+    )
+    report(
+        proc.returncode != 0
+        and regular.read_text(encoding="utf-8") == "keep\n"
+        and str(regular) in proc.stderr,
+        f"a broker at the path of a regular file exits non-zero, names it and leaves it: "
+        f"{proc.returncode}, {proc.stderr!r}",
+    )
+    orphan = pathlib.Path(WT_SOCKETS, "b4.sock")
+    proc = subprocess.run(
+        [sys.executable, WORKTREE, "--serve", str(orphan), "--parent", str(ended_pid())],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env=WT_ENV,
+        timeout=TIMEOUT,
+        check=False,
+    )
+    report(
+        proc.returncode != 0 and "parent" in proc.stderr and not os.path.lexists(orphan),
+        f"a broker whose --parent is not its parent exits non-zero, names the parent and binds nothing: "
+        f"{proc.returncode}, {proc.stderr!r}",
+    )
+
+    if verdict == "skip":
+        print(
+            f"skip  payloads: AF_UNIX bind refused in this environment ({why}); the worktree cases of a "
+            "socket where nothing listens, of a broker's create, remove, refusals, bad requests, mode, "
+            "parent, stale socket, SIGHUP and SIGTERM do not run"
+        )
+        return total, wrong
     dead = pathlib.Path(WT_SOCKETS, "dead.sock")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.bind(str(dead))
@@ -996,40 +1092,6 @@ def worktree_git_cases() -> tuple[int, int]:
             removed and until(lambda: ended(broker.pid), 10),
             f"a broker that gets {signum.name} removes its socket and exits within 10 s",
         )
-
-    regular = pathlib.Path(WT_SOCKETS, "b3.sock")
-    regular.write_text("keep\n", encoding="utf-8")
-    proc = subprocess.run(
-        [sys.executable, WORKTREE, "--serve", str(regular), "--parent", str(os.getpid())],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        env=WT_ENV,
-        timeout=TIMEOUT,
-        check=False,
-    )
-    report(
-        proc.returncode != 0
-        and regular.read_text(encoding="utf-8") == "keep\n"
-        and str(regular) in proc.stderr,
-        f"a broker at the path of a regular file exits non-zero, names it and leaves it: "
-        f"{proc.returncode}, {proc.stderr!r}",
-    )
-    orphan = pathlib.Path(WT_SOCKETS, "b4.sock")
-    proc = subprocess.run(
-        [sys.executable, WORKTREE, "--serve", str(orphan), "--parent", str(ended_pid())],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        env=WT_ENV,
-        timeout=TIMEOUT,
-        check=False,
-    )
-    report(
-        proc.returncode != 0 and "parent" in proc.stderr and not os.path.lexists(orphan),
-        f"a broker whose --parent is not its parent exits non-zero, names the parent and binds nothing: "
-        f"{proc.returncode}, {proc.stderr!r}",
-    )
     return total, wrong
 
 
