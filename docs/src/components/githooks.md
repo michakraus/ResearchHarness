@@ -500,7 +500,9 @@ It checks these points:
 5. Each `uses:` names the expected major version of its action.
 6. A `test/ci-groups.toml` lists distinct group names, each group has an `if` in
    `test/runtests.jl`, and `GROUPS` runs exactly these groups for empty `ARGS`. Each workflow of
-   its `workflows` is a file in `.github/workflows/` and is not an installed one.
+   its `workflows` is a file in `.github/workflows/` and is not an installed one. Its other keys
+   are `split`, `true` or `false`, and `once`, a list of distinct groups of `groups` without
+   `core`; no other key is accepted.
 
 Without `--quiet`, it prints the required checks of a repository without test groups, and those of
 each repository that has a `test/ci-groups.toml`. It also checks that a repository of

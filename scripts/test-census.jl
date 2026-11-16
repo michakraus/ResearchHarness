@@ -3,10 +3,11 @@
 #   julia --startup-file=no test-census.jl [<root> ...]    (default: ~/Research/Packages ~/Research/Experiments)
 #
 # Per repository: how runtests.jl reaches its files (`@safetestset`, `@testset` around an
-# `include`, a bare `include`, a nested runtests.jl), the gates on ARGS or ENV, where the test
-# dependencies live, whether Aqua and JET run, the test files that runtests.jl does not reach, and
-# the share of test files whose path mirrors a file under src/. The layout comes from the parser
-# of test-layout.jl, the same one that `test-layout.jl --check` reads.
+# `include`, a bare `include`, a file of `TESTS` in the parallel form, a nested runtests.jl), the
+# gates on ARGS or ENV, where the test dependencies live, whether Aqua and JET run, the test files
+# that runtests.jl does not reach, and the share of test files whose path mirrors a file under
+# src/. The layout comes from the parser of test-layout.jl, the same one that `test-layout.jl
+# --check` reads.
 
 include(joinpath(@__DIR__, "test-layout.jl"))
 
@@ -27,7 +28,8 @@ function census(repo)
     deps = isfile(joinpath(t, "Project.toml")) ? "test/Project.toml" : has_section(proj, "targets") ? "[targets]" : "none"
     alltext = join((read(f, String) for f in files if isfile(f)), "\n")
     return (name = basename(repo), safe = n(:safetestset), testset = n(:testset),
-            bare = n(:bare), nested = length(L.nested), gates = L.gates, deps = deps,
+            bare = n(:bare), parallel = n(:parallel), nested = length(L.nested),
+            gates = L.gates, deps = deps,
             aqua = occursin("Aqua", alltext), jet = occursin("JET", alltext),
             files = length(files), reached = length(reached),
             unreached = length(setdiff(Set(files), reached)), mirrored = mirrored,
@@ -38,9 +40,9 @@ if abspath(PROGRAM_FILE) == @__FILE__
     roots = isempty(ARGS) ? expanduser.(["~/Research/Packages", "~/Research/Experiments"]) : ARGS
     rows = [census(joinpath(r, d)) for r in roots for d in sort(readdir(r))
             if isfile(joinpath(r, d, "Project.toml")) && isdir(joinpath(r, d, ".git"))]
-    println("| repository | files | reached | not reached | `@safetestset` | `@testset` include | bare include | nested runtests | gates | test deps | Aqua | JET | mirrors src |")
-    println("|:--|--:|--:|--:|--:|--:|--:|--:|--:|:--|:-:|:-:|--:|")
+    println("| repository | files | reached | not reached | `@safetestset` | `@testset` include | bare include | `TESTS` | nested runtests | gates | test deps | Aqua | JET | mirrors src |")
+    println("|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|:--|:-:|:-:|--:|")
     for r in rows
-        println("| $(r.name)$(r.parse_error ? " (parse error)" : "") | $(r.files) | $(r.reached) | $(r.unreached) | $(r.safe) | $(r.testset) | $(r.bare) | $(r.nested) | $(r.gates) | $(r.deps) | $(r.aqua ? "yes" : "—") | $(r.jet ? "yes" : "—") | $(r.mirrored) of $(r.reached) |")
+        println("| $(r.name)$(r.parse_error ? " (parse error)" : "") | $(r.files) | $(r.reached) | $(r.unreached) | $(r.safe) | $(r.testset) | $(r.bare) | $(r.parallel) | $(r.nested) | $(r.gates) | $(r.deps) | $(r.aqua ? "yes" : "—") | $(r.jet ? "yes" : "—") | $(r.mirrored) of $(r.reached) |")
     end
 end

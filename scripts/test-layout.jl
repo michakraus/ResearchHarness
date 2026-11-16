@@ -16,7 +16,9 @@
 # The rule `ci-groups` judges test/ci-groups.toml, the optional list of the groups that CI runs as
 # one job each (`ci_groups`). Its groups are the groups that an empty selection runs, in place of
 # `core` and `slow`: GROUPS lists them, each has an `if` in runtests.jl or a group in its TESTS,
-# and they may be names outside the convention's.
+# and they may be names outside the convention's. Its optional `split = false` runs all groups of a
+# matrix entry in one job, and its optional `once = [...]` names the groups other than `core` that
+# a pull request and a push run on one matrix entry only (`ci_options`).
 #
 # Two rules are not checked here, because no layout shows them: D6, the 60 s budget of a `core`
 # file, cold, and the JET half of D4, `test/quality/jet.jl` where the package has a hot or kernel
@@ -114,11 +116,13 @@ function is_pair(ex)
 end
 
 """
-The table of the definition `s` of `TESTS`, as `group => [label => path, ...]`, or nothing where it
-is not a literal vector of `"<group>" => ["<label>" => "<path>", ...]` pairs. A label is kept as
-parsed, for the rule `label`.
+The table of the first `TESTS` of the parsed `runtests`, as `group => [label => path, ...]`, or
+nothing where `runtests` has no `TESTS` or its `TESTS` is not a literal vector of
+`"<group>" => ["<label>" => "<path>", ...]` pairs. A label is kept as parsed, for the rule `label`.
 """
-function tests_table(s)
+function tests_table(runtests)
+    s = tests_def(runtests)
+    s === nothing && return nothing
     v = s.args[1].args[2]
     v isa Expr && v.head === :vect || return nothing
     table = Pair{String, Vector{Pair{Any, String}}}[]
@@ -138,8 +142,7 @@ end
 
 "The groups of `TESTS` in the parsed `runtests`, in order; none where `TESTS` is not a literal."
 function tests_groups(runtests)
-    s = tests_def(runtests)
-    table = s === nothing ? nothing : tests_table(s)
+    table = tests_table(runtests)
     table === nothing ? String[] : first.(table)
 end
 
@@ -217,8 +220,7 @@ function layout(repo)
         ast === nothing && (push!(acc.parse_errors, file); return nothing)
         # the parallel form lists its files in TESTS, and runs nothing else
         if normpath(file) == top && is_parallel(ast)
-            s = tests_def(ast)
-            table = s === nothing ? nothing : tests_table(s)
+            table = tests_table(ast)
             table === nothing && return ast
             pairs = [(g, label, path) for (g, files) in table for (label, path) in files]
             lines = tests_lines(file)
@@ -302,6 +304,10 @@ The file is `groups = [...]`, the groups that an empty `ARGS` runs: `core`, `slo
 repository's own groups, each a name of lower-case letters and digits, and none of the groups that
 run outside the CI test jobs. An optional `workflows = [...]` names extra workflow files of
 `.github/workflows/`, such as `Metal.yml`, whose jobs are required checks too (`ci_workflows`).
+An optional `split = false` runs all groups of a matrix entry in one CI job, in place of one job per
+group; it is `true` where absent. An optional `once = [...]` names groups of `groups`, never `core`,
+that a pull request and a push run on one matrix entry only (`ci_once`). `ci_options` gives the two.
+`once` is judged only where `groups` is a list of names.
 """
 function ci_groups(repo)
     f = joinpath(repo, "test", "ci-groups.toml")
@@ -317,11 +323,14 @@ function ci_groups(repo)
         return (nothing, ["test/ci-groups.toml has no `groups` list of names"])
     gs = Vector{String}(gs)
     problems = String[]
-    for k in sort!(collect(setdiff(keys(toml), ["groups", "workflows"])))
+    for k in sort!(collect(setdiff(keys(toml), ["groups", "workflows", "split", "once"])))
         push!(problems,
-            "test/ci-groups.toml has the key `$k`; it has `groups` and `workflows` only")
+            "test/ci-groups.toml has the key `$k`; it has `groups`, `workflows`, `split` and `once` only")
     end
     append!(problems, last(ci_workflows(repo, toml)))
+    get(toml, "split", true) isa Bool ||
+        push!(problems, "`split` of test/ci-groups.toml is not true or false")
+    append!(problems, last(ci_once(toml, gs)))
     for g in unique(gs)
         occursin(CI_GROUP_NAME, g) ||
             push!(problems, "group \"$g\" of test/ci-groups.toml is not lower-case letters and digits")
@@ -359,6 +368,50 @@ function ci_workflows(repo, toml)
             push!(problems, "workflow \"$w\" of test/ci-groups.toml is not in .github/workflows/")
     end
     return (Vector{String}(ws), problems)
+end
+
+"""
+    ci_once(toml, groups) -> (once, problems)
+
+The `once` of the parsed `test/ci-groups.toml` `toml`, whose `groups` in form are `groups`: the
+groups that a pull request and a push run on one matrix entry only, and the reasons the list is
+not in form. Each is a group of `groups` other than `core`, which runs on every CI job.
+"""
+function ci_once(toml, groups)
+    once = get(toml, "once", String[])
+    once isa Vector && all(g -> g isa String, once) ||
+        return (String[], ["`once` of test/ci-groups.toml is not a list of group names"])
+    problems = String[]
+    for g in unique(once)
+        if g == "core"
+            push!(problems,
+                "group \"core\" of `once` in test/ci-groups.toml runs on every CI job; `once` never holds core")
+        elseif !(g in groups)
+            push!(problems, "group \"$g\" of `once` in test/ci-groups.toml is not in `groups`")
+        end
+        count(==(g), once) > 1 &&
+            push!(problems, "group \"$g\" is in `once` of test/ci-groups.toml more than once")
+    end
+    return (Vector{String}(once), problems)
+end
+
+"""
+    ci_options(repo) -> (split::Bool, once::Vector{String})
+
+The `split` and `once` of `test/ci-groups.toml` of `repo`. Each takes its default, `true` and an
+empty list, where the file or the key is absent or its value is not in form; `ci_groups` reports a
+value not in form. `once` is in form only beside a `groups` in form.
+"""
+function ci_options(repo)
+    f = joinpath(repo, "test", "ci-groups.toml")
+    toml = isfile(f) ? TOML.tryparsefile(f) : nothing
+    toml isa AbstractDict || return (true, String[])
+    split = get(toml, "split", true)
+    split isa Bool || (split = true)
+    groups = first(ci_groups(repo))
+    groups === nothing && return (split, String[])
+    once, problems = ci_once(toml, groups)
+    return (split, isempty(problems) ? once : String[])
 end
 
 "The groups that an empty `ARGS` runs in `repo`, outside the platform groups."
@@ -589,9 +642,9 @@ function parallel_violations(v, runtests, package)
         role(e) === :TESTS ? v("D2", "runtests.jl does not define TESTS") :
         v("D2", "runtests.jl has no `$text` of the parallel form")
     end
-    s = tests_def(runtests)
-    s === nothing && return false
-    table = tests_table(s)
+    # a missing TESTS is reported above, so nothing here means that TESTS is not a literal
+    tests_def(runtests) === nothing && return false
+    table = tests_table(runtests)
     if table === nothing
         v("D2",
             "runtests.jl:$tline: TESTS is not a literal vector of `\"<group>\" => [\"<label>\" => \"<path>\", ...]` pairs")
