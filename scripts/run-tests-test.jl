@@ -99,6 +99,27 @@ end
 
 const DIR = fixture()
 
+# the fixture in the parallel form, with the files and groups of FIXTURE_RUNTESTS
+const PARALLEL_TABLE = """[
+    "core" => [
+        "Aqua" => "quality/aqua.jl",
+        "Options" => "base/options.jl",
+        "Base, together" => "base/common.jl",
+        "Newton" => "solvers/newton.jl",
+        "Whole package" => "integration/solve.jl",
+    ],
+    "slow" => [
+        "Convergence" => "verification/convergence.jl",
+    ],
+    "metal" => [
+        "Metal" => "devices/metal.jl",
+    ],
+]"""
+const PDIR = fixture(Dict{String, Union{String, Nothing}}(
+    "test/runtests.jl" => R.parallel_runtests("Fixture", PARALLEL_TABLE,
+        "(Sys.isapple() && Sys.ARCH === :aarch64 ? [\"core\", \"slow\", \"metal\"] : [\"core\", \"slow\"])"),
+    "test/Project.toml" => "[deps]\nParallelTestRunner = \"d3525ed8-44d0-4b2c-a655-542cee43accc\"\nTest = \"8dfed614-e22c-5e08-85e1-65c5234f0b40\"\n"))
+
 "The test files, relative to test/, that `affected` selects for the changed `paths`."
 function selected(paths...)
     sel = R.affected(DIR, R.units(DIR), collect(paths))
@@ -151,6 +172,22 @@ end
     @test names("test/base/nonexistent.jl") == []
     @test names("Newton") == ["solvers/newton.jl"]
     @test names("runtests.jl") == []
+    # the parallel form: the same units select the same files from TESTS
+    pnames(args...) = sort([relpath(e.path, joinpath(PDIR, "test"))
+                            for e in R.named(R.units(PDIR), collect(args))])
+    for args in (("core",), ("slow",), ("metal", "slow"), ("base/options.jl",),
+        ("test/base/options.jl",), ("Newton",), ("runtests.jl",))
+        @test pnames(args...) == names(args...)
+    end
+    @test all(e -> e.kind === :parallel && e.file == joinpath(PDIR, "test", "runtests.jl"),
+        R.units(PDIR))
+    # and run in run-tests.jl's own driver
+    for (unit, n) in (("core", 5), ("base/options.jl", 1))
+        code, out = script(RUNTESTS, PDIR, unit)
+        @test code == 0
+        @test occursin("$n of 5 test files in core, Julia $VERSION\n", out)
+        @test occursin("\nPASS in", out)
+    end
 end
 
 # the fixture with test/quality/doctests.jl in its own group `doctests`
@@ -250,6 +287,14 @@ end
     code, out = script(RUNTESTS, DOCTESTS_DIR, "list")
     @test code == 0
     @test occursin(r"quality/doctests.jl\s+doctests\s+Doctests", out)
+    # the parallel form: each file of TESTS, in the order of the table
+    code, out = script(RUNTESTS, PDIR, "list")
+    @test code == 0
+    @test [split(l, r"\s{2,}") for l in split(strip(out), '\n')] == [
+        ["quality/aqua.jl", "core", "Aqua"], ["base/options.jl", "core", "Options"],
+        ["base/common.jl", "core", "Base, together"], ["solvers/newton.jl", "core", "Newton"],
+        ["integration/solve.jl", "core", "Whole package"],
+        ["verification/convergence.jl", "slow", "Convergence"], ["devices/metal.jl", "metal", "Metal"]]
 end
 
 @testset "an old layout is refused, with the layout and the plan named" begin
@@ -420,7 +465,7 @@ end
     drv = R.driver(DIR, R.in_order(sel, ents), "t.tsv"; worker = 1, claims = "c")
     @test [m.captures[1] for m in eachmatch(r"worker 1: test/(\S+?)\"", drv)] == order
     # main puts every selection in that order before it writes the workers' drivers
-    @test occursin("jobs > 1 && (sel = in_order(sel, entries))", read(RUNTESTS, String))
+    @test occursin("jobs > 1 && sel !== :full && (sel = in_order(sel, entries))", read(RUNTESTS, String))
 end
 
 @testset "--jobs counts a failing worker, whichever worker it is" begin
@@ -546,6 +591,13 @@ end
     code, out = script(RUNTESTS, old, "--jobs", "2", "full")
     @test code == 2
     @test occursin("[D2]", out)
+    # the parallel form runs one Pkg.test(), whose runner takes --jobs, and says so
+    code, out = script(RUNTESTS, PDIR, "--jobs", "3", "full")
+    @test code == 0
+    @test occursin("full suite, Pkg.test(; test_args = [\"--jobs=3\"])", out)
+    @test occursin("\nPASS in", out)
+    @test !occursin("workers", out)
+    @test occursin(r"Running \d+ tests using 3 parallel jobs", read(first(run_files(out)), String))
 end
 
 @testset "mutate.jl reports UNKNOWN when run-tests.jl ran nothing" begin

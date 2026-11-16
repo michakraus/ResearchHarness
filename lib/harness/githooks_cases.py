@@ -24,9 +24,18 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   parts.
 - `harness workflows`: Dependents.yml and dependents.jl go into the listed base only, byte for
   byte; a dry run names the two files in an unlisted repository and keeps them, and `--apply`
-  removes them; a listed name that does not exist and a missing Dependents.yml template are
-  refused. Without `dependents_bases`, the subcommand writes only the files of the other templates
-  and names neither file.
+  removes them; a listed name that does not exist and a missing Dependents.yml or Downgrade.yml
+  template are refused. Without `dependents_bases`, the subcommand writes only the files of the
+  other templates, Downgrade.yml among them, and names neither file.
+- githooks/workflows/CI.yml: which job waits for which, so that test-other starts only after test
+  and prerelease waits for nothing; that test-other runs after no failure; the matrix, the name and
+  the continue-on-error of each job; the coverage of test alone; the triggers with the weekly cron,
+  and the concurrency group with the event. The script of its `groups` job, run for each event: the
+  list of groups, and `["1"]` for a pull request and a push to a branch, `["min", "1"]` for a tag,
+  the schedule, a run by hand and `merge_group`; a group twice writes nothing.
+- githooks/workflows/Downgrade.yml: its name, its triggers with their paths, the tags and the cron,
+  the concurrency group of CI.yml, the `groups` job of CI.yml, and its downgrade job; `actionlint`
+  passes on it, and without shellcheck on CI.yml, where it is on the PATH.
 - githooks/workflows/Dependents.yml: its trigger, concurrency group, permissions, jobs and matrix,
   the actions of its `uses:` lines, a second checkout of the dependent for the run against the
   default branch, a setup step and a test step against the head and against the default branch
@@ -48,11 +57,15 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   environment holds a Project.toml: JuliaFormatter's SciML style finds it formatted, as the
   pre-commit hook of a base checks its installed copy.
 - githooks/verify-workflows.jl, where `julia` is on the PATH and the harness's Julia environment
-  holds a Project.toml: a clean fixture passes, and a drifted Dependents.yml, a missing
+  holds a Project.toml: a clean fixture passes, and prints the required checks of
+  `protection.REQUIRED_CHECKS`, and for a repository with the groups `core` and `slow` those of
+  `protection.required_checks`; a drifted Downgrade.yml, a CI.yml whose test-other job has
+  another name, a CI.yml without a test-other job, a drifted Dependents.yml, a missing
   dependents.jl, a Dependents.yml in an unlisted repository and a listed base without
   dependents.toml each fail with a line that names the repository; an experiment that
   `dependents_bases` names is no base; without `dependents_bases`, the fixture of the other
-  templates passes, and so it does with a profile without `docs_exceptions` and `docs_additions`.
+  templates passes, and so it does with a profile without `docs_exceptions` and
+  `docs_additions`.
 """
 
 import argparse
@@ -62,12 +75,13 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Callable, Generator, Mapping
 from typing import cast
 from unittest import mock
 
-from . import REPO, HarnessError, githooks, install, wikilint
+from . import REPO, HarnessError, githooks, install, protection, wikilint
 from . import profile as profile_module
 from .sweep import GIT
 
@@ -79,6 +93,34 @@ TIMEOUT_MINUTES = 60  # the timeout of a test job of Dependents.yml
 DEPENDENTS_JL = REPO / "githooks" / "workflows" / "dependents.jl"
 DEPENDENTS_YML = REPO / "githooks" / "workflows" / "Dependents.yml"
 VERIFY = REPO / "githooks" / "verify-workflows.jl"
+CI_YML = REPO / "githooks" / "workflows" / "CI.yml"
+DOWNGRADE_YML = REPO / "githooks" / "workflows" / "Downgrade.yml"
+# The weekly trigger and the concurrency group of CI.yml and Downgrade.yml.
+WEEKLY = [{"cron": "17 3 * * 1"}]
+CONCURRENCY = "${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}"
+# The matrix values that the outputs of the `groups` job give.
+GROUPS_LIST = "${{ fromJSON(needs.groups.outputs.list) }}"
+GROUPS_VERSIONS = "${{ fromJSON(needs.groups.outputs.versions) }}"
+# The names of the Julia jobs of CI.yml, which are the names of the required checks.
+TEST_NAME = (
+    "Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}"
+    "${{ matrix.group && format(' - {0}', matrix.group) || '' }}"
+)
+PRERELEASE_NAME = "Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}"
+# The two projects that the downgrade job resolves, which Downgrade.yml watches.
+PROJECTS = ["Project.toml", "test/Project.toml"]
+# The standard libraries that the downgrade job of Downgrade.yml keeps at their bundled versions.
+DOWNGRADE_SKIP = ",".join(
+    [
+        *("ArgTools", "Artifacts", "Base64", "CRC32c", "Dates", "DelimitedFiles", "Distributed"),
+        *("Downloads", "FileWatching", "Future", "InteractiveUtils", "LazyArtifacts", "LibCURL"),
+        *("LibGit2", "Libdl", "LinearAlgebra", "Logging", "Markdown", "Mmap", "NetworkOptions", "Pkg"),
+        *("Printf", "Profile", "REPL", "Random", "SHA", "Serialization", "SharedArrays", "Sockets"),
+        *("SparseArrays", "Statistics", "TOML", "Tar", "Test", "UUIDs", "Unicode"),
+    ]
+)
+# The jobs of CI.yml that run the tests.
+TESTED = ("test", "test-other", "prerelease")
 BASE_UUID = "00000000-0000-0000-0000-00000000000b"
 # The installed paths of the two files, relative to a repository.
 INSTALLED = (".github/workflows/Dependents.yml", ".github/dependents.jl")
@@ -530,6 +572,18 @@ def workflow_cases(check: Check, tmp: pathlib.Path) -> None:
         isinstance(code, str) and "missing template" in code and "Dependents.yml" in code,
         f"workflows refuses a missing Dependents.yml template, naming it -> {code}",
     )
+    shutil.copyfile(DEPENDENTS_YML, templates / "Dependents.yml")
+    (templates / "Downgrade.yml").unlink(missing_ok=True)
+    with mock.patch.object(githooks, "WORKFLOWS", templates):
+        # An installer that does not check the template first fails later, on the copy.
+        try:
+            code, _ = quiet(githooks.cmd_workflows, listed, apply=True)
+        except FileNotFoundError as e:
+            code = f"FileNotFoundError: {e}"
+    check(
+        isinstance(code, str) and "missing template" in code and "Downgrade.yml" in code,
+        f"workflows refuses a missing Downgrade.yml template, naming it -> {code}",
+    )
     bare = fixture(tmp / "bare" / "Research")
     with mock.patch.dict(os.environ, RESEARCH_ROOT=str(tmp / "bare" / "Research")):
         code, out = quiet(githooks.cmd_workflows, profile_file(tmp / "none.toml", None), apply=True)
@@ -544,6 +598,7 @@ def workflow_cases(check: Check, tmp: pathlib.Path) -> None:
         == [
             ".github/dependabot.yml",
             ".github/workflows/CI.yml",
+            ".github/workflows/Downgrade.yml",
             ".github/workflows/TagBot.yml",
             "Project.toml",
             "codecov.yml",
@@ -562,8 +617,7 @@ def yaml_cases(check: Check) -> None:
         not read.refused, f"Dependents.yml is YAML with no repeated key -> line {read.line}, {read.duplicate}"
     )
     data = cast("dict[object, object]", read.data if isinstance(read.data, dict) else {})
-    # YAML 1.1 reads the key `on` as True.
-    on = cast("dict[str, object]", data.get(True) or data.get("on") or {})
+    on = triggers(data)
     pull = cast("dict[str, object]", on.get("pull_request") or {})
     check(
         sorted(on) == ["pull_request", "workflow_dispatch"]
@@ -593,13 +647,8 @@ def yaml_cases(check: Check) -> None:
         f"a list job, and a test job per dependent on ubuntu-latest, 60 minutes, fail-fast false -> "
         f"{ {k: test.get(k) for k in ('needs', 'runs-on', 'timeout-minutes')} }, {strategy}",
     )
-    steps = cast("list[dict[str, object]]", test.get("steps") or [])
-    uses = {
-        str(s["uses"])
-        for job in jobs.values()
-        for s in cast("list[dict[str, object]]", job.get("steps") or [])
-        if "uses" in s
-    }
+    steps = job_steps(test)
+    uses = {str(s["uses"]) for job in jobs.values() for s in job_steps(job) if "uses" in s}
     runs = "\n".join(str(s.get("run", "")) for s in steps)
     versions = [
         cast("dict[str, object]", s.get("with") or {}).get("version")
@@ -644,9 +693,9 @@ def yaml_cases(check: Check) -> None:
     keeps = [
         (name, i)
         for name, job in jobs.items()
-        for i, s in enumerate(cast("list[dict[str, object]]", job.get("steps") or []))
+        for i, s in enumerate(job_steps(job))
         if str(s.get("uses", "")).startswith("actions/checkout@")
-        and cast("dict[str, object]", s.get("with") or {}).get("persist-credentials") is not False
+        and given(s).get("persist-credentials") is not False
     ]
     check(
         not keeps,
@@ -755,6 +804,269 @@ def checkout_cases(check: Check) -> None:
         f"no checkout of a workflow template keeps the token -> {checkouts} checkouts, "
         f"without persist-credentials false (file, job, step) {keeps}",
     )
+
+
+def template(path: pathlib.Path) -> tuple[dict[object, object], dict[str, dict[str, object]]]:
+    """A workflow template, read with the YAML reader of `harness wiki-lint`, and its jobs."""
+    read = wikilint.yaml_reader()(path.read_text())
+    data = cast("dict[object, object]", read.data if isinstance(read.data, dict) else {})
+    return data, cast("dict[str, dict[str, object]]", data.get("jobs") or {})
+
+
+def triggers(data: dict[object, object]) -> dict[str, object]:
+    """The `on:` table of a workflow, which YAML 1.1 reads under the key True."""
+    return cast("dict[str, object]", data.get(True) or data.get("on") or {})
+
+
+def job_steps(job: dict[str, object]) -> list[dict[str, object]]:
+    """The steps of a job."""
+    return cast("list[dict[str, object]]", job.get("steps") or [])
+
+
+def given(step: dict[str, object]) -> dict[str, object]:
+    """The `with:` table of a step."""
+    return cast("dict[str, object]", step.get("with") or {})
+
+
+def given_to(job: dict[str, object], action: str) -> dict[str, object]:
+    """The `with:` table of the first step of a job that uses `action`, or an empty table."""
+    found = [given(s) for s in job_steps(job) if str(s.get("uses", "")).startswith(f"{action}@")]
+    return found[0] if found else {}
+
+
+def matrix(job: dict[str, object]) -> object:
+    """The matrix of a job, or None."""
+    return cast("dict[str, object]", job.get("strategy") or {}).get("matrix")
+
+
+def ci_cases(check: Check) -> None:
+    """The jobs of CI.yml: which job waits for which, the matrix, the name and the
+    continue-on-error of each, the coverage, the triggers and the concurrency group."""
+    data, jobs = template(CI_YML)
+    needs = {name: job.get("needs") for name, job in jobs.items()}
+    check(
+        sorted(jobs) == ["doctest", "groups", "prerelease", "test", "test-other"]
+        and needs
+        == {
+            "groups": None,
+            "test": "groups",
+            "test-other": ["groups", "test"],
+            "prerelease": None,
+            "doctest": None,
+        },
+        f"CI.yml: test-other waits for test, and prerelease and doctest wait for no job -> {needs}",
+    )
+    other = jobs.get("test-other", {})
+    conditions = [str(other.get("if", "")), *(str(s.get("if", "")) for s in job_steps(other))]
+    after = [c for c in conditions if any(w in c for w in ("always()", "failure()", "cancelled()"))]
+    check(not after, f"CI.yml: test-other and its steps never run after a failure of test -> {after}")
+    matrices = {name: matrix(job) for name, job in jobs.items()}
+    check(
+        matrices
+        == {
+            "groups": None,
+            "test": {
+                "version": ["min", "1"],
+                "os": ["ubuntu-latest"],
+                "arch": ["default"],
+                "group": GROUPS_LIST,
+            },
+            "test-other": {
+                "version": GROUPS_VERSIONS,
+                "os": ["macOS-latest", "windows-latest"],
+                "arch": ["default"],
+                "group": GROUPS_LIST,
+            },
+            "prerelease": {"version": ["pre", "nightly"], "os": ["ubuntu-latest"], "arch": ["default"]},
+            "doctest": {"os": ["ubuntu-latest"]},
+        },
+        f"CI.yml: Ubuntu on min and 1, macOS and Windows on the versions of the event, pre and "
+        f"nightly on Ubuntu, the doctests on Ubuntu -> {matrices}",
+    )
+    names = {name: (job.get("name"), job.get("continue-on-error")) for name, job in jobs.items()}
+    check(
+        names
+        == {
+            "groups": ("Test groups", None),
+            "test": (TEST_NAME, None),
+            "test-other": (TEST_NAME, None),
+            "prerelease": (PRERELEASE_NAME, True),
+            "doctest": ("Doctests - ${{ matrix.os }}", None),
+        },
+        f"CI.yml: test and test-other have the names of the required checks, and prerelease alone "
+        f"continues on error -> {names}",
+    )
+    codecov = sorted(
+        name
+        for name, job in jobs.items()
+        for s in job_steps(job)
+        if str(s.get("uses", "")).startswith("codecov/")
+    )
+    coverage = {
+        name: given(s).get("coverage")
+        for name, job in jobs.items()
+        for s in job_steps(job)
+        if str(s.get("uses", "")).startswith("julia-actions/julia-runtest")
+    }
+    env = cast("dict[str, object]", jobs.get("test", {}).get("env") or {})
+    check(
+        codecov == ["test"]
+        and coverage == {"test": "${{ env.COVERAGE }}", "test-other": False, "prerelease": False}
+        and env.get("COVERAGE") == "${{ matrix.version == '1' && matrix.os == 'ubuntu-latest' }}",
+        f"CI.yml: only test, on Ubuntu with 1, measures and uploads the coverage -> codecov in {codecov}, "
+        f"coverage {coverage}",
+    )
+    entry = {"version": "${{ matrix.version }}", "arch": "${{ matrix.arch }}"}
+    setup = {name: given_to(jobs.get(name, {}), "julia-actions/setup-julia") for name in TESTED}
+    runtest = {name: given_to(jobs.get(name, {}), "julia-actions/julia-runtest") for name in TESTED}
+    check(
+        setup == dict.fromkeys(TESTED, entry)
+        and runtest
+        == {
+            "test": {
+                "check_bounds": "auto",
+                "coverage": "${{ env.COVERAGE }}",
+                "test_args": "${{ matrix.group }}",
+            },
+            "test-other": {"check_bounds": "auto", "coverage": False, "test_args": "${{ matrix.group }}"},
+            "prerelease": {"check_bounds": "auto", "coverage": False},
+        },
+        f"CI.yml: test, test-other and prerelease set up the Julia and the architecture of their matrix "
+        f"entry, and test and test-other run the group of their entry -> setup {setup}, runtest {runtest}",
+    )
+    on = triggers(data)
+    concurrency = cast("dict[str, object]", data.get("concurrency") or {})
+    check(
+        on
+        == {
+            "push": {"branches": ["main", "master"], "tags": ["*"]},
+            "pull_request": None,
+            "workflow_dispatch": None,
+            "schedule": WEEKLY,
+        }
+        and concurrency.get("group") == CONCURRENCY,
+        f"CI.yml runs on a push to main or master, a tag, a pull request, by hand and weekly, in one "
+        f"concurrency group per ref and event -> {on}, {concurrency.get('group')}",
+    )
+
+
+def groups_output(tmp: pathlib.Path, event: str, ref: str, text: str | None) -> tuple[int, list[str]]:
+    """The script of the `groups` job of CI.yml, run as a runner runs it for `event` on `ref`, in a
+    new directory below `tmp` whose test/ci-groups.toml holds `text`, or which has none for None:
+    its exit status, and the lines that it writes to GITHUB_OUTPUT."""
+    _, jobs = template(CI_YML)
+    script = next((str(s["run"]) for s in job_steps(jobs.get("groups", {})) if s.get("id") == "read"), "")
+    root = pathlib.Path(tempfile.mkdtemp(dir=tmp))
+    if text is not None:
+        (root / "test").mkdir()
+        (root / "test" / "ci-groups.toml").write_text(text)
+    out = root / "github_output"
+    out.write_text("")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GITHUB_")} | {
+        "GITHUB_EVENT_NAME": event,
+        "GITHUB_REF": ref,
+        "GITHUB_OUTPUT": str(out),
+    }
+    p = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=TIMEOUT,
+    )
+    return p.returncode, out.read_text().splitlines()
+
+
+def groups_cases(check: Check, tmp: pathlib.Path) -> None:
+    """The `groups` job of CI.yml for each event: the list of test groups, and the versions of
+    macOS and Windows, `1` for a pull request and a push to a branch and `min` and `1` for every
+    other event; a group file that it refuses writes nothing."""
+    two = 'groups = ["core", "long"]\n'
+    one, full = 'versions=["1"]', 'versions=["min", "1"]'
+    for event, ref, text, want in (
+        ("pull_request", "refs/pull/1/merge", None, ['list=[""]', one]),
+        ("pull_request", "refs/pull/1/merge", two, ['list=["core", "long"]', one]),
+        ("push", "refs/heads/main", two, ['list=["core", "long"]', one]),
+        ("push", "refs/heads/master", None, ['list=[""]', one]),
+        ("push", "refs/tags/v1.2.3", None, ['list=[""]', full]),
+        ("schedule", "refs/heads/main", two, ['list=["core", "long"]', full]),
+        ("workflow_dispatch", "refs/heads/main", None, ['list=[""]', full]),
+        ("merge_group", "refs/heads/gh-readonly-queue/main/x", None, ['list=[""]', full]),
+    ):
+        got = groups_output(tmp, event, ref, text)
+        check(
+            got == (0, want),
+            f"the groups job writes {want} for {event} on {ref} {'with' if text else 'without'} a group "
+            f"file -> {got}",
+        )
+    got = groups_output(tmp, "pull_request", "refs/pull/1/merge", 'groups = ["core", "core"]\n')
+    check(got[0] != 0 and not got[1], f"the groups job refuses a group twice and writes nothing -> {got}")
+
+
+def downgrade_cases(check: Check) -> None:
+    """Downgrade.yml: its name, its triggers, its concurrency group, its `groups` job equal to the
+    one of CI.yml, and its downgrade job."""
+    data, jobs = template(DOWNGRADE_YML)
+    ci_data, ci_jobs = template(CI_YML)
+    on = triggers(data)
+    check(
+        data.get("name") == "Downgrade"
+        and on
+        == {
+            "push": {"branches": ["main", "master"], "tags": ["*"], "paths": PROJECTS},
+            "pull_request": {"paths": PROJECTS},
+            "workflow_dispatch": None,
+            "schedule": WEEKLY,
+        },
+        f"Downgrade.yml runs on a pull request and a push to main or master that change a "
+        f"Project.toml of the package or of its tests, on a tag, by hand and weekly -> {on}",
+    )
+    check(
+        data.get("concurrency") == ci_data.get("concurrency")
+        and sorted(jobs) == ["downgrade", "groups"]
+        and jobs.get("groups") == ci_jobs.get("groups"),
+        f"Downgrade.yml has the concurrency group of CI.yml, and its groups job is the one of CI.yml "
+        f"-> {data.get('concurrency')}, {sorted(jobs)}",
+    )
+    job = jobs.get("downgrade", {})
+    setup = given_to(job, "julia-actions/setup-julia")
+    compat = given_to(job, "julia-actions/julia-downgrade-compat")
+    runtest = given_to(job, "julia-actions/julia-runtest")
+    check(
+        job.get("needs") == "groups"
+        and job.get("continue-on-error") is True
+        and matrix(job) == {"group": GROUPS_LIST}
+        and setup == {"version": "min"}
+        and compat
+        == {"mode": "forcedeps", "julia_version": "min", "projects": "., test", "skip": DOWNGRADE_SKIP}
+        and runtest
+        == {
+            "check_bounds": "auto",
+            "allow_reresolve": False,
+            "force_latest_compatible_version": False,
+            "test_args": "${{ matrix.group }}",
+        },
+        f"the downgrade job runs each group at the lower bounds of both projects, as information -> "
+        f"{ {k: job.get(k) for k in ('needs', 'continue-on-error')} }, {matrix(job)}, {setup}, {compat}, "
+        f"{runtest}",
+    )
+
+
+def lint_cases(check: Check) -> None:
+    """actionlint on CI.yml without shellcheck, whose doctest step has a finding of its own, and on
+    Downgrade.yml with it."""
+    actionlint = shutil.which("actionlint")
+    if actionlint is None:
+        print("skip  githooks: no actionlint on the PATH; CI.yml and Downgrade.yml are not linted")
+        return
+    for path, flags in ((CI_YML, ["-shellcheck="]), (DOWNGRADE_YML, [])):
+        p = run([actionlint, *flags, str(path)])
+        check(
+            p.returncode == 0,
+            f"actionlint {' '.join(flags)} passes on {path.name} -> {p.returncode} {p.stdout.strip()[-300:]}",
+        )
 
 
 def julia_script(
@@ -953,10 +1265,39 @@ def format_case(check: Check, julia: str) -> None:
     )
 
 
-def verify(julia: str, root: pathlib.Path, profile: pathlib.Path) -> subprocess.CompletedProcess[str]:
-    """verify-workflows.jl --quiet on the research root `root` with the profile `profile`."""
+def verify(
+    julia: str, root: pathlib.Path, profile: pathlib.Path, *, quiet: bool = True
+) -> subprocess.CompletedProcess[str]:
+    """verify-workflows.jl on the research root `root` with the profile `profile`, with `--quiet`
+    unless `quiet` is False."""
     env = dict(os.environ) | GIT | {"RESEARCH_ROOT": str(root), "RESEARCH_HARNESS_PROFILE": str(profile)}
-    return run([julia, "--startup-file=no", str(VERIFY), "--quiet"], env=env)
+    return run([julia, "--startup-file=no", str(VERIFY), *(["--quiet"] if quiet else [])], env=env)
+
+
+def renamed_other() -> str:
+    """CI.yml with the name of its test-other job changed, and nothing else."""
+    text = CI_YML.read_text()
+    at = text.find("\n    test-other:\n")
+    if at < 0:
+        return text
+    name = text.find("        name: Julia ", at)
+    return text[:name] + text[name:].replace("name: Julia ", "name: Other Julia ", 1)
+
+
+def printed_checks(out: str, heading_start: str = "Required status checks (") -> list[str]:
+    """A list of required checks that verify-workflows.jl prints: the indented lines below the
+    heading that starts with `heading_start`, up to the first blank line. The default heading is
+    the one of a repository without test/ci-groups.toml."""
+    lines = out.splitlines()
+    heading = next((i for i, line in enumerate(lines) if line.startswith(heading_start)), None)
+    if heading is None:
+        return []
+    found: list[str] = []
+    for line in lines[heading + 1 :]:
+        if not line.strip():
+            break
+        found.append(line.strip())
+    return found
 
 
 def verify_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
@@ -973,8 +1314,54 @@ def verify_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
         f"verify-workflows passes on a clean fixture with a listed base -> {p.returncode}, "
         f"{p.stdout.strip()[-300:]!r} {p.stderr.strip()[-300:]}",
     )
+    p = verify(julia, root, listed, quiet=False)
+    printed = printed_checks(p.stdout)
+    check(
+        p.returncode == 0 and sorted(printed) == sorted(protection.REQUIRED_CHECKS),
+        f"verify-workflows prints the required checks of harness ci-protection -> {p.returncode}, {printed}",
+    )
+    grouped = repos["Other"]
+    runtests = (
+        "using SafeTestsets\n"
+        'const GROUPS = isempty(ARGS) ? ["core", "slow"] : ARGS\n'
+        'if "core" in GROUPS\n    @safetestset "A" include("a.jl")\nend\n'
+        'if "slow" in GROUPS\n    @safetestset "B" include("b.jl")\nend\n'
+    )
+    with (
+        changed_file(grouped / "test" / "ci-groups.toml", 'groups = ["core", "slow"]\n'),
+        changed_file(grouped / "test" / "runtests.jl", runtests),
+    ):
+        p = verify(julia, root, listed, quiet=False)
+        expected = protection.required_checks(grouped)
+    printed = printed_checks(p.stdout, "Required status checks of Other,")
+    check(
+        p.returncode == 0 and bool(printed) and sorted(printed) == sorted(expected),
+        f"verify-workflows prints the required checks of harness ci-protection for a repository with "
+        f"the groups core and slow -> {p.returncode}, {printed}",
+    )
     workflow = repos["Base"] / ".github" / "workflows" / "Dependents.yml"
     for label, path, text, repo, phrase in (
+        (
+            "a drifted Downgrade.yml",
+            repos["Other"] / ".github" / "workflows" / "Downgrade.yml",
+            DOWNGRADE_YML.read_text() + "# drift\n",
+            "Other",
+            "Downgrade.yml differs",
+        ),
+        (
+            "a CI.yml whose test-other job has another name",
+            repos["Other"] / ".github" / "workflows" / "CI.yml",
+            renamed_other(),
+            "Other",
+            "CI.yml test-other job name is",
+        ),
+        (
+            "a CI.yml without a test-other job",
+            repos["Other"] / ".github" / "workflows" / "CI.yml",
+            CI_YML.read_text().replace("\n    test-other:\n", "\n    test-others:\n"),
+            "Other",
+            "CI.yml has no `test-other` job",
+        ),
         (
             "a drifted Dependents.yml",
             workflow,
@@ -1056,6 +1443,11 @@ def cases(check: Check) -> None:
         origin_cases(check)
         yaml_cases(check)
         checkout_cases(check)
+        ci_cases(check)
+        (tmp / "groups").mkdir()
+        groups_cases(check, tmp / "groups")
+        downgrade_cases(check)
+        lint_cases(check)
         if julia is None:
             print("skip  githooks: no julia on the PATH; dependents.jl and verify-workflows.jl do not run")
             return

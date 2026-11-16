@@ -1024,7 +1024,39 @@
 - kind: not verified
 - found: 2026-11-16, the critic of part G4a of the sandbox plan
 
-### K166 · On a case-insensitive file system, the launcher check refuses a `CLAUDE_CONFIG_DIR` that names `~/.config/claudex` with another case.
+### K166 · `ci-triage` gives one count of required status checks for every repository, but a repository with test groups requires more.
+
+- location: `agents/ci-triage.md:31-32`
+- evidence: the agent says "There are **five required status checks**". `required_checks` of
+  `lib/harness/protection.py` returns the four Julia checks once per group of
+  `test/ci-groups.toml`, the doctests and the jobs of its `workflows`: nine for the groups `core`
+  and `long` (`GROUPED_CHECKS` of the `protection` cases). The count of the base, seven, had the
+  same limit.
+- kind: docs
+- found: 2026-11-16, the critic round of the tiered CI matrix
+
+### K167 · BlueStyle turns the platform `GROUPS` line of both forms of `runtests.jl` into an `if` block, and `test-layout.jl` then reports D5.
+
+- location: `scripts/test-layout.jl:402-411`
+- evidence: the checker compares `GROUPS` with the expression
+  `isempty(sel) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? [..., "metal"] : [...]) : sel`.
+  JuliaFormatter with `style = "blue"` rewrites the inner ternary into an `if` block, so a
+  repository with a `metal` group gets `[D5] GROUPS is not the platform form`. SciML, the house
+  style, Default and YAS keep the ternary and pass. The serial form's platform line has the same
+  shape.
+- kind: found late
+- found: #328
+
+### K168 · Three comments of `test-layout.jl` say "the groups that an empty `ARGS` runs", which is incomplete for the parallel form.
+
+- location: `scripts/test-layout.jl:168`
+- evidence: the lines 168, 301 and 364 say "an empty `ARGS`". In the parallel form an `ARGS` of
+  only `--` arguments, such as `["--jobs=3"]`, gives an empty `SELECTED` and runs the same
+  default groups. The rest of the file says "an empty selection".
+- kind: docs
+- found: #328
+
+### K169 · On a case-insensitive file system, the launcher check refuses a `CLAUDE_CONFIG_DIR` that names `~/.config/claudex` with another case.
 
 - location: `hooks/guard/launcher.py:83`
 - evidence: `CLAUDE_CONFIG_DIR` set to `<home>/.config/CLAUDEX`, the same directory on APFS, gives

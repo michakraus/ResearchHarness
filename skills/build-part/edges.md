@@ -764,6 +764,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   Check the invariant — after the move, every link resolves inside the new tree — lexically on
   the target as written, its leading `..` against the link's depth below the tree, in place of the
   resolved check (G5 verify 2, *Synchronise the machines with chezmoi*)
+- a checker's list of the files that an installer writes, when the part adds a new installed file:
+  the checker keeps refusing or ignoring the new file, and no case of the part reads the list. Grep
+  every list of installed names for the new file's siblings (E1 round 1, *Make the test suites
+  fast without losing scrutiny*)
+- a second parse of the same text with a stricter parser: `JuliaSyntax.parseall` throws on a
+  warning that `Meta.parseall` accepts, so a statement the first parse let through crashes the
+  checker where it should report a violation. Give the second parse the first one's tolerance, or
+  derive both readings from one tree, and add a case with such a statement (B round 1, *Make the
+  test suites fast without losing scrutiny*)
 
 ## A step that runs a user's script
 

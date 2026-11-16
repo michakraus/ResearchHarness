@@ -5,7 +5,9 @@
 #   julia --startup-file=no test-layout-test.jl
 #
 # A fixture repository in the form of the convention must pass with exit 0 and no output. Each
-# mutation of it breaks one rule and must exit 1 with a line that names exactly that rule.
+# mutation of it breaks one rule and must exit 1 with a line that names exactly that rule. The
+# end-to-end test of the parallel template loads ParallelTestRunner from the harness's Julia
+# environment, $RESEARCH_HARNESS_JULIA or ~/.local/share/research-harness/julia/.
 
 using Test
 
@@ -16,6 +18,10 @@ if abspath(PROGRAM_FILE) == @__FILE__() && Test.get_testset_depth() == 0
 end
 
 const SCRIPT = joinpath(@__DIR__, "test-layout.jl")
+
+module L
+include(joinpath(@__DIR__, "test-layout.jl"))
+end
 
 const RUNTESTS = """
 using SafeTestsets
@@ -126,10 +132,86 @@ const TOP_LISTED = merge(
     rt(AQUA_LINE => AQUA_LINE * "    @safetestset \"Top\" include(\"top.jl\")\n"),
     Changes("test/top.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n"))
 
+# The fixture's runtests.jl in the parallel form: the template of the convention, verbatim, with
+# the fixture's table. The test sets compare it with the template that test-layout.jl holds.
+const PARALLEL = """
+using ParallelTestRunner
+using Fixture
+
+const TESTS = [
+    "core" => [
+        "Aqua" => "quality/aqua.jl",
+        "Options" => "base/options.jl",
+        "Whole package" => "integration/solve.jl",
+    ],
+    "doctests" => [
+        "Doctests" => "quality/doctests.jl",
+    ],
+    "broken" => [
+        "Old API" => "base/old_api.jl",   # issue #12
+    ],
+]
+
+const SELECTED = filter(!startswith("--"), ARGS)
+const GROUPS = isempty(SELECTED) ? ["core", "slow"] : SELECTED
+const UNKNOWN = setdiff(SELECTED, first.(TESTS))
+isempty(UNKNOWN) ||
+    error("no test group ", join(UNKNOWN, ", "), " in runtests.jl; its groups are ", join(first.(TESTS), ", "))
+
+runtests(Fixture, filter(startswith("--"), ARGS);
+    testsuite = Dict(label => :(include(\$(joinpath(@__DIR__, path))))
+                     for (group, files) in TESTS if group in GROUPS for (label, path) in files),
+    serial = [label for (group, files) in TESTS if group in ("metal", "cuda") for (label, _) in files],
+    serial_position = :after,
+    retries = 0,
+    exeflags = ["--threads=\$(Threads.nthreads())"],
+    max_default_jobs = max(1, Sys.CPU_THREADS ÷ Threads.nthreads()))
+"""
+
+"The parallel runtests.jl of the fixture with each `from => to` applied; each `from` must occur in it."
+function prt(pairs...)
+    for p in pairs
+        occursin(first(p), PARALLEL) || error("not in PARALLEL: $(repr(first(p)))")
+    end
+    Changes("test/runtests.jl" => replace(PARALLEL, pairs...))
+end
+
+const PPLAIN = "const GROUPS = isempty(SELECTED) ? [\"core\", \"slow\"] : SELECTED\n"
+const PPLATFORM = "const GROUPS = isempty(SELECTED) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? [\"core\", \"slow\", \"metal\"] : [\"core\", \"slow\"]) : SELECTED\n"
+const PBROKEN = "    \"broken\" => [\n"
+const PRUNTESTS = "runtests(Fixture, filter(startswith(\"--\"), ARGS);\n"
+
 @testset "a repository in form passes" begin
     code, lines = check(fixture())
     @test code == 0
     @test isempty(lines)
+end
+
+@testset "a repository in the parallel form passes" begin
+    code, lines = check(fixture(prt()))
+    @test code == 0
+    @test isempty(lines)
+    # the form is `using ParallelTestRunner`; a file without it is in the serial form, or in none
+    @test L.layout(fixture(prt())).form === :parallel
+    @test L.layout(fixture()).form === :serial
+    @test L.layout(fixture(rt("using SafeTestsets\n" => ""))).form === :serial
+    # each pair of TESTS is one entry, with its group, label and line
+    es = L.layout(fixture(prt())).entries
+    @test [(e.group, e.label, relpath(e.path, dirname(e.file)), e.line) for e in es] == [
+        ("core", "Aqua", "quality/aqua.jl", 6), ("core", "Options", "base/options.jl", 7),
+        ("core", "Whole package", "integration/solve.jl", 8),
+        ("doctests", "Doctests", "quality/doctests.jl", 11),
+        ("broken", "Old API", "base/old_api.jl", 14)]
+    @test all(e -> e.kind === :parallel && basename(e.file) == "runtests.jl", es)
+end
+
+@testset "the parallel form of the fixture is the template that test-layout.jl holds" begin
+    table = match(r"const TESTS = (\[.*?\n\])\n"s, PARALLEL).captures[1]
+    statements(text) = L.without_lines(Meta.parseall(text)).args
+    @test statements(L.parallel_runtests("Fixture", table, "[\"core\", \"slow\"]")) ==
+          statements(PARALLEL)
+    # no retry hides a failure
+    @test occursin("retries = 0,", L.PARALLEL_RUNTESTS)
 end
 
 "test/base/options.jl of the fixture, drawing with `draw` and no seed."
@@ -170,6 +252,38 @@ const MUTATIONS = [
     "D2" =>
         rt("if \"broken\" in GROUPS" => "if \"core\" in GROUPS\nend\nif \"broken\" in GROUPS"),
     "D2" => rt("using SafeTestsets\n" => "using SafeTestsets\nusing SafeTestsets\n"),
+    # the parallel form: TESTS is not a literal (a chained assignment, a name, a comprehension)
+    "D2" => prt("const TESTS = [" => "const TESTS = TABLE = ["),
+    "D2" => prt("const TESTS = [" => "const TESTS = TABLE\nconst TABLE = ["),
+    "D2" => prt("const TESTS = [" => "const TESTS = [g => [] for g in (\"core\",)]\nconst TABLE = ["),
+    # a group that is no string, files that are no vector, a path that is no string
+    "D2" => prt("\"core\" => [" => "CORE => ["),
+    "D2" => prt("\"doctests\" => [\n        \"Doctests\" => \"quality/doctests.jl\",\n    ]," =>
+        "\"doctests\" => DOCTESTS,"),
+    "D2" => prt("\"Aqua\" => \"quality/aqua.jl\"" => "\"Aqua\" => joinpath(\"quality\", \"aqua.jl\")"),
+    # no TESTS
+    "D2" => prt("const TESTS = [" => "const TABLE = ["),
+    # a group with no file, a group twice, no group `core`
+    "D2" => prt(PBROKEN => "    \"slow\" => [],\n" * PBROKEN),
+    "D2" => prt("        \"Whole package\"" => "    ],\n    \"core\" => [\n        \"Whole package\""),
+    "D2" => prt("\"core\" => [" => "\"slow\" => ["),
+    # a statement of the template changed: retries, SELECTED from ARGS, another package
+    "D2" => prt("retries = 0," => "retries = 2,"),
+    "D2" => prt("const SELECTED = filter(!startswith(\"--\"), ARGS)" => "const SELECTED = ARGS"),
+    "D2" => prt("using Fixture\n" => "using Other\n"),
+    "D2" => prt(PRUNTESTS => replace(PRUNTESTS, "Fixture" => "Other")),
+    "D2" => prt("isempty(UNKNOWN) ||" => "isempty(UNKNOWN) &&"),
+    # a statement outside the template, a statement out of its order, a statement twice
+    "D2" => prt("using Fixture\n" => "using Fixture\nusing Test\n"),
+    "D2" => prt("using ParallelTestRunner\nusing Fixture\n" => "using Fixture\nusing ParallelTestRunner\n"),
+    "D2" => prt("using Fixture\n" => "using Fixture\nusing Fixture\n"),
+    # both forms in one file
+    "D2" => prt("using ParallelTestRunner\n" => "using ParallelTestRunner\nusing SafeTestsets\n"),
+    "D2" => prt(PRUNTESTS => "if \"core\" in GROUPS\nend\n" * PRUNTESTS),
+    # a nested runtests.jl in TESTS
+    "D2" => merge(prt("integration/solve.jl" => "integration/runtests.jl"),
+        Changes("test/integration/solve.jl" => nothing,
+            "test/integration/runtests.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n")),
     "D3" => merge(
         Changes("test/base/options.jl" => nothing,
             "test/solvers/options.jl" => FILES["test/base/options.jl"]),
@@ -188,6 +302,11 @@ const MUTATIONS = [
         Changes("test/integration/solve.jl" => "using Test, Fixture\nfor g in ARGS\n    @test Fixture.f() == 1\nend\n"),
     "D5" =>
         Changes("test/integration/solve.jl" => "using Test, Fixture\n@test Fixture.f() == 1 skip = haskey(ENV, \"CI\")   # issue #3\n"),
+    # the parallel form: GROUPS from ARGS, GROUPS twice, no GROUPS, a group outside the names
+    "D5" => prt(PPLAIN => "const GROUPS = isempty(ARGS) ? [\"core\", \"slow\"] : ARGS\n"),
+    "D5" => prt(PPLAIN => PPLAIN * PPLAIN),
+    "D5" => prt(PPLAIN => ""),
+    "D5" => prt(PBROKEN => "    \"extra\" => [\n"),
     "D7" =>
         Changes("test/base/old_api.jl" => "using Test, Fixture\n@test_broken Fixture.h() == 1\n"),
     "D7" =>
@@ -210,6 +329,11 @@ const MUTATIONS = [
     "D8" =>
         rt("    @safetestset \"Whole package\"" => "    @safetestset \"Helper\" include(\"helpers/data.jl\")\n    @safetestset \"Whole package\""),
     "D8" => Changes("test/base/runtests.jl" => "using Test\n@test true\n"),
+    # the parallel form: an unlisted file, a path twice in one group and in two, a missing file
+    "D8" => merge(prt(), Changes("test/base/unlisted.jl" => "using Test\n@test true\n")),
+    "D8" => prt("        \"Whole package\"" => "        \"Again\" => \"base/options.jl\",\n        \"Whole package\""),
+    "D8" => prt(PBROKEN => "    \"slow\" => [\n        \"Again\" => \"base/options.jl\",\n    ],\n" * PBROKEN),
+    "D8" => prt("        \"Whole package\"" => "        \"Missing\" => \"base/missing.jl\",\n        \"Whole package\""),
     "D9" => merge(Changes("test/quality/doctests.jl" => nothing), rt(DOCTESTS_GROUP => "")),
     "D9" => DOCTESTS_IN_CORE,
     # test/quality/doctests.jl in the group `slow`
@@ -226,7 +350,16 @@ const MUTATIONS = [
         rt(DOCTESTS_GROUP => replace(DOCTESTS_GROUP,
             "end\n" => "    @safetestset \"Other\" include(\"base/other.jl\")\nend\n")),
         Changes("test/base/other.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n")),
+    # the parallel form: test/quality/doctests.jl in `core`, another file in `doctests`
+    "D9" => prt("    \"doctests\" => [\n        \"Doctests\" => \"quality/doctests.jl\",\n    ],\n" => "",
+        "        \"Whole package\"" => "        \"Doctests\" => \"quality/doctests.jl\",\n        \"Whole package\""),
+    "D9" => merge(
+        prt("\"Doctests\" => \"quality/doctests.jl\",\n" => "\"Doctests\" => \"quality/doctests.jl\",\n        \"Other\" => \"base/other.jl\",\n"),
+        Changes("test/base/other.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n")),
     "D10" => rt("   # issue #12" => ""),
+    # the parallel form: no issue on the pair's line, and the issue on the line of its group
+    "D10" => prt("   # issue #12" => ""),
+    "D10" => prt("   # issue #12" => "", PBROKEN => "    \"broken\" => [   # issue #12\n"),
     "compat" => tp("[compat]\n" => "[compat]\nShared = \"1.2\"\n"),
     "compat" => tp("[compat]\n" => "[compat]\nShared = \"1.3\"\n"),
     "compat" => tp("[compat]\n" => "[compat]\nWeak = \"0.3\"\n"),
@@ -236,6 +369,10 @@ const MUTATIONS = [
         replace(DOCS_PROJECT, "[compat]\n" => "[compat]\nShared = \"1.2\"\n")),
     "label" => rt("\"Whole package\"" => "\"Options\""),
     "label" => rt("\"Whole package\"" => "\"Whole \$(1) package\""),
+    # the parallel form: a label twice, an interpolated label, a label that is no string
+    "label" => prt("\"Whole package\"" => "\"Options\""),
+    "label" => prt("\"Whole package\"" => "\"Whole \$(1) package\""),
+    "label" => prt("\"Whole package\"" => "WHOLE"),
     "seed" =>
         Changes("test/base/options.jl" => "using Test, Fixture\ninclude(\"../helpers/data.jl\")\n@test rand() < 2\n"),
     "seed" =>
@@ -447,6 +584,12 @@ function device(groups, file = DEVICE_TEST; g = "metal")
         Changes("test/devices/$g.jl" => file))
 end
 
+"The parallel fixture with the GROUPS line `groups`, a group `g` and its file `test/devices/<g>.jl`."
+function pdevice(groups, file = DEVICE_TEST; g = "metal")
+    group = "    \"$g\" => [\n        \"Device\" => \"devices/$g.jl\",\n    ],\n"
+    merge(prt(PPLAIN => groups, PBROKEN => group * PBROKEN), Changes("test/devices/$g.jl" => file))
+end
+
 const NOT_PLATFORM = "[D5] GROUPS is not the platform form"
 const NO_METAL = "[D5] GROUPS has the platform form, and the repository has no `metal` group"
 const SKIP_NO_ISSUE = "has `@test_skip` with no issue on its line"
@@ -492,7 +635,19 @@ const DEVICE_CASES = [
             Changes(
                 "test/devices.jl" => "using Test, Metal\n@test_skip Metal.functional()\n",
                 "src/devices.jl" => "d() = 1\n")),
-        "[D7] devices.jl:2 $SKIP_NO_ISSUE")
+        "[D7] devices.jl:2 $SKIP_NO_ISSUE"),
+    ("the parallel form: a `metal` group and the platform line",
+        pdevice(PPLATFORM, DEVICE_SKIP), nothing),
+    ("the parallel form: a `metal` group and the plain line", pdevice(PPLAIN), NOT_PLATFORM),
+    ("the parallel form: no `metal` group and the platform line", prt(PPLAIN => PPLATFORM),
+        NO_METAL),
+    ("the parallel form: a `cuda` group and the plain line", pdevice(PPLAIN; g = "cuda"), nothing),
+    ("the parallel form: the platform line of the serial form",
+        pdevice(PLATFORM), NOT_PLATFORM),
+    ("the parallel form: a reordered condition of the platform line",
+        pdevice(replace(PPLATFORM,
+            "Sys.isapple() && Sys.ARCH === :aarch64" => "Sys.ARCH === :aarch64 && Sys.isapple()")),
+        NOT_PLATFORM)
 ]
 
 @testset "the platform GROUPS line and the device skip" begin
@@ -588,6 +743,10 @@ const CI_GROUP_CASES = [
         merge(grouped(toml = GROUPED_TOML * "workflows = [\"ci.yml\"]\n"),
             Changes(".github/workflows/ci.yml" => "name: CI\n")),
         ["[ci-groups] workflow \"ci.yml\" of test/ci-groups.toml is not an extra workflow file name"]),
+    ("a group file whose workflows name the installed Downgrade.yml",
+        merge(grouped(toml = GROUPED_TOML * "workflows = [\"Downgrade.yml\"]\n"),
+            Changes(".github/workflows/Downgrade.yml" => "name: Downgrade\n")),
+        ["[ci-groups] workflow \"Downgrade.yml\" of test/ci-groups.toml is not an extra workflow file name"]),
     ("a group file whose workflows are no list", grouped(toml = GROUPED_TOML * "workflows = \"Metal.yml\"\n"),
         ["[ci-groups] `workflows` of test/ci-groups.toml is not a list of file names"]),
     ("a group file whose groups are no list of names", grouped(toml = "groups = \"core\"\n"),
@@ -599,6 +758,33 @@ const CI_GROUP_CASES = [
             "[D5] GROUPS is not `isempty(ARGS) ? [\"core\", \"slow\"] : ARGS`",
             "[D5] group \"long\" is not one of core, slow, doctests, metal, cuda, broken"])
 ]
+
+"""
+The parallel fixture with a test/ci-groups.toml of the text `toml`, the GROUPS line `line`, and a
+group in TESTS for each of `groups`, which holds test/integration/<group>.jl.
+"""
+function pgrouped(; toml = GROUPED_TOML,
+        line = "const GROUPS = isempty(SELECTED) ? [\"core\", \"slow\", \"long\"] : SELECTED\n",
+        groups = ["slow", "long"])
+    block = join("    \"$g\" => [\n        \"$(uppercasefirst(g))\" => \"integration/$g.jl\",\n    ],\n"
+                 for g in groups)
+    merge(prt(PPLAIN => line, "    \"doctests\" => [" => block * "    \"doctests\" => ["),
+        Changes("test/integration/$g.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n"
+                for g in groups),
+        Changes("test/ci-groups.toml" => toml))
+end
+
+push!(CI_GROUP_CASES,
+    ("the parallel form: a group file, its GROUPS line and a group of TESTS per group",
+        pgrouped(), String[]),
+    ("the parallel form: a group of the group file that is no group of TESTS",
+        pgrouped(groups = ["slow"]),
+        ["[ci-groups] group \"long\" of test/ci-groups.toml has no group in TESTS"]),
+    ("the parallel form: a group file and the plain GROUPS line", pgrouped(line = PPLAIN),
+        ["[D5] GROUPS is not `isempty(SELECTED) ? [\"core\", \"slow\", \"long\"] : SELECTED`"]),
+    ("the parallel form: a group of TESTS that the group file does not list",
+        pgrouped(groups = ["slow", "long", "huge"]),
+        ["[D5] group \"huge\" is not one of core, slow, doctests, metal, cuda, broken, long"]))
 
 @testset "test/ci-groups.toml" begin
     @testset "$what" for (what, change, texts) in CI_GROUP_CASES
@@ -660,4 +846,173 @@ end
     @test code == 1
     @test !isempty(lines)
     @test all(l -> occursin("[$rule]", l), lines)
+end
+
+# (what, change, the texts of its violations; each text ends one line)
+const PARALLEL_CASES = [
+    ("TESTS is a chained assignment", prt("const TESTS = [" => "const TESTS = TABLE = ["),
+        ["[D2] runtests.jl:4: TESTS is not a literal vector of `\"<group>\" => [\"<label>\" => \"<path>\", ...]` pairs"]),
+    ("no TESTS", prt("const TESTS = [" => "const TABLE = ["),
+        ["[D2] runtests.jl:4: const is not a statement of the parallel form",
+            "[D2] runtests.jl does not define TESTS"]),
+    ("a group with no file", prt(PBROKEN => "    \"slow\" => [],\n" * PBROKEN),
+        ["[D2] runtests.jl:4: group \"slow\" of TESTS has no file"]),
+    ("a group twice",
+        prt("        \"Whole package\"" => "    ],\n    \"core\" => [\n        \"Whole package\""),
+        ["[D2] group \"core\" is in TESTS more than once"]),
+    ("no group core", prt("\"core\" => [" => "\"slow\" => ["),
+        ["[D2] TESTS has no group \"core\""]),
+    ("retries = 2", prt("retries = 0," => "retries = 2,"),
+        ["[D2] runtests.jl:24: call is not a statement of the parallel form",
+            "[D2] runtests.jl has no `runtests(Fixture, filter(startswith(\"--\"), ARGS);` of the parallel form"]),
+    ("using SafeTestsets beside using ParallelTestRunner",
+        prt("using ParallelTestRunner\n" => "using ParallelTestRunner\nusing SafeTestsets\n"),
+        ["[D2] runtests.jl:2: `using SafeTestsets` is of the serial form, in a runtests.jl of the parallel form"]),
+    ("an `if` of a group in the parallel form",
+        prt(PRUNTESTS => "if \"core\" in GROUPS\nend\n" * PRUNTESTS),
+        ["[D2] runtests.jl:24: `if \"core\" in GROUPS` is of the serial form, in a runtests.jl of the parallel form"]),
+    ("a statement out of its order",
+        prt("using ParallelTestRunner\nusing Fixture\n" => "using Fixture\nusing ParallelTestRunner\n"),
+        ["[D2] runtests.jl:2: using is out of the order of the parallel form"]),
+    ("a statement after one that follows it in the template",
+        prt("using Fixture\n\n" => "\n", "const SELECTED" => "using Fixture\nconst SELECTED"),
+        ["[D2] runtests.jl:17: using is out of the order of the parallel form"]),
+    ("a statement twice", prt("using Fixture\n" => "using Fixture\nusing Fixture\n"),
+        ["[D2] runtests.jl:3: using is repeated"]),
+    ("GROUPS twice", prt(PPLAIN => PPLAIN * PPLAIN),
+        ["[D5] runtests.jl:20: GROUPS is defined again"]),
+    ("no GROUPS", prt(PPLAIN => ""), ["[D5] runtests.jl does not define GROUPS"]),
+    ("GROUPS from ARGS",
+        prt(PPLAIN => "const GROUPS = isempty(ARGS) ? [\"core\", \"slow\"] : ARGS\n"),
+        ["[D5] GROUPS is not `isempty(SELECTED) ? [\"core\", \"slow\"] : SELECTED`"]),
+    ("a nested runtests.jl",
+        merge(prt("integration/solve.jl" => "integration/runtests.jl"),
+            Changes("test/integration/solve.jl" => nothing,
+                "test/integration/runtests.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n")),
+        ["[D2] runtests.jl includes a nested runtests.jl: integration/runtests.jl"]),
+    ("a label twice", prt("\"Whole package\"" => "\"Options\""),
+        ["[label] the label \"Options\" is used more than once"]),
+    ("an interpolated label", prt("\"Whole package\"" => "\"Whole \$(1) package\""),
+        ["[label] the label \"Whole \$(1) package\" is not a plain string"]),
+    ("a path in two groups",
+        prt(PBROKEN => "    \"slow\" => [\n        \"Again\" => \"base/options.jl\",\n    ],\n" * PBROKEN),
+        ["[D8] base/options.jl is listed more than once"]),
+    ("a broken file with its issue on the line of its group",
+        prt("   # issue #12" => "", PBROKEN => "    \"broken\" => [   # issue #12\n"),
+        ["[D10] base/old_api.jl is in `broken` with no issue on its line"]),
+    ("a statement that the parser warns about",
+        Changes("test/runtests.jl" => PARALLEL * "try nothing finally nothing catch end\n"),
+        ["[D2] runtests.jl:32: try is not a statement of the parallel form"]),
+    ("the two `using` joined by `;`",
+        prt("using ParallelTestRunner\nusing Fixture\n" => "using ParallelTestRunner; using Fixture\n"),
+        ["[D2] runtests.jl:1: toplevel is not a statement of the parallel form",
+            "[D2] runtests.jl has no `using ParallelTestRunner` of the parallel form",
+            "[D2] runtests.jl has no `using Fixture` of the parallel form"])
+]
+
+@testset "the parallel form names the package of Project.toml" begin
+    other = Changes("Project.toml" =>
+        replace(ROOT_PROJECT, "name = \"Fixture\"" => "name = \"Other\""))
+    code, lines = check(fixture(merge(other,
+        prt("using Fixture\n" => "using Other\n", PRUNTESTS =>
+            replace(PRUNTESTS, "Fixture" => "Other")))))
+    @test code == 0
+    @test isempty(lines)
+    code, lines = check(fixture(merge(other, prt())))
+    @test code == 1
+    @test any(l -> endswith(l, ": [D2] runtests.jl has no `using Other` of the parallel form"), lines)
+end
+
+@testset "the parallel form: a Project.toml with no name" begin
+    code, lines = check(fixture(merge(prt(),
+        Changes("Project.toml" => replace(ROOT_PROJECT, "name = \"Fixture\"\n" => "")))))
+    @test code == 1
+    @test any(l -> endswith(l,
+            ": [D2] runtests.jl has the parallel form, and Project.toml names no package for its `using` and `runtests`"),
+        lines)
+end
+
+@testset "the parallel form is the top-level runtests.jl only" begin
+    # a nested runtests.jl in the parallel form is walked as any nested file: its quoted
+    # `include` is not a literal
+    code, lines = check(fixture(merge(
+        rt("include(\"integration/solve.jl\")" => "include(\"integration/runtests.jl\")"),
+        Changes("test/integration/solve.jl" => nothing, "test/integration/runtests.jl" => PARALLEL))))
+    @test code == 1
+    @test any(l -> occursin("[D2] integration/runtests.jl:24: `include` of a path that is not a literal", l),
+        lines)
+end
+
+@testset "the parallel form: $what" for (what, change, texts) in PARALLEL_CASES
+    code, lines = check(fixture(change))
+    @test code == 1
+    @test length(lines) == length(texts)
+    @test all(t -> any(l -> endswith(l, ": " * t), lines), texts)
+end
+
+@testset "the parallel form: what is no violation" for change in (
+# a `broken` file with its issue on its own line, among several lines
+    prt(PBROKEN => PBROKEN * "        \"Old\" => \"base/old.jl\",   # issue #13\n"),
+# a formatter's layout and comments: the statements are compared as expressions
+    prt("isempty(UNKNOWN) ||\n    error(" => "# stop at an unknown group\nisempty(UNKNOWN) || error(",
+        "    retries = 0,\n" => "    retries = 0,   # no retry hides a failure\n"),
+# a `slow` group, and a group of the convention outside the defaults
+    prt(PBROKEN => "    \"slow\" => [\n        \"Slow\" => \"integration/slow.jl\",\n    ],\n" * PBROKEN))
+    files = Changes("test/base/old.jl" => "using Test, Fixture\n@test_broken Fixture.h() == 1   # issue #13\n",
+        "test/integration/slow.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n")
+    used = Changes(k => v for (k, v) in files if occursin(replace(k, "test/" => ""), change["test/runtests.jl"]))
+    code, lines = check(fixture(merge(change, used)))
+    @test code == 0
+    @test isempty(lines)
+end
+
+"""
+Run `test/runtests.jl` of the fixture package `dir`, the template of test-layout.jl, with `args`,
+with the harness's Julia environment in the load path; return (exit code, output).
+"""
+function run_template(dir, args...)
+    env = get(ENV, "RESEARCH_HARNESS_JULIA",
+        joinpath(homedir(), ".local", "share", "research-harness", "julia"))
+    cmd = `$(Base.julia_cmd()) --startup-file=no --project=$dir $(joinpath(dir, "test", "runtests.jl")) $args`
+    out = IOBuffer()
+    code = run(pipeline(ignorestatus(addenv(cmd, "JULIA_LOAD_PATH" => "@:$env:@stdlib"));
+        stdout = out, stderr = out)).exitcode
+    return code, String(take!(out))
+end
+
+@testset "the parallel template runs its groups" begin
+    table = """[
+        "core" => ["One" => "base/one.jl"],
+        "slow" => ["Two" => "integration/two.jl"],
+        "flaky" => ["Flaky" => "integration/flaky.jl"],
+    ]"""
+    dir = mktempdir()
+    files = Dict(
+        "Project.toml" => "name = \"Fixture\"\nuuid = \"01234567-89ab-cdef-0123-456789abcdef\"\n",
+        "src/Fixture.jl" => "module Fixture\nf() = 1\nend\n",
+        "test/runtests.jl" => L.parallel_runtests("Fixture", table, "[\"core\", \"slow\"]"),
+        "test/base/one.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n",
+        "test/integration/two.jl" => "using Test, Fixture\n@test Fixture.f() == 1\n",
+        # fails on its first run, and passes on a re-run
+        "test/integration/flaky.jl" => "using Test\nmarker = joinpath(@__DIR__, \"ran\")\nfirst_run = !isfile(marker)\ntouch(marker)\n@test !first_run\n")
+    for (path, text) in files
+        mkpath(dirname(joinpath(dir, path)))
+        write(joinpath(dir, path), text)
+    end
+    # the default groups, core and slow, and not the group flaky
+    code, out = run_template(dir)
+    @test code == 0
+    @test occursin("One", out) && occursin("Two", out) && !occursin("Flaky", out)
+    # --jobs=2 goes to the runner, not to the groups
+    code, out = run_template(dir, "--jobs=2", "core")
+    @test code == 0
+    @test occursin("One", out) && !occursin("Two", out)
+    # an unknown group stops the run, with the template's message
+    code, out = run_template(dir, "nosuch")
+    @test code != 0
+    @test occursin("no test group nosuch in runtests.jl; its groups are core, slow, flaky", out)
+    # a file that fails fails the run, and no retry runs it again
+    code, out = run_template(dir, "flaky")
+    @test code != 0
+    @test isfile(joinpath(dir, "test", "integration", "ran"))
 end
