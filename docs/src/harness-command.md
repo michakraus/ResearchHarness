@@ -623,12 +623,12 @@ harness workflows [--apply]
 ```
 
 Copies the canonical files of `githooks/workflows/` into each package and experiment that has a
-`Project.toml`: `CI.yml`, `dependabot.yml` and `codecov.yml` into each, `TagBot.yml` into each
-package, and `Documenter.yml` where a tracked `docs/make.jl` exists. A repository that the profile
-keys `docs_exceptions` or `docs_additions` name keeps its own documentation workflow. It copies
-`Dependents.yml` to `.github/workflows/Dependents.yml` and `dependents.jl` to
-`.github/dependents.jl` of each base that the profile key `dependents_bases` names, and deletes
-both from every other repository. It deletes the retired `CompatHelper.yml`.
+`Project.toml`: `CI.yml`, `Downgrade.yml`, `dependabot.yml` and `codecov.yml` into each,
+`TagBot.yml` into each package, and `Documenter.yml` where a tracked `docs/make.jl` exists. A
+repository that the profile keys `docs_exceptions` or `docs_additions` name keeps its own
+documentation workflow. It copies `Dependents.yml` to `.github/workflows/Dependents.yml` and
+`dependents.jl` to `.github/dependents.jl` of each base that the profile key `dependents_bases`
+names, and deletes both from every other repository. It deletes the retired `CompatHelper.yml`.
 
 **Exit status:** 0 when every file is current, or after `--apply`; 1 when the dry run has a
 change. 2 when a template is missing. 2 also when `dependents_bases` names a repository that is
@@ -683,10 +683,11 @@ harness ci-protection [--apply] [--remove-classic]
 ```
 
 Protects the default branch of each repository that has a `CI.yml` with a GitHub ruleset named
-`main`, which requires the status checks of the canonical `CI.yml`. A repository with a
-`test/ci-groups.toml` requires one check per test group, version and system, as `CI.yml` names its
-jobs there, and the jobs of each workflow that the file names in `workflows`, such as
-`Metal.yml`. Then it protects the Harness
+`main`, which requires the status checks that the canonical `CI.yml` reports on every pull
+request: Julia `min` and `1` on Ubuntu, Julia `1` on macOS and Windows, and the doctests. A
+repository with a `test/ci-groups.toml` requires each of these Julia checks once per test group,
+as `CI.yml` names its jobs there, and the jobs of each workflow that the file names in
+`workflows`, such as `Metal.yml`. Then it protects the Harness
 itself, the checkout that runs the command, with the same ruleset; there the required checks are
 the jobs of `.github/workflows/test.yml` that report on every pull request and are not warnings.
 It also turns on auto-merge and the deletion of merged branches. It reads the current state first

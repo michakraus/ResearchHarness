@@ -50,7 +50,7 @@ const CI_GROUP_NAME = r"^[a-z][a-z0-9]*$"
 # an extra workflow of test/ci-groups.toml, and the installed ones it may not name, in lower case
 # because APFS finds `ci.yml` as CI.yml
 const CI_WORKFLOW_NAME = r"^[A-Za-z0-9_-]+\.yml$"
-const INSTALLED_WORKFLOWS = ("ci.yml", "documenter.yml", "tagbot.yml")
+const INSTALLED_WORKFLOWS = ("ci.yml", "documenter.yml", "downgrade.yml", "tagbot.yml")
 const GATE = r"\b(ARGS|ENV)\b"
 const ISSUE = r"#\d+|issues/\d+"
 # the top-level directories of test/ that mirror no directory of src/
