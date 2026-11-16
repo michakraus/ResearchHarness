@@ -274,10 +274,10 @@ process ID of `agentbox`, which `exec` hands on to `srt`, so the broker exits wh
 the socket exists, within 5 seconds, `agentbox` exports its path as `AGENTBOX_BROKER`. Where the
 interpreter is not an executable file, the hook is not a readable file, the directory cannot be
 made, or no socket appears, it exports no `AGENTBOX_BROKER`, not even the caller's, prints one
-line on stderr that names
-the cause, and starts the frontend all the same; the worktree hook then fails closed. Every
-frontend's settings file names the directory in `network.allowUnixSockets` and allows no write to
-it, so a process in the sandbox can connect to the broker and cannot bind or plant a socket there.
+line on stderr that names the cause, and starts the frontend all the same; the worktree hook then
+fails closed. Every frontend's settings file names the directory in `network.allowUnixSockets` and
+allows no write to it, so a process in the sandbox can connect to the broker and cannot bind or
+plant a socket there.
 
 `agentbox` exits with status 2, starts nothing and prints one line on stderr when:
 

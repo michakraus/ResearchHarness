@@ -537,9 +537,8 @@ and the broker runs the create or the remove above in a process of its own, with
 `GIT_TERMINAL_PROMPT=0`, and replies with the path or the error. The broker answers a request
 larger than 64 KiB, one that is no JSON object, one of another event, and one whose process
 cannot start with an error, and exits, removing its socket, when its parent ends or on `SIGTERM`
-or `SIGHUP`. The
-broker covers the worktrees of the hook only: a `git pull`, `git switch` or `git rebase` inside
-`agentbox` that changes `.githooks/` still fails.
+or `SIGHUP`. The broker covers the worktrees of the hook only: a `git pull`, `git switch` or
+`git rebase` inside `agentbox` that changes `.githooks/` still fails.
 
 It fails closed: on each error it exits with status 1 and gives the reason, and it creates no
 worktree. Under `AGENTBOX`, a missing or empty `AGENTBOX_BROKER`, a broker that does not answer
