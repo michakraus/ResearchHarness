@@ -1010,3 +1010,24 @@
   branch is unchanged.
 - kind: defect
 - found: 2026-11-15, the spec of part D4 of the sandbox plan
+
+### K167 · BlueStyle turns the platform `GROUPS` line of both forms of `runtests.jl` into an `if` block, and `test-layout.jl` then reports D5.
+
+- location: `scripts/test-layout.jl:402-411`
+- evidence: the checker compares `GROUPS` with the expression
+  `isempty(sel) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? [..., "metal"] : [...]) : sel`.
+  JuliaFormatter with `style = "blue"` rewrites the inner ternary into an `if` block, so a
+  repository with a `metal` group gets `[D5] GROUPS is not the platform form`. SciML, the house
+  style, Default and YAS keep the ternary and pass. The serial form's platform line has the same
+  shape.
+- kind: found late
+- found: #328
+
+### K168 · Three comments of `test-layout.jl` say "the groups that an empty `ARGS` runs", which is incomplete for the parallel form.
+
+- location: `scripts/test-layout.jl:168`
+- evidence: the lines 168, 301 and 364 say "an empty `ARGS`". In the parallel form an `ARGS` of
+  only `--` arguments, such as `["--jobs=3"]`, gives an empty `SELECTED` and runs the same
+  default groups. The rest of the file says "an empty selection".
+- kind: docs
+- found: #328
