@@ -7,10 +7,16 @@
 # of the convention, and `using`, `seed`, `label`, `compat` and `ci-groups` for the rules that have
 # no number.
 #
+# runtests.jl has one of two forms. The serial form is `using SafeTestsets`, GROUPS, and one
+# `if "<group>" in GROUPS` of `@safetestset` lines per group. The parallel form, `using
+# ParallelTestRunner`, is the template `PARALLEL_RUNTESTS` with a literal table `TESTS` of
+# group => label => path; ParallelTestRunner runs each file in a worker process. The rules are the
+# same for the files of both forms.
+#
 # The rule `ci-groups` judges test/ci-groups.toml, the optional list of the groups that CI runs as
-# one job each (`ci_groups`). Its groups are the groups that an empty ARGS runs, in place of
-# `core` and `slow`: GROUPS lists them, each has an `if` in runtests.jl, and they may be names
-# outside the convention's.
+# one job each (`ci_groups`). Its groups are the groups that an empty selection runs, in place of
+# `core` and `slow`: GROUPS lists them, each has an `if` in runtests.jl or a group in its TESTS,
+# and they may be names outside the convention's.
 #
 # Two rules are not checked here, because no layout shows them: D6, the 60 s budget of a `core`
 # file, cold, and the JET half of D4, `test/quality/jet.jl` where the package has a hot or kernel
@@ -30,14 +36,132 @@
 
 using TOML
 
-"One `include` of a test file, as `runtests.jl` reaches it."
+"One `include` of a test file, as `runtests.jl` reaches it, or one file of `TESTS`."
 struct Entry
     path::String                  # absolute, normalised
-    kind::Symbol                  # :safetestset, :testset or :bare
+    kind::Symbol                  # :safetestset, :testset, :bare, or :parallel for TESTS
     label::Any                    # the testset label as parsed, or nothing
-    group::Union{String, Nothing} # the `if "<group>" in GROUPS` around it
+    group::Union{String, Nothing} # the `if "<group>" in GROUPS` around it, or its group of TESTS
     file::String                  # the runtests.jl that includes it
-    line::Int
+    line::Int                     # the line of its statement, or of its pair in TESTS
+end
+
+"""
+The parallel form of `runtests.jl`, with three placeholders: `PACKAGE` for the package,
+`TABLE` for the literal vector of `TESTS`, and `DEFAULT` for the groups that an empty selection
+runs. `parallel_runtests` fills them in. The checker compares a `runtests.jl` in this form with
+these statements, as expressions; `TESTS` and `GROUPS` it judges by their own rules.
+"""
+const PARALLEL_RUNTESTS = raw"""
+using ParallelTestRunner
+using PACKAGE
+
+const TESTS = TABLE
+
+const SELECTED = filter(!startswith("--"), ARGS)
+const GROUPS = isempty(SELECTED) ? DEFAULT : SELECTED
+const UNKNOWN = setdiff(SELECTED, first.(TESTS))
+isempty(UNKNOWN) ||
+    error("no test group ", join(UNKNOWN, ", "), " in runtests.jl; its groups are ", join(first.(TESTS), ", "))
+
+runtests(PACKAGE, filter(startswith("--"), ARGS);
+    testsuite = Dict(label => :(include($(joinpath(@__DIR__, path))))
+                     for (group, files) in TESTS if group in GROUPS for (label, path) in files),
+    serial = [label for (group, files) in TESTS if group in ("metal", "cuda") for (label, _) in files],
+    serial_position = :after,
+    retries = 0,
+    exeflags = ["--threads=$(Threads.nthreads())"],
+    max_default_jobs = max(1, Sys.CPU_THREADS ÷ Threads.nthreads()))
+"""
+
+"""
+    parallel_runtests(package, table, default) -> String
+
+The text of `runtests.jl` in the parallel form for the package `package`, whose `TESTS` is the
+source text `table` and whose empty selection runs the groups of the source text `default`, such
+as `["core", "slow"]`.
+"""
+function parallel_runtests(package, table, default)
+    replace(PARALLEL_RUNTESTS, "PACKAGE" => package, "TABLE" => table, "DEFAULT" => default)
+end
+
+"""
+Whether the parsed `runtests` is in the parallel form: it has `using ParallelTestRunner`, also
+among statements joined by `;` on one line, which parse to one `toplevel` statement.
+"""
+function is_parallel(runtests)
+    any(
+        s -> s == :(using ParallelTestRunner) ||
+             s isa Expr && s.head === :toplevel && is_parallel(s),
+        runtests.args)
+end
+
+"Whether the statement `s` is `const <name> = …`."
+function is_def(s, name)
+    s isa Expr && s.head === :const && s.args[1] isa Expr && s.args[1].head === :(=) &&
+        s.args[1].args[1] === name
+end
+
+"The first definition of `TESTS` among the statements of `runtests`, or nothing."
+function tests_def(runtests)
+    i = findfirst(s -> is_def(s, :TESTS), runtests.args)
+    i === nothing ? nothing : runtests.args[i]
+end
+
+"Whether `ex` is the call `a => b`."
+function is_pair(ex)
+    ex isa Expr && ex.head === :call && length(ex.args) == 3 && ex.args[1] === :(=>)
+end
+
+"""
+The table of the definition `s` of `TESTS`, as `group => [label => path, ...]`, or nothing where it
+is not a literal vector of `"<group>" => ["<label>" => "<path>", ...]` pairs. A label is kept as
+parsed, for the rule `label`.
+"""
+function tests_table(s)
+    v = s.args[1].args[2]
+    v isa Expr && v.head === :vect || return nothing
+    table = Pair{String, Vector{Pair{Any, String}}}[]
+    for g in v.args
+        is_pair(g) && g.args[2] isa String && g.args[3] isa Expr &&
+        g.args[3].head === :vect ||
+            return nothing
+        files = Pair{Any, String}[]
+        for f in g.args[3].args
+            is_pair(f) && f.args[3] isa String || return nothing
+            push!(files, f.args[2] => f.args[3])
+        end
+        push!(table, g.args[2] => files)
+    end
+    return table
+end
+
+"The groups of `TESTS` in the parsed `runtests`, in order; none where `TESTS` is not a literal."
+function tests_groups(runtests)
+    s = tests_def(runtests)
+    table = s === nothing ? nothing : tests_table(s)
+    table === nothing ? String[] : first.(table)
+end
+
+"""
+The line of each `"<label>" => "<path>"` pair of the first `TESTS` of `file`, in order.
+`Meta.parseall` puts no line number inside a vector, so the lines come from the syntax tree. A
+warning of the parser does not stop it, as it does not stop `Meta.parseall` in `parsefile`: the
+statement it warns about is judged as any other.
+"""
+function tests_lines(file)
+    JS = Base.JuliaSyntax
+    kids = JS.children
+    tree = JS.parseall(JS.SyntaxNode, read(file, String); filename = file,
+        ignore_warnings = true)
+    for s in kids(tree)
+        is_def(Expr(s), :TESTS) || continue
+        table = kids(kids(s)[1])[2]
+        # the line of the label: a pair's own range starts at the line break before it
+        return [JS.source_line(first(kids(f))) for g in kids(table)
+                for f in kids(last(kids(g)))]
+    end
+    return Int[]
 end
 
 const GROUP_NAMES = ("core", "slow", "doctests", "metal", "cuda", "broken")
@@ -78,15 +202,35 @@ function files_in(dir, ext)
           for f in fs if endswith(f, ext)])
 end
 
-"Walk `runtests.jl` and every nested `runtests.jl` it includes."
+"""
+Walk `runtests.jl` and every nested `runtests.jl` it includes; or, where `runtests.jl` is in the
+parallel form (`form`), read the files of its `TESTS`.
+"""
 function layout(repo)
     t = joinpath(repo, "test")
     acc = (entries = Entry[], nested = String[], gates = Ref(0),
         nonliteral = Tuple{String, Int}[], parse_errors = String[])
+    top = normpath(joinpath(t, "runtests.jl"))
     function scan(file)
         isfile(file) || return nothing
         ast = parsefile(file)
         ast === nothing && (push!(acc.parse_errors, file); return nothing)
+        # the parallel form lists its files in TESTS, and runs nothing else
+        if normpath(file) == top && is_parallel(ast)
+            s = tests_def(ast)
+            table = s === nothing ? nothing : tests_table(s)
+            table === nothing && return ast
+            pairs = [(g, label, path) for (g, files) in table for (label, path) in files]
+            lines = tests_lines(file)
+            length(lines) == length(pairs) ||
+                error("$file: $(length(lines)) lines for the $(length(pairs)) files of TESTS")
+            for ((g, label, path), line) in zip(pairs, lines)
+                p = normpath(joinpath(dirname(file), path))
+                basename(p) == "runtests.jl" ? push!(acc.nested, p) :
+                push!(acc.entries, Entry(p, :parallel, label, g, file, line))
+            end
+            return ast
+        end
         line = Ref(0)
         function walk(ex, ctx, group)
             ex isa LineNumberNode && (line[] = ex.line; return)
@@ -126,8 +270,9 @@ function layout(repo)
     suites = separate_suites(t, acc.entries)
     inside(f) = any(s -> startswith(f, joinpath(s, "")), suites)
     # a nested runtests.jl is a file like any other: reached through `nested`, or not listed
-    files = filter(f -> f != normpath(joinpath(t, "runtests.jl")) && !inside(f), files_in(t, ".jl"))
-    return (; repo, test = t, files, suites, runtests, acc.entries, acc.nested,
+    files = filter(f -> f != top && !inside(f), files_in(t, ".jl"))
+    form = runtests !== nothing && is_parallel(runtests) ? :parallel : :serial
+    return (; repo, test = t, files, suites, runtests, form, acc.entries, acc.nested,
         gates = acc.gates[], acc.nonliteral, acc.parse_errors)
 end
 
@@ -231,10 +376,7 @@ end
 
 "The definitions of `GROUPS` among the statements of `runtests`, without line numbers."
 function groups_defs(runtests)
-    [Base.remove_linenums!(deepcopy(s))
-     for s in runtests.args
-     if s isa Expr && s.head === :const && s.args[1] isa Expr &&
-            s.args[1].head === :(=) && s.args[1].args[1] === :GROUPS]
+    [Base.remove_linenums!(deepcopy(s)) for s in runtests.args if is_def(s, :GROUPS)]
 end
 
 """
@@ -242,43 +384,48 @@ end
 
 The violations, as `(rule, what)`, of the groups of `repo`, whose parsed `runtests.jl` is
 `runtests`: the form of `test/ci-groups.toml`, a group of `runtests.jl` that is not a name of the
-convention or of that file, a group of that file without an `if`, and a `GROUPS` that does not run
-those groups for an empty `ARGS`. A repository with a `metal` group has the platform form of
-`GROUPS`, and only it. `verify-workflows.jl` reads the same function.
+convention or of that file, a group of that file that `runtests.jl` does not have, and a `GROUPS`
+that does not run those groups for an empty selection. The groups of `runtests.jl` are its `if`
+blocks, or in the parallel form the groups of `TESTS`, whose selection is `SELECTED` in place of
+`ARGS`. A repository with a `metal` group has the platform form of `GROUPS`, and only it.
+`verify-workflows.jl` reads the same function.
 """
 function groups_violations(repo, runtests)
     out = Tuple{String, String}[]
     groups, problems = ci_groups(repo)
     foreach(p -> push!(out, ("ci-groups", p)), problems)
     default = something(groups, DEFAULT_GROUPS)
-    ifs = group_ifs(runtests)
-    plain = :(const GROUPS = isempty(ARGS) ? $(Expr(:vect, default...)) : ARGS)
-    platform = :(const GROUPS = isempty(ARGS) ?
+    parallel = is_parallel(runtests)
+    declared = parallel ? tests_groups(runtests) : group_ifs(runtests)
+    sel = parallel ? :SELECTED : :ARGS
+    plain = :(const GROUPS = isempty($sel) ? $(Expr(:vect, default...)) : $sel)
+    platform = :(const GROUPS = isempty($sel) ?
                                 (Sys.isapple() && Sys.ARCH === :aarch64 ?
                                  $(Expr(:vect, default..., "metal")) :
                                  $(Expr(:vect, default...))) :
-                                ARGS)
+                                $sel)
     for def in groups_defs(runtests)
-        if "metal" in ifs
+        if "metal" in declared
             def == platform || push!(out,
                 ("D5",
-                    "GROUPS is not the platform form, `isempty(ARGS) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? $(repr([default; "metal"])) : $(repr(default))) : ARGS`, which a repository with a `metal` group has"))
+                    "GROUPS is not the platform form, `isempty($sel) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? $(repr([default; "metal"])) : $(repr(default))) : $sel`, which a repository with a `metal` group has"))
         elseif def == platform
             push!(out, ("D5",
                 "GROUPS has the platform form, and the repository has no `metal` group"))
         else
             def == plain ||
                 push!(out, (
-                    "D5", "GROUPS is not `isempty(ARGS) ? $(repr(default)) : ARGS`"))
+                    "D5", "GROUPS is not `isempty($sel) ? $(repr(default)) : $sel`"))
         end
     end
     names = union(GROUP_NAMES, default)
-    for g in unique(ifs)
+    for g in unique(declared)
         g in names || push!(out, ("D5", "group \"$g\" is not one of $(join(names, ", "))"))
     end
     for g in something(groups, String[])
-        g in ifs || push!(out, ("ci-groups",
-            "group \"$g\" of test/ci-groups.toml has no `if` in runtests.jl"))
+        g in declared || push!(out,
+            ("ci-groups",
+                "group \"$g\" of test/ci-groups.toml has no $(parallel ? "group in TESTS" : "`if` in runtests.jl")"))
     end
     return out
 end
@@ -374,6 +521,93 @@ function broken_marks(ast, lines; device = false)
     return marks
 end
 
+"""
+`ex` without line numbers, so that two statements compare as expressions. A macro call keeps the
+place of its line, as `nothing`: `remove_linenums!` leaves it, with the file and the line.
+"""
+function without_lines(ex)
+    ex isa Expr || return ex
+    ex.head === :macrocall &&
+        return Expr(:macrocall, ex.args[1], nothing, map(without_lines, ex.args[3:end])...)
+    return Expr(ex.head, (without_lines(a) for a in ex.args if !(a isa LineNumberNode))...)
+end
+
+"""
+The statements of the parallel form for `package`, as `(text, statement)`: the statement's first
+line in `PARALLEL_RUNTESTS`, and the statement without line numbers.
+"""
+function template_statements(package)
+    text = parallel_runtests(package, "[]", "[]")
+    lines = split(text, '\n')
+    out = Tuple{String, Any}[]
+    line = 0
+    for s in Meta.parseall(text).args
+        s isa LineNumberNode && (line = s.line; continue)
+        push!(out, (strip(lines[line]), without_lines(s)))
+    end
+    return out
+end
+
+"""
+Report through `v(rule, what)` the violations of the statements of `runtests`, in the parallel
+form for `package`: each statement is one of the template's, in its order, once; `TESTS` is a
+literal table with a group `core`, each group once and with a file. Return whether `TESTS` reads
+as a table, so that its files can be judged.
+"""
+function parallel_violations(v, runtests, package)
+    expected = template_statements(package)
+    role(s) = is_def(s, :TESTS) ? :TESTS : is_def(s, :GROUPS) ? :GROUPS : nothing
+    matches(e, s) = role(e) === nothing ? s == e : role(s) === role(e)
+    seen = Int[]
+    line, tline = 0, 0
+    for s in runtests.args
+        s isa LineNumberNode && (line = s.line; continue)
+        serial = s == :(using SafeTestsets) ? "using SafeTestsets" :
+                 s isa Expr && s.head === :if && group_of(s.args[1]) !== nothing ?
+                 "if $(repr(group_of(s.args[1]))) in GROUPS" : nothing
+        if serial !== nothing
+            v("D2", "runtests.jl:$line: `$serial` is of the serial form, in a runtests.jl of the parallel form")
+            continue
+        end
+        c = without_lines(s)
+        i = findfirst(((_, e),) -> matches(e, c), expected)
+        if i === nothing
+            v("D2", "runtests.jl:$(describe(s, line)) is not a statement of the parallel form")
+        elseif i in seen
+            role(c) === :GROUPS ? v("D5", "runtests.jl:$line: GROUPS is defined again") :
+            v("D2", "runtests.jl:$(describe(s, line)) is repeated")
+        else
+            !isempty(seen) && i < maximum(seen) &&
+                v("D2", "runtests.jl:$(describe(s, line)) is out of the order of the parallel form")
+            role(c) === :TESTS && (tline = line)
+            push!(seen, i)
+        end
+    end
+    for (i, (text, e)) in enumerate(expected)
+        i in seen && continue
+        role(e) === :GROUPS ? v("D5", "runtests.jl does not define GROUPS") :
+        role(e) === :TESTS ? v("D2", "runtests.jl does not define TESTS") :
+        v("D2", "runtests.jl has no `$text` of the parallel form")
+    end
+    s = tests_def(runtests)
+    s === nothing && return false
+    table = tests_table(s)
+    if table === nothing
+        v("D2",
+            "runtests.jl:$tline: TESTS is not a literal vector of `\"<group>\" => [\"<label>\" => \"<path>\", ...]` pairs")
+        return false
+    end
+    groups = first.(table)
+    for g in unique(groups)
+        count(==(g), groups) > 1 && v("D2", "group \"$g\" is in TESTS more than once")
+    end
+    for (g, files) in table
+        isempty(files) && v("D2", "runtests.jl:$tline: group \"$g\" of TESTS has no file")
+    end
+    "core" in groups || v("D2", "TESTS has no group \"core\"")
+    return true
+end
+
 "The violations of the test convention in `repo`, one string per violation."
 function violations(repo)
     out = String[]
@@ -419,44 +653,55 @@ function violations(repo)
     end
     isempty(L.parse_errors) || return out
 
-    # D2, D5: runtests.jl is `using SafeTestsets`, GROUPS, and one `if` per group of @safetestset;
     # D5, ci-groups: the groups and the form of GROUPS, as `groups_violations` judges them
     for (rule, what) in groups_violations(repo, L.runtests)
         v(rule, what)
     end
-    seen = String[]
-    line = 0
-    for s in L.runtests.args
-        s isa LineNumberNode && (line = s.line; continue)
-        if s == :(using SafeTestsets)
-            "using" in seen &&
-                v("D2", "runtests.jl:$line: `using SafeTestsets` is repeated")
-            push!(seen, "using")
-        elseif s isa Expr && s.head === :const && s.args[1] isa Expr &&
-               s.args[1].head === :(=) && s.args[1].args[1] === :GROUPS
-            "GROUPS" in seen && v("D5", "runtests.jl:$line: GROUPS is defined again")
-            push!(seen, "GROUPS")
-        elseif s isa Expr && s.head === :if && group_of(s.args[1]) !== nothing
-            g = group_of(s.args[1])
-            g in seen && v("D2", "group \"$g\" has more than one `if`")
-            push!(seen, g)
-            length(s.args) > 2 && v("D2", "the `if` of group \"$g\" has an `else`")
-            bline = line
-            for b in s.args[2].args
-                b isa LineNumberNode && (bline = b.line; continue)
-                ok = b isa Expr && b.head === :macrocall &&
-                     b.args[1] === Symbol("@safetestset") &&
-                     length(b.args) == 4 && b.args[4] isa Expr &&
-                     b.args[4].head === :call && b.args[4].args[1] === :include
-                ok || v("D2",
-                    "runtests.jl:$(describe(b, bline)) in group \"$g\" is not `@safetestset \"<label>\" include(\"<path>\")`")
+    # D2, D5: runtests.jl is the parallel form, `using ParallelTestRunner`, the template's
+    # statements and TESTS; or the serial form, `using SafeTestsets`, GROUPS, and one `if` per
+    # group of @safetestset
+    if L.form === :parallel
+        package = isfile(projfile) ? get(TOML.parsefile(projfile), "name", nothing) :
+                  nothing
+        package === nothing &&
+            v("D2",
+                "runtests.jl has the parallel form, and Project.toml names no package for its `using` and `runtests`")
+        # without a table, no file has a place to judge
+        parallel_violations(v, L.runtests, something(package, "PACKAGE")) || return out
+    else
+        seen = String[]
+        line = 0
+        for s in L.runtests.args
+            s isa LineNumberNode && (line = s.line; continue)
+            if s == :(using SafeTestsets)
+                "using" in seen &&
+                    v("D2", "runtests.jl:$line: `using SafeTestsets` is repeated")
+                push!(seen, "using")
+            elseif is_def(s, :GROUPS)
+                "GROUPS" in seen && v("D5", "runtests.jl:$line: GROUPS is defined again")
+                push!(seen, "GROUPS")
+            elseif s isa Expr && s.head === :if && group_of(s.args[1]) !== nothing
+                g = group_of(s.args[1])
+                g in seen && v("D2", "group \"$g\" has more than one `if`")
+                push!(seen, g)
+                length(s.args) > 2 && v("D2", "the `if` of group \"$g\" has an `else`")
+                bline = line
+                for b in s.args[2].args
+                    b isa LineNumberNode && (bline = b.line; continue)
+                    ok = b isa Expr && b.head === :macrocall &&
+                         b.args[1] === Symbol("@safetestset") &&
+                         length(b.args) == 4 && b.args[4] isa Expr &&
+                         b.args[4].head === :call && b.args[4].args[1] === :include
+                    ok || v("D2",
+                        "runtests.jl:$(describe(b, bline)) in group \"$g\" is not `@safetestset \"<label>\" include(\"<path>\")`")
+                end
+            else
+                v("D2", "runtests.jl:$(describe(s, line)) is outside the convention")
             end
-        else
-            v("D2", "runtests.jl:$(describe(s, line)) is outside the convention")
         end
+        "using" in seen || v("D2", "runtests.jl has no `using SafeTestsets`")
+        "GROUPS" in seen || v("D5", "runtests.jl does not define GROUPS")
     end
-    "using" in seen || v("D2", "runtests.jl has no `using SafeTestsets`")
-    "GROUPS" in seen || v("D5", "runtests.jl does not define GROUPS")
     for n in L.nested
         v("D2", "runtests.jl includes a nested runtests.jl: $(rel(n))")
     end
@@ -471,7 +716,7 @@ function violations(repo)
     end
 
     # label: a plain string, unique in the file
-    labels = [e.label for e in L.entries if e.kind === :safetestset]
+    labels = [e.label for e in L.entries if e.kind in (:safetestset, :parallel)]
     for l in labels
         l isa String || v("label", "the label $(l) is not a plain string")
     end
@@ -479,7 +724,7 @@ function violations(repo)
         v("label", "the label \"$l\" is used more than once")
     end
 
-    # D10: a file in `broken` names its issue on its line
+    # D10: a file in `broken` names its issue on its line, or on its pair's line in TESTS
     srclines = Dict{String, Vector{String}}()
     for e in L.entries
         e.group == "broken" &&

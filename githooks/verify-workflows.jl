@@ -40,9 +40,10 @@
 #      error, but a silent skip is worse than a loud one.
 #   6. A repository's test/ci-groups.toml, where it has one, against its test/runtests.jl, with the
 #      rules of scripts/test-layout.jl: the file lists distinct group names, each group has an
-#      `if` there, and GROUPS runs exactly those groups for an empty ARGS, so the CI jobs together
-#      run what Pkg.test() runs. CI.yml runs one test job per group, and harness ci-protection
-#      requires a check per group, so a group file that does not match the suite splits it wrong.
+#      `if` there, or a group in TESTS in the parallel form, and GROUPS runs exactly those groups
+#      for an empty selection, so the CI jobs together run what Pkg.test() runs. CI.yml runs one
+#      test job per group, and harness ci-protection requires a check per group, so a group file
+#      that does not match the suite splits it wrong.
 #      Each extra workflow that the file names in `workflows`, such as Metal.yml, exists in
 #      .github/workflows/; harness ci-protection requires its jobs too, and check 4 parses it.
 
