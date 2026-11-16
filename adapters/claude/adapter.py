@@ -2589,8 +2589,9 @@ def layer_cases(check, tmp):
             ),
             f"{label}: each rendered deny rule of the template that names ~/.claude/ or ~/.claude.json "
             f"has its twin below ~/.config/claudex right after it, the two **/.claude/settings*.json "
-            f"rules add none again, 314 rules before the network's denies, none twice, and no other rule has a twin: {len(deny)}, "
-            f"{[p for p in pairs if p not in wanted][:2]}, {[p for p in wanted if p not in pairs][:2]}",
+            f"rules add none again, 314 rules before the network's denies, none twice, and no other "
+            f"rule has a twin: {len(deny)}, {[p for p in pairs if p not in wanted][:2]}, "
+            f"{[p for p in wanted if p not in pairs][:2]}",
         )
         case(
             lambda: (
