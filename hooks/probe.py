@@ -146,6 +146,8 @@ LAUNCHER_UNKNOWN = "cannot tell whether a sandbox holds"
 # The variables of the caller's session that the launcher check reads; each launcher case that runs
 # the guard in a process of its own removes them and sets its own.
 LAUNCHER_ENV = ("CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CONFIG_DIR")
+# The `enabled` of `sandbox_settings` that makes the settings file a named pipe, whose read blocks.
+FIFO = object()
 
 
 def closed_ssh(home: str | pathlib.Path) -> None:
@@ -156,23 +158,32 @@ def closed_ssh(home: str | pathlib.Path) -> None:
     ssh.chmod(0o000)
 
 
+def sandbox_settings(directory: pathlib.Path, enabled: object) -> None:
+    """Make the directory `directory` with a `settings.json` whose `sandbox.enabled` is `enabled`, or
+    none for None; a bytes `enabled` is the file's whole content, and FIFO a named pipe in its place."""
+    directory.mkdir(parents=True, exist_ok=True)
+    if enabled is FIFO:
+        os.mkfifo(directory / "settings.json")
+    elif enabled is not None:
+        data = (
+            enabled
+            if isinstance(enabled, bytes)
+            else json.dumps({"sandbox": {"enabled": enabled}}).encode("utf-8")
+        )
+        (directory / "settings.json").write_bytes(data)
+
+
 def launcher_home(home: str | pathlib.Path, *, ssh: bool = True, enabled: object = None) -> str:
     """Give the fixture home `home` a readable `.ssh` unless `ssh` is false, and a
-    `.claude/settings.json` whose `sandbox.enabled` is `enabled`, or none for None; a bytes `enabled`
-    is the file's whole content. Return the home spelt with two leading slashes, as HOME is."""
+    `.claude/settings.json` as `sandbox_settings` writes it for `enabled`. Return the home spelt with
+    two leading slashes, as HOME is."""
     path = pathlib.Path(home)
     path.mkdir(exist_ok=True)
     if ssh:
         (path / ".ssh").mkdir(exist_ok=True)
         (path / ".ssh").chmod(0o700)
     if enabled is not None:
-        (path / ".claude").mkdir(exist_ok=True)
-        data = (
-            enabled
-            if isinstance(enabled, bytes)
-            else json.dumps({"sandbox": {"enabled": enabled}}).encode("utf-8")
-        )
-        (path / ".claude" / "settings.json").write_bytes(data)
+        sandbox_settings(path / ".claude", enabled)
     return "/" + str(path)
 
 
@@ -180,18 +191,10 @@ def claudex_home(
     home: str | pathlib.Path, *, enabled: object = None, directory: str = ".config/claudex"
 ) -> str:
     """Make the directory `<home>/<directory>`, `claudex`'s `CLAUDE_CONFIG_DIR` by default, with a
-    `settings.json` whose `sandbox.enabled` is `enabled`, or none for None; a bytes `enabled` is the
-    file's whole content. Return the directory spelt as `home` is, with its two leading slashes where
-    `launcher_home` gave it."""
+    `settings.json` as `sandbox_settings` writes it for `enabled`. Return the directory spelt as `home`
+    is, with its two leading slashes where `launcher_home` gave it."""
     path = pathlib.Path(home, directory)
-    path.mkdir(parents=True, exist_ok=True)
-    if enabled is not None:
-        data = (
-            enabled
-            if isinstance(enabled, bytes)
-            else json.dumps({"sandbox": {"enabled": enabled}}).encode("utf-8")
-        )
-        (path / "settings.json").write_bytes(data)
+    sandbox_settings(path, enabled)
     return str(path)
 
 
@@ -2705,16 +2708,15 @@ OS_READS = frozenset(
 # The reads of the guard outside `paths.py` and `jsonio.py` that the bound per payload leaves out, by
 # file and call: the package's own directory and the roots of the checks, each read once per process
 # at import, the one path of a directory or worktree call, which holds no shell command, and the
-# launcher check's listing of `~/.ssh`, its read of Claude Code's settings, and its resolution of
-# `CLAUDE_CONFIG_DIR` and of `~/.config/claudex` and read of the settings there, each once per process.
+# launcher check's listing of `~/.ssh` and its resolution of `CLAUDE_CONFIG_DIR` and of
+# `~/.config/claudex`, each once per process. The launcher check reads Claude Code's settings through
+# `jsonio.load`.
 READS_ALLOWED = frozenset(
     {
         ("__main__.py", "Path(__file__).resolve()"),
         ("launcher.py", "Path(home, '.ssh').iterdir()"),
-        ("launcher.py", "Path(home, '.claude', 'settings.json').read_text(encoding='utf-8')"),
         ("launcher.py", "Path(value).resolve()"),
         ("launcher.py", "Path(home, '.config', 'claudex').resolve()"),
-        ("launcher.py", "Path(config, 'settings.json').read_text(encoding='utf-8')"),
         ("directory_scope.py", "Path(Path.home(), 'Research').resolve()"),
         ("directory_scope.py", "Path(path).resolve()"),
         ("rm_scope.py", "Path.home().resolve()"),
@@ -2838,8 +2840,10 @@ def launcher_cases(report: Callable[..., None]) -> None:
             line=f"exp {expected} got {got}  [launcher ]  {label}: {output[:70]!r}",
         )
     # A session that `claudex` starts: Claude Code's own sandbox, with `CLAUDE_CONFIG_DIR` at
-    # `<home>/.config/claudex`. Each home has a readable `.ssh` and no Code-tab settings, and each case
-    # removes `CLAUDE_CODE_ENTRYPOINT` and sets `CLAUDE_CONFIG_DIR`. A refusal names both ways in.
+    # `<home>/.config/claudex`. Each home has a readable `.ssh`, and each case sets one of
+    # `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_ENTRYPOINT` and removes the other: a claudex case has no
+    # Code-tab settings, and the Code-tab case, a config of None, no claudex directory. A settings file
+    # that is a FIFO is refused at once, not after the time limit. A refusal names both ways in.
     cx_on = launcher_home(fixture_dir / "launcher-cx-on")
     cx_dir = claudex_home(cx_on, enabled=True)
     cx_other = claudex_home(cx_on, enabled=True, directory=".config/other")
@@ -2847,6 +2851,8 @@ def launcher_cases(report: Callable[..., None]) -> None:
     cx_text_home = launcher_home(fixture_dir / "launcher-cx-text")
     cx_none_home = launcher_home(fixture_dir / "launcher-cx-none")
     cx_bad_home = launcher_home(fixture_dir / "launcher-cx-bad")
+    cx_fifo_home = launcher_home(fixture_dir / "launcher-cx-fifo")
+    tab_fifo = launcher_home(fixture_dir / "launcher-tab-fifo", enabled=FIFO)
     cx_link = fixture_dir / "launcher-cx-link"
     cx_link.symlink_to(cx_dir[1:], target_is_directory=True)
     # The guard runs in FIXTURE, so this relative path names the claudex directory of `cx_on` there.
@@ -2866,13 +2872,21 @@ def launcher_cases(report: Callable[..., None]) -> None:
         ),
         ("claudex, no settings file", cx_none_home, claudex_home(cx_none_home), refused),
         ("claudex, settings that are no JSON", cx_bad_home, claudex_home(cx_bad_home, enabled=b"{"), refused),
+        (
+            "claudex, settings that are a FIFO",
+            cx_fifo_home,
+            claudex_home(cx_fifo_home, enabled=FIFO),
+            refused,
+        ),
         ("CLAUDE_CONFIG_DIR at another directory", cx_on, cx_other, refused),
         ("CLAUDE_CONFIG_DIR relative", cx_on, cx_relative, refused),
+        ("the Code tab, settings that are a FIFO", tab_fifo, None, refused),
     ):
-        env = {k: v for k, v in ENV.items() if k not in LAUNCHER_ENV} | {
-            "HOME": home,
-            "CLAUDE_CONFIG_DIR": config,
-        }
+        env = {k: v for k, v in ENV.items() if k not in LAUNCHER_ENV} | {"HOME": home}
+        if config is None:
+            env["CLAUDE_CODE_ENTRYPOINT"] = desktop
+        else:
+            env["CLAUDE_CONFIG_DIR"] = config
         expected, texts = on_mac if MAC else passed
         for tool, data in (("Bash", bash), ("Read", read.encode("utf-8"))):
             got, output = guard_run(data, env=env)
@@ -2947,7 +2961,7 @@ def launcher_cases(report: Callable[..., None]) -> None:
         verdict = launcher.outside(frontend, home, environ, "darwin")
         # A refusal asks for `agentbox <frontend>`, a refusal of Claude Code for `claudex` too, and it
         # names `claudex` and `~/.config/claudex` exactly when it refuses Claude Code.
-        ways = "`agentbox claude`, or with `claudex`" if frontend == "claude" else f"`agentbox {frontend}`."
+        ways = "`agentbox claude`,\nor with `claudex`" if frontend == "claude" else f"`agentbox {frontend}`."
         named = want == "pass" or ways in verdict.reason
         claudex_named = frontend == "claude" and want == "deny"
         report(
@@ -2957,6 +2971,25 @@ def launcher_cases(report: Callable[..., None]) -> None:
             and ("`~/.config/claudex`" in verdict.reason) == claudex_named,
             line=f"exp {want} got {verdict.decision}  [launcher ]  outside({frontend!r}, {home[-22:]!r}, "
             f"{environ}, 'darwin'): {verdict.reason[:60]!r}",
+        )
+    # The listing comes before the claudex exception: a claudex session whose `.ssh` is missing or a
+    # file is refused because the guard cannot tell, and one whose `.ssh` it cannot list passes.
+    cx_no_ssh = launcher_home(fixture_dir / "launcher-cx-nossh", ssh=False)
+    cx_ssh_file = launcher_home(fixture_dir / "launcher-cx-sshfile", ssh=False)
+    pathlib.Path(FIXTURE.name, "launcher-cx-sshfile", ".ssh").write_text("", encoding="utf-8")
+    cx_closed = launcher_home(fixture_dir / "launcher-cx-closed", ssh=False)
+    closed_ssh(cx_closed[1:])
+    for home, want, text in (
+        (cx_no_ssh, "deny", LAUNCHER_UNKNOWN + " this Claude Code session"),
+        (cx_ssh_file, "deny", LAUNCHER_UNKNOWN + " this Claude Code session"),
+        (cx_closed, "pass", ""),
+    ):
+        environ = {"CLAUDE_CONFIG_DIR": claudex_home(home, enabled=True)}
+        verdict = launcher.outside("claude", home, environ, "darwin")
+        report(
+            ok=verdict.decision == want and text in verdict.reason,
+            line=f"exp {want} got {verdict.decision}  [launcher ]  outside('claude', {home[-22:]!r}, "
+            f"{environ}, 'darwin') with sandbox.enabled true: {verdict.reason[:60]!r}",
         )
 
 

@@ -446,9 +446,9 @@ the check passes when two conditions hold:
   know. Both sides are resolved, so a link to the directory counts, and a `..` out of it does not.
 - `settings.json` in that directory holds `sandbox.enabled` as the boolean `true`.
 
-A settings file that is missing or cannot be read or parsed counts as no sandbox. A plain `claude`
-session stays refused, and its refusal names both ways in: `agentbox claude`, and `claudex` for
-Claude Code's own sandbox. For OpenCode and oh-my-pi nothing else counts.
+A settings file that is missing, no regular file, such as a FIFO, or cannot be read or parsed
+counts as no sandbox. A plain `claude` session stays refused, and its refusal names both ways in:
+`agentbox claude`, and `claudex` for Claude Code's own sandbox. For OpenCode and oh-my-pi nothing else counts.
 
 Antigravity's table runs no such check. Antigravity's terminal sandbox holds its shell commands in
 the CLI and in the desktop app, and its shell tool cannot run under `agentbox`.

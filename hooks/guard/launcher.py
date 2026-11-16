@@ -10,9 +10,9 @@ sandbox counts in its place, in two sessions. In the Code tab of the Claude desk
 `CLAUDE_CODE_ENTRYPOINT` is `claude-desktop` and `~/.claude/settings.json` holds `sandbox.enabled`
 as `true`. In a session that `claudex` starts, `CLAUDE_CONFIG_DIR` is an absolute path that
 resolves to `~/.config/claudex`, and `settings.json` there holds `sandbox.enabled` as `true`. A
-settings file that is missing or cannot be read or parsed counts as no sandbox, and a plain
-`claude` session stays refused. On another platform the check passes: there is no launcher there.
-The check reads the file system at each call and keeps nothing.
+settings file that is missing, no regular file, or cannot be read or parsed counts as no sandbox,
+and a plain `claude` session stays refused. On another platform the check passes: there is no
+launcher there. The check reads the file system at each call and keeps nothing.
 """
 
 from collections.abc import Mapping
@@ -20,7 +20,7 @@ from pathlib import Path
 
 from . import HarnessError
 from .contract import PASS, Verdict
-from .jsonio import loads
+from .jsonio import load
 
 # The name of each frontend whose table runs the check.
 NAMES = {"claude": "Claude Code", "opencode": "OpenCode", "omp": "oh-my-pi"}
@@ -33,12 +33,14 @@ holds its file tools, its hooks and its MCP servers.{tab}
 Stop, and ask the user to start the session again with `agentbox {frontend}`{own}.
 """
 
-TAB = """ Claude Code's own sandbox counts only in the Code tab of the Claude desktop app, with
+TAB = """
+
+Claude Code's own sandbox counts only in the Code tab of the Claude desktop app, with
 `sandbox.enabled` set to `true` in `~/.claude/settings.json`, and in a session that `claudex`
 starts, with `CLAUDE_CONFIG_DIR` at `~/.config/claudex` and `sandbox.enabled` set to `true` in
 `settings.json` there."""
 
-OWN = ", or with `claudex` for Claude Code's own sandbox"
+OWN = ",\nor with `claudex` for Claude Code's own sandbox"
 
 UNKNOWN = """Refused: the guard cannot tell whether a sandbox holds this {name} session: the listing of
 `~/.ssh` fails with {error}, where under `agentbox` it fails with PermissionError.
@@ -48,18 +50,24 @@ Stop, and ask the user to check that `~/.ssh` is a directory, and to start the s
 """
 
 
+def sandbox_on(path: Path) -> bool:
+    """True when the Claude Code settings file `path` holds `sandbox.enabled` as `true`. A file that is
+    missing, no regular file, such as a FIFO whose read would block, or that cannot be read or parsed
+    counts as no sandbox."""
+    try:
+        settings = load(path)
+    except HarnessError:
+        return False
+    sandbox = settings.get("sandbox")
+    return isinstance(sandbox, dict) and sandbox.get("enabled") is True
+
+
 def code_tab(home: str, environ: Mapping[str, str]) -> bool:
     """True in the Code tab of the Claude desktop app with Claude Code's sandbox on: the entrypoint
     is CODE_TAB and `<home>/.claude/settings.json` holds `sandbox.enabled` as `true`."""
     if environ.get("CLAUDE_CODE_ENTRYPOINT") != CODE_TAB:
         return False
-    try:
-        text = Path(home, ".claude", "settings.json").read_text(encoding="utf-8")
-        settings = loads(text, where="~/.claude/settings.json")
-    except OSError, UnicodeDecodeError, HarnessError:
-        return False
-    sandbox = settings.get("sandbox")
-    return isinstance(sandbox, dict) and sandbox.get("enabled") is True
+    return sandbox_on(Path(home, ".claude", "settings.json"))
 
 
 def claudex(home: str, environ: Mapping[str, str]) -> bool:
@@ -74,13 +82,7 @@ def claudex(home: str, environ: Mapping[str, str]) -> bool:
     config = Path(value).resolve()
     if config != Path(home, ".config", "claudex").resolve():
         return False
-    try:
-        text = Path(config, "settings.json").read_text(encoding="utf-8")
-        settings = loads(text, where="~/.config/claudex/settings.json")
-    except OSError, UnicodeDecodeError, HarnessError:
-        return False
-    sandbox = settings.get("sandbox")
-    return isinstance(sandbox, dict) and sandbox.get("enabled") is True
+    return sandbox_on(Path(config, "settings.json"))
 
 
 def outside(frontend: str, home: str, environ: Mapping[str, str], platform: str) -> Verdict:

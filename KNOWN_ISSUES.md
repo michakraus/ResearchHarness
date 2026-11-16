@@ -1010,3 +1010,25 @@
   branch is unchanged.
 - kind: defect
 - found: 2026-11-15, the spec of part D4 of the sandbox plan
+
+### K165 · The launcher check reads Claude Code's sandbox setting from one user-level `settings.json` and from no file that Claude Code may merge above it.
+
+- location: `hooks/guard/launcher.py:53`
+- evidence: `sandbox_on` reads one file: the Code tab `~/.claude/settings.json`, and a session
+  that `claudex` starts `settings.json` in its `CLAUDE_CONFIG_DIR`. `grep -n 'settings'
+  hooks/guard/launcher.py` shows no other settings file. Claude Code also merges managed settings,
+  `--settings`, and a project's `.claude/settings.json` and `.claude/settings.local.json` above the
+  user file. Where one of them sets `"sandbox": {"enabled": false}`, the sandbox may be off while
+  the guard passes. That precedence is a critic's reading of Claude Code's settings and is not
+  checked here: no check may run a frontend.
+- kind: not verified
+- found: the critic of part G4a of the sandbox plan, 2026-11-16
+
+### K166 · On a case-insensitive file system, the launcher check refuses a `CLAUDE_CONFIG_DIR` that names `~/.config/claudex` with another case.
+
+- location: `hooks/guard/launcher.py:83`
+- evidence: `CLAUDE_CONFIG_DIR` set to `<home>/.config/CLAUDEX`, the same directory on APFS, gives
+  `deny`: `Path.resolve()` keeps the case of the spelling, so the comparison with
+  `<home>/.config/claudex` fails. The check fails closed; only such a spelling is refused.
+- kind: found late
+- found: the critic of part G4a of the sandbox plan, 2026-11-16
