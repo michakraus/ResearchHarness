@@ -42,8 +42,8 @@
 # AGENTBOX_BROKER as the socket's path once the socket exists. <PID> is the script's own process
 # ID, which exec hands on to srt, so the broker ends with srt. Where the interpreter is not an
 # executable file, the hook is not a readable file, the directory cannot be made, or no socket
-# appears within 5 seconds, it exports no AGENTBOX_BROKER, writes one line on stderr that names
-# the cause, and starts the program all the same; the hook then fails closed.
+# appears within 5 seconds, it exports no AGENTBOX_BROKER, not even the caller's, writes one line
+# on stderr that names the cause, and starts the program all the same; the hook then fails closed.
 #
 # The forges: the script exports GIT_TERMINAL_PROMPT=0, so that git fails at once where no
 # credential helper answers, and removes the caller's GITLAB_ACCESS_TOKEN and OAUTH_TOKEN, which
@@ -169,6 +169,7 @@ caches() {
 # the run directory is the parent of GLAB_CONFIG_DIR, which caches sets. Its values are positional
 # parameters.
 broker() {
+    unset AGENTBOX_BROKER
     set -- "$HOME/.local/share/research-harness/python/bin/python" "$HOME/.claude/hooks/worktree.py" \
         "$HOME/.local/state/research-harness/broker"
     if ! [ -f "$1" ] || ! [ -x "$1" ]; then

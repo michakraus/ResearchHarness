@@ -614,8 +614,11 @@ def answers(path: pathlib.Path) -> bool:
 
 
 def request(path: pathlib.Path, data: bytes) -> dict[str, Any] | None:
-    """The JSON object that the broker at `path` replies to the line `data`, or None where it gives
-    none. A broker may close the connection before it has read the whole of a large request."""
+    """The JSON object of the first line that the broker at `path` replies to the line `data`, or
+    None where it gives none. A broker may close the connection before it has read the whole of a
+    large request, and Linux then resets it: the bytes read before the reset stay, and the reading
+    stops at the reply's newline."""
+    received = b""
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(TIMEOUT)
@@ -623,16 +626,126 @@ def request(path: pathlib.Path, data: bytes) -> dict[str, Any] | None:
             with contextlib.suppress(BrokenPipeError, ConnectionResetError):
                 s.sendall(data + b"\n")
                 s.shutdown(socket.SHUT_WR)
-            chunks: list[bytes] = []
-            while chunk := s.recv(65536):
-                chunks.append(chunk)
+            with contextlib.suppress(ConnectionResetError):
+                while b"\n" not in received and (chunk := s.recv(65536)):
+                    received += chunk
     except OSError:
         return None
     try:
-        value = json_value(b"".join(chunks).decode("utf-8", "replace"), "the reply")
+        value = json_value(received.split(b"\n", 1)[0].decode("utf-8", "replace"), "the reply")
     except ValueError:
         return None
     return cast("dict[str, Any]", value) if isinstance(value, dict) else None
+
+
+def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """The broker's answers and the client's reading of a reply, in this process and with no socket
+    bound: a create whose process cannot start gets an `error` reply, also through `answer` on a
+    socket pair; the create runs with GIT_TERMINAL_PROMPT=0 and without AGENTBOX; a request of more
+    than LIMIT bytes, also a valid object followed by white space, gets an error that names the
+    limit and starts nothing; and a reply whose `path`, `error` or `stderr` is no string is
+    refused."""
+    payload = json.dumps({"hook_event_name": "WorktreeCreate", "cwd": WT_REPO, "name": "unit"}).encode()
+    absent = str(pathlib.Path(WT_SOCKETS, "no-python"))
+    try:
+        with mock.patch.object(sys, "executable", absent):
+            reply: object = hook.respond(payload)
+    except OSError as err:
+        reply = err
+    error = getattr(reply, "error", None)
+    report(
+        isinstance(error, str) and absent in error and getattr(reply, "path", None) == "",
+        f"a create whose process cannot start gets an error that names the interpreter: {reply!r}",
+    )
+    ours, theirs = socket.socketpair()
+    with ours, theirs:
+        theirs.settimeout(TIMEOUT)
+        theirs.sendall(payload + b"\n")
+        theirs.shutdown(socket.SHUT_WR)
+        try:
+            with mock.patch.object(sys, "executable", absent):
+                hook.answer(ours)
+            outcome = "answered"
+        except OSError as err:
+            outcome = repr(err)
+        ours.shutdown(socket.SHUT_WR)
+        sent = theirs.recv(65536)
+    line = json_object(sent.decode("utf-8", "replace"))
+    report(
+        line is not None
+        and isinstance(line.get("error"), str)
+        and absent in str(line["error"])
+        and "path" not in line,
+        f"answer sends that error as one JSON line: {outcome}, {sent!r}",
+    )
+
+    runs: list[dict[str, str]] = []
+
+    def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        runs.append(dict(kwargs.get("env") or {}))
+        return subprocess.CompletedProcess(args, 0, f"{WT_ROOT}/Repo-unit\n", "said\n")
+
+    with (
+        mock.patch.dict(os.environ, {**WT_ENV, "AGENTBOX": "1", "AGENTBOX_BROKER": "/x.sock"}, clear=True),
+        mock.patch.object(subprocess, "run", side_effect=run),
+    ):
+        reply = hook.respond(payload)
+        big = [
+            hook.respond(json.dumps({"hook_event_name": "WorktreeCreate", "pad": "x" * 70 * 1024}).encode()),
+            hook.respond(payload + b" " * 70 * 1024),
+        ]
+        other = hook.respond(b'{"hook_event_name": "Other", "cwd": "/"}')
+    env = runs[0] if len(runs) == 1 else {}
+    report(
+        "Other" in str(getattr(other, "error", None)) and len(runs) == 1,
+        f"a request of hook_event_name Other gets an error that names it and starts nothing: {other!r}",
+    )
+    report(
+        getattr(reply, "path", None) == f"{WT_ROOT}/Repo-unit"
+        and getattr(reply, "stderr", None) == "said\n"
+        and getattr(reply, "error", "") is None
+        and env.get("GIT_TERMINAL_PROMPT") == "0"
+        and "AGENTBOX" not in env
+        and "AGENTBOX_BROKER" not in env,
+        f"the broker runs a create with GIT_TERMINAL_PROMPT=0 and without AGENTBOX and AGENTBOX_BROKER, "
+        f"and replies its path and stderr: {reply!r}, {len(runs)} runs, "
+        f"{ {k: env.get(k) for k in ('GIT_TERMINAL_PROMPT', 'AGENTBOX', 'AGENTBOX_BROKER')} }",
+    )
+    report(
+        all(f"larger than {64 * 1024} bytes" in str(getattr(r, "error", None)) for r in big),
+        f"a request of more than 64 KiB, inside the object or after it, gets an error that names the "
+        f"limit and starts nothing: {[getattr(r, 'error', r) for r in big]}",
+    )
+
+    read = getattr(hook, "read_reply", None)
+    for text, want in [
+        (b'{"path": "/p", "stderr": "s\\n"}', ("/p", None, "s\n")),
+        (b'{"error": "no", "stderr": ""}', ("", "no", "")),
+        (b'{"path": 1, "stderr": ""}', None),
+        (b'{"error": null, "stderr": ""}', None),
+        (b'{"error": ["no"], "stderr": ""}', None),
+        (b'{"path": "/p", "stderr": 2}', None),
+        (b"[1]", None),
+    ]:
+        try:
+            value = read(text, "the reply") if read is not None else "no read_reply"
+            got: object = (value.path, value.error, value.stderr) if not isinstance(value, str) else value
+        except (hook.Refusal, hook.HarnessError) as err:
+            got = f"refused: {err}"
+        report(
+            got == want if want is not None else str(got).startswith("refused: "),
+            f"the client reads the reply {text!r} as {want or 'a refusal'}: {got!r}",
+        )
+    reply_type = getattr(hook, "Reply", None)
+    for fields, want_line in [
+        ({"path": "/p", "stderr": "s"}, {"path": "/p", "stderr": "s"}),
+        ({"error": "no", "stderr": "s"}, {"error": "no", "stderr": "s"}),
+    ]:
+        sent = reply_type(**fields).line() if reply_type is not None else b""
+        report(
+            sent.endswith(b"\n") and sent.count(b"\n") == 1 and json_object(sent.decode()) == want_line,
+            f"the broker sends {fields} as the one JSON line {want_line}: {sent!r}",
+        )
 
 
 def worktree_git_cases() -> tuple[int, int]:
@@ -736,6 +849,17 @@ def worktree_git_cases() -> tuple[int, int]:
         f"every process that the hook starts is git with {' '.join(WT_OPTIONS)} first: {outcome}, {seen}",
     )
 
+    proc, started = worktree_run(create("nul", "/a\0b"), WT_ENV)
+    report(
+        proc is not None
+        and proc.returncode == 1
+        and proc.stderr.startswith("worktree hook: ")
+        and proc.stderr.count("\n") == 1
+        and not started,
+        f"a cwd that holds a NUL byte: exits 1 with one line of the hook and starts no git: {said(proc)}",
+    )
+    broker_unit_cases(hook, report)
+
     def client_refused(label: str, extra: dict[str, str], word: str) -> None:
         proc, started = worktree_run(create("agentbox"), {**WT_ENV, **extra})
         report(
@@ -809,16 +933,26 @@ def worktree_git_cases() -> tuple[int, int]:
             f"a create that the broker refuses: exits 1, writes the broker's lines and one that names "
             f"the socket, and starts no git: {said(proc)}, {started}",
         )
-        for label, data in [
-            ("a create of 70 KiB", json.dumps({**create("big"), "pad": "x" * 70 * 1024}).encode()),
-            ("a request that is no JSON", b"not json"),
-            ("a request that is no JSON object", b"[1]"),
-            ("a request of hook_event_name Other", b'{"hook_event_name": "Other"}'),
+        limit = f"larger than {64 * 1024} bytes"
+        for label, data, word in [
+            ("a create of 70 KiB", json.dumps({**create("big"), "pad": "x" * 70 * 1024}).encode(), limit),
+            (
+                "a create followed by 70 KiB of spaces",
+                json.dumps(create("big")).encode() + b" " * 70 * 1024,
+                limit,
+            ),
+            ("a request that is no JSON", b"not json", ""),
+            ("a request that is no JSON object", b"[1]", ""),
+            ("a request of hook_event_name Other", b'{"hook_event_name": "Other"}', "Other"),
         ]:
             reply = request(broker.socket, data)
             report(
-                reply is not None and isinstance(reply.get("error"), str) and "path" not in reply,
-                f"the broker answers {label} with an error: {reply}",
+                reply is not None
+                and isinstance(reply.get("error"), str)
+                and word in reply["error"]
+                and "path" not in reply
+                and not pathlib.Path(WT_ROOT, "Repo-big").exists(),
+                f"the broker answers {label} with an error{f' that names {word!r}' if word else ''}: {reply}",
             )
         reply = request(broker.socket, json.dumps(create("after")).encode())
         report(
@@ -846,6 +980,22 @@ def worktree_git_cases() -> tuple[int, int]:
         )
     finally:
         stop_broker(broker)
+
+    for name, signum in [("b5", signal.SIGHUP), ("b6", signal.SIGTERM)]:
+        broker = start_broker(name)
+        try:
+            up = until(lambda: is_socket(broker.socket), 10)
+            if up:
+                os.kill(broker.pid, signum)
+            removed = up and until(lambda: not os.path.lexists(broker.socket), 10)
+        finally:
+            stop_broker(broker)
+        # The broker stays a zombie of its parent shell until that shell ends, so `ended` is looked at
+        # after stop_broker.
+        report(
+            removed and until(lambda: ended(broker.pid), 10),
+            f"a broker that gets {signum.name} removes its socket and exits within 10 s",
+        )
 
     regular = pathlib.Path(WT_SOCKETS, "b3.sock")
     regular.write_text("keep\n", encoding="utf-8")

@@ -533,9 +533,11 @@ every `.githooks`, so a `git worktree add` inside it fails. `agentbox` starts th
 `worktree.py --serve <socket> --parent <pid>` outside `srt`, with its socket in
 `~/.local/state/research-harness/broker/`, and exports the socket's path as `AGENTBOX_BROKER`.
 With `AGENTBOX` set, the hook runs no `git`: it sends its payload to that socket as one JSON line,
-and the broker runs the create or the remove above in a process of its own and replies with the
-path or the error. The broker answers a request larger than 64 KiB, one that is no JSON object,
-and one of another event with an error, and exits, removing its socket, when its parent ends. The
+and the broker runs the create or the remove above in a process of its own, with
+`GIT_TERMINAL_PROMPT=0`, and replies with the path or the error. The broker answers a request
+larger than 64 KiB, one that is no JSON object, one of another event, and one whose process
+cannot start with an error, and exits, removing its socket, when its parent ends or on `SIGTERM`
+or `SIGHUP`. The
 broker covers the worktrees of the hook only: a `git pull`, `git switch` or `git rebase` inside
 `agentbox` that changes `.githooks/` still fails.
 

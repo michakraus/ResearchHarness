@@ -39,9 +39,10 @@ the broker outside srt, as this script:
 
 It binds `<socket>` with mode 600, replacing a stale socket and refusing any other file there,
 serves one connection at a time, runs each create or remove as this script in a process of its
-own, without `AGENTBOX`, and answers a request that is larger than 64 KiB, no JSON object, or of
-another `hook_event_name` with an `error`. It looks at its parent every second between two
-requests, and exits, removing its socket, once its parent is no longer `<pid>`.
+own, without `AGENTBOX` and with `GIT_TERMINAL_PROMPT=0`, and answers a request that is larger
+than 64 KiB, no JSON object, or of another `hook_event_name` with an `error`. It looks at its
+parent every second between two requests, and exits, removing its socket, once its parent is no
+longer `<pid>`, or on SIGTERM or SIGHUP.
 
 **It fails closed.** Every error exits 1 with the reason on stderr, and Claude Code then
 reports the hook as failed. No worktree is better than one in the wrong place or on the
@@ -53,6 +54,7 @@ Test the parts that need no repository:
     echo '{"hook_event_name":"WorktreeCreate","cwd":"/","name":"x"}' | ./worktree.py ; echo "exit $?"
 """
 
+import contextlib
 import json
 import os
 import re
@@ -63,6 +65,7 @@ import stat
 import subprocess
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
 
@@ -95,6 +98,29 @@ class Refusal(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class Request:
+    """A request to the broker: its `hook_event_name`, one of EVENTS, and its payload as JSON text."""
+
+    event: str
+    text: str
+
+
+@dataclass(frozen=True)
+class Reply:
+    """The broker's answer to one request: the path that a create printed, empty for a remove, or
+    the reason why the request failed; and the stderr of the create or remove."""
+
+    path: str = ""
+    error: str | None = None
+    stderr: str = ""
+
+    def line(self) -> bytes:
+        """The reply as one JSON line, `{"path": …, "stderr": …}` or `{"error": …, "stderr": …}`."""
+        head = {"path": self.path} if self.error is None else {"error": self.error}
+        return (json.dumps({**head, "stderr": self.stderr}) + "\n").encode()
+
+
 def run_git(*args: str, cwd: Path, timeout: int = LOCAL) -> subprocess.CompletedProcess[str]:
     """git with OPTIONS and `args` in `cwd`: the one place where this hook starts git."""
     return subprocess.run(
@@ -122,6 +148,8 @@ def main_checkout(start: str, research: Path) -> Path:
     main checkout, or a file that `linked_checkout` accepts. A `.git` that is a symbolic link, or
     neither a directory nor a file, is refused."""
     top = research.resolve()
+    if "\0" in start:
+        raise Refusal(f"{start!r} holds a NUL byte, which no path holds")
     here = Path(start).resolve() if start else None
     if here is None or not here.is_dir():
         raise Refusal(f"{start!r} is not a directory")
@@ -370,10 +398,11 @@ def remove(payload):
     git("worktree", "remove", str(path), cwd=repo)
 
 
-def ask(payload: dict[str, JsonValue]) -> None:
+def ask(payload: dict[str, JsonValue], *, created: bool) -> None:
     """Send `payload` to the broker at AGENTBOX_BROKER, write the reply's `stderr` to stderr, and
-    print its `path` for a create; refused where the variable is unset or empty, the broker does
-    not answer within ANSWER seconds, or the reply is no JSON object or holds an `error`."""
+    print its `path` where `created` says that the payload is a create; refused where the variable
+    is unset or empty, the broker does not answer within ANSWER seconds, or the reply is no `Reply`
+    (`read_reply`) or holds an `error`."""
     address = os.environ.get(BROKER, "")
     if not address:
         raise Refusal(
@@ -389,17 +418,26 @@ def ask(payload: dict[str, JsonValue]) -> None:
             data = receive(connection, None)
     except OSError as err:
         raise Refusal(f"the worktree broker at {address} does not answer: {err}") from None
-    reply = loads(data.decode("utf-8", "replace"), where=f"the reply of the worktree broker at {address}")
-    said = reply.get("stderr")
-    if isinstance(said, str):
-        sys.stderr.write(said)
-    if "error" in reply:
-        raise Refusal(f"the worktree broker at {address}: {reply['error']}")
-    path = reply.get("path")
-    if payload.get("hook_event_name") == "WorktreeCreate":
-        if not isinstance(path, str) or not path:
+    reply = read_reply(data, f"the reply of the worktree broker at {address}")
+    sys.stderr.write(reply.stderr)
+    if reply.error is not None:
+        raise Refusal(f"the worktree broker at {address}: {reply.error}")
+    if created:
+        if not reply.path:
             raise Refusal(f"the worktree broker at {address} replied no path")
-        print(path)
+        print(reply.path)
+
+
+def read_reply(data: bytes, where: str) -> Reply:
+    """The `Reply` in the JSON line `data`, which `where` names; refused where it is no JSON object,
+    or its `path` or `stderr` is no string, or it holds an `error` that is no string."""
+    value = loads(data.decode("utf-8", "replace"), where=where)
+    path, error, stderr = value.get("path", ""), value.get("error"), value.get("stderr", "")
+    if not isinstance(path, str) or not isinstance(stderr, str):
+        raise Refusal(f"{where} holds a path or a stderr that is no string")
+    if "error" in value and not isinstance(error, str):
+        raise Refusal(f"{where} holds an error that is no string")
+    return Reply(path, error if isinstance(error, str) else None, stderr)
 
 
 def receive(connection: socket.socket, limit: int | None) -> bytes:
@@ -417,7 +455,7 @@ def receive(connection: socket.socket, limit: int | None) -> bytes:
 def serve(path: Path, parent: int) -> None:
     """The broker: bind `path` with mode 600, replacing a stale socket and refusing any other file
     there, and answer each connection in turn (`answer`) while `parent` is this process's parent;
-    then remove the socket. SIGTERM ends it the same way."""
+    then remove the socket. SIGTERM and SIGHUP end it the same way."""
     if os.getppid() != parent:
         raise Refusal(f"the parent of the broker is {os.getppid()}, not {parent}")
     try:
@@ -428,7 +466,8 @@ def serve(path: Path, parent: int) -> None:
         if not stat.S_ISSOCK(mode):
             raise Refusal(f"{path} exists and is not a socket; the broker replaces only a stale socket")
         path.unlink()
-    signal.signal(signal.SIGTERM, ended)
+    for signum in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(signum, ended)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
         old = os.umask(0o177)
         try:
@@ -453,7 +492,7 @@ def serve(path: Path, parent: int) -> None:
 
 
 def ended(signum: int, frame: FrameType | None) -> None:
-    """The SIGTERM handler of the broker: exit through the cleanup of `serve`."""
+    """The SIGTERM and SIGHUP handler of the broker: exit through the cleanup of `serve`."""
     del signum, frame
     sys.exit(0)
 
@@ -464,28 +503,44 @@ def answer(connection: socket.socket) -> None:
     connection.settimeout(LOCAL)
     try:
         data = receive(connection, LIMIT)
-        connection.sendall((json.dumps(respond(data)) + "\n").encode())
     except OSError:
         return
+    reply = respond(data)
+    with contextlib.suppress(OSError):
+        connection.sendall(reply.line())
 
 
-def respond(data: bytes) -> dict[str, str]:
-    """The answer to the request `data`: `{"path": …, "stderr": …}` from this script run on it
-    without AGENTBOX, or `{"error": …, "stderr": …}`."""
+def read_request(data: bytes) -> Request:
+    """The `Request` in `data`; refused where `data` is larger than LIMIT, no UTF-8 or no JSON
+    object, or its `hook_event_name` is not one of EVENTS."""
     if len(data) > LIMIT:
-        return {"error": f"the request is larger than {LIMIT} bytes", "stderr": ""}
+        raise Refusal(f"the request is larger than {LIMIT} bytes")
     try:
-        payload = loads(data.decode("utf-8"), where="the request")
-    except (UnicodeDecodeError, HarnessError) as err:
-        return {"error": str(err), "stderr": ""}
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as err:
+        raise Refusal(f"the request is no UTF-8: {err}") from None
+    payload = loads(text, where="the request")
     event = payload.get("hook_event_name")
-    if event not in EVENTS:
-        return {"error": f"unexpected hook_event_name {event!r}", "stderr": ""}
-    env = {k: v for k, v in os.environ.items() if k not in ("AGENTBOX", BROKER)}
+    if not isinstance(event, str) or event not in EVENTS:
+        raise Refusal(f"unexpected hook_event_name {event!r}")
+    return Request(event, json.dumps(payload))
+
+
+def respond(data: bytes) -> Reply:
+    """The answer to the request `data` (`read_request`): the path and stderr of this script run on
+    it without AGENTBOX and AGENTBOX_BROKER, and with GIT_TERMINAL_PROMPT=0, so that a fetch never
+    prompts on the frontend's terminal; or an error, also where that process cannot start."""
+    try:
+        request = read_request(data)
+    except (Refusal, HarnessError) as err:
+        return Reply(error=str(err))
+    env = {k: v for k, v in os.environ.items() if k not in ("AGENTBOX", BROKER)} | {
+        "GIT_TERMINAL_PROMPT": "0"
+    }
     try:
         proc = subprocess.run(
             [sys.executable, str(Path(__file__).absolute())],
-            input=json.dumps(payload),
+            input=request.text,
             capture_output=True,
             text=True,
             env=env,
@@ -493,10 +548,12 @@ def respond(data: bytes) -> dict[str, str]:
             timeout=WORK,
         )
     except subprocess.TimeoutExpired:
-        return {"error": f"the {event} took more than {WORK} s", "stderr": ""}
+        return Reply(error=f"the {request.event} took more than {WORK} s")
+    except OSError as err:
+        return Reply(error=f"the {request.event} cannot start {sys.executable}: {err}")
     if proc.returncode != 0:
-        return {"error": f"the {event} exited {proc.returncode}", "stderr": proc.stderr}
-    return {"path": proc.stdout.strip(), "stderr": proc.stderr}
+        return Reply(error=f"the {request.event} exited {proc.returncode}", stderr=proc.stderr)
+    return Reply(path=proc.stdout.strip(), stderr=proc.stderr)
 
 
 def serve_arguments(args: Sequence[str]) -> tuple[Path, int]:
@@ -514,7 +571,7 @@ def main(args: Sequence[str] = ()) -> int:
         payload = loads(sys.stdin.read(), where="hook input")
         event = payload.get("hook_event_name")
         if "AGENTBOX" in os.environ:
-            ask(payload)
+            ask(payload, created=event == "WorktreeCreate")
         elif event == "WorktreeCreate":
             print(create(payload))
         elif event == "WorktreeRemove":

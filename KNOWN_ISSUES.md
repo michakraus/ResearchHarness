@@ -1074,3 +1074,14 @@
   list does not hold, so a home in which only that file of the layer exists gives no WARN.
 - kind: defect
 - found: 2026-11-15, the spec of part G4b of the sandbox plan
+
+### K171 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte.
+
+- location: `hooks/worktree.py:392`
+- evidence: `remove` calls `Path(payload.get("worktree_path", "")).resolve()`, which raises
+  `ValueError: lstat: embedded null character in path`, and `main` does not catch it:
+  `printf '%s' '{"hook_event_name":"WorktreeRemove","worktree_path":"/a\u0000b"}' | python3.14
+  hooks/worktree.py` ends in that traceback, with exit 1. The line is the same on `f3a56a15`.
+  Through the worktree broker, the traceback comes back as the reply's `stderr`.
+- kind: defect
+- found: 2026-11-17, the fix round of part G3a of the sandbox plan

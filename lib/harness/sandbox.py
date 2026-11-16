@@ -2708,8 +2708,8 @@ def broker_cases(check: Check, root: pathlib.Path) -> None:
     srt's environment holds AGENTBOX_BROKER as that path, which is a socket; the directory has mode
     700, also where it had another; broker.log is in the run directory; stderr is empty. With no
     interpreter, an interpreter that is not executable, no hook file, a file where the directory
-    belongs, or an interpreter that binds nothing: srt runs, with no AGENTBOX_BROKER, and stderr
-    holds one line that names the cause."""
+    belongs, or an interpreter that binds nothing: srt runs, with no AGENTBOX_BROKER, also where the
+    caller set one, and stderr holds one line that names the cause."""
     for name in ("claude", "opencode", "omp", "agy"):
         box = Box.fresh(root / "started", name)
         directory = box.home / BROKER_DIR
@@ -2767,20 +2767,24 @@ def broker_cases(check: Check, root: pathlib.Path) -> None:
         ),
     ]
     for label, change, words in changes:
-        box = Box.fresh(root / "failed", label.replace(" ", "-").replace("'", ""))
-        change(box.home)
-        p = box.run("omp")
-        seen = box.environment() if box.argv() is not None else {}
-        check(
-            p.returncode == 0
-            and box.argv() is not None
-            and "AGENTBOX_BROKER" not in seen
-            and p.stderr.count("\n") == 1
-            and p.stderr.endswith("\n")
-            and all(w.replace("<home>", str(box.home)) in p.stderr for w in words),
-            f"agentbox omp with {label}: srt runs with no AGENTBOX_BROKER, and one line on stderr names "
-            f"{words}: {p.returncode}, {box.argv() is not None}, {seen.get('AGENTBOX_BROKER')}, {p.stderr!r}",
-        )
+        for caller in ({}, {"AGENTBOX_BROKER": "/caller/stale.sock"}):
+            box = Box.fresh(
+                root / "failed" / ("caller" if caller else "plain"), label.replace(" ", "-").replace("'", "")
+            )
+            change(box.home)
+            p = box.run("omp", variables=caller)
+            seen = box.environment() if box.argv() is not None else {}
+            check(
+                p.returncode == 0
+                and box.argv() is not None
+                and "AGENTBOX_BROKER" not in seen
+                and p.stderr.count("\n") == 1
+                and p.stderr.endswith("\n")
+                and all(w.replace("<home>", str(box.home)) in p.stderr for w in words),
+                f"agentbox omp with {label}{', and AGENTBOX_BROKER set by the caller' if caller else ''}: "
+                f"srt runs with no AGENTBOX_BROKER, and one line on stderr names {words}: {p.returncode}, "
+                f"{box.argv() is not None}, {seen.get('AGENTBOX_BROKER')}, {p.stderr!r}",
+            )
 
 
 def cache_cases(check: Check, root: pathlib.Path) -> None:
