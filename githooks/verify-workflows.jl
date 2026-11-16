@@ -73,8 +73,8 @@ const TEST_JOB_NAME = "Julia \${{ matrix.version }} - \${{ matrix.os }} - \${{ m
 const DOCTEST_JOB_NAME = "Doctests - \${{ matrix.os }}"
 
 # The Julia checks that CI.yml reports on every pull request: `test` on Ubuntu with `min` and `1`,
-# and `test-other` on macOS and Windows with `1`. `min` on macOS and Windows runs only weekly, on a
-# tag and by hand, so it is no required check. The same list as REQUIRED_CHECKS of
+# and `test-other` on macOS and Windows with `1`. `min` on macOS and Windows runs on no pull request
+# or push to a branch, so it is no required check. The same list as REQUIRED_CHECKS of
 # lib/harness/protection.py, which a case of `harness test` compares with what this prints.
 const JULIA_CHECKS = [
     "Julia min - ubuntu-latest - default",

@@ -98,7 +98,7 @@ from . import REPO, HarnessError, changing, fmt, githooks, jsonio, outcome
 # The required status checks of a repository without test/ci-groups.toml: the checks that the
 # canonical CI.yml reports on every pull request and that are not warnings. They are `test` on
 # Ubuntu with `min` and `1`, `test-other` on macOS and Windows with `1`, each with `arch: default`,
-# and the single pinned `doctest` entry. `min` on macOS and Windows runs only weekly and on a tag,
+# and the single pinned `doctest` entry. `min` on macOS and Windows runs on no pull request,
 # and `prerelease` is a warning, so neither is here. verify-workflows.jl prints the same set, and a
 # case derives it from the template. `required_checks` gives a repository with test groups its own
 # list.
