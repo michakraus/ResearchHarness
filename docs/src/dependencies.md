@@ -350,7 +350,8 @@ Call sites: Aqua and JET, `scripts/dispatch-delta.jl`; ExplicitImports,
 `harness format` (`githooks/format-tree.jl`), the installed pre-commit hook
 (`githooks/pre-commit.jl`) and `scripts/gate.jl`; JuliaSyntax, `scripts/mutate.jl` and
 `scripts/mutants.jl`; ParallelTestRunner, `scripts/test-layout-test.jl`; TestEnv,
-`scripts/run-tests.jl`, `scripts/mutate-worker.jl` and `scripts/dispatch-delta.jl`; YAML, `harness ci-protection` through `githooks/verify-workflows.jl`.
+`scripts/run-tests.jl`, `scripts/mutate-worker.jl` and `scripts/dispatch-delta.jl`; YAML,
+`harness ci-protection` through `githooks/verify-workflows.jl`.
 `harness install` instantiates all nine with `Project.toml`, only where `[setup]` chooses the
 component `julia`.
 

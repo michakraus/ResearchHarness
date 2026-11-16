@@ -67,7 +67,8 @@ tagged with its rule, and exits 1 if there is any.
   required checks end in ` - <group>`. The file lists `core`, `slow` and the repository's own
   groups, each a name of lower-case letters and digits, and none of `doctests`, `metal`, `cuda`
   and `broken`. Each listed group has an `if` in `runtests.jl`, or a group in `TESTS`, and empty
-  `ARGS` runs exactly them: `const GROUPS = isempty(ARGS) ? ["core", "slow", "properties", "long"] : ARGS`, in the
+  `ARGS` runs exactly them:
+  `const GROUPS = isempty(ARGS) ? ["core", "slow", "properties", "long"] : ARGS`, in the
   order of the file, so `Pkg.test()` still runs every group. A `metal` group appends `"metal"`
   to the Apple list of the platform line. `verify-workflows.jl` checks the file too.
 - **A group job runs its group alone, so a device group leaves the required macOS jobs.** The file
@@ -171,6 +172,6 @@ Run one file, a group, or the files a diff reaches, with `run-tests.jl <reposito
 the group `doctests`, so a doctest change runs `run-tests.jl <repository> doctests`.
 `--jobs <n>` before the selection runs its files in n worker processes, each file once; with
 `full`, the files of `Pkg.test()`, or in the parallel form one
-`Pkg.test(; test_args = ["--jobs=<n>"])`. A `core` run with `--jobs` gives no D6 verdict, because a file's
-time in a worker is not its cold time in the order of `runtests.jl`. The shared `pre-commit` hook
-runs `test-layout.jl --check` on a commit that touches `test/`.
+`Pkg.test(; test_args = ["--jobs=<n>"])`. A `core` run with `--jobs` gives no D6 verdict,
+because a file's time in a worker is not its cold time in the order of `runtests.jl`. The shared
+`pre-commit` hook runs `test-layout.jl --check` on a commit that touches `test/`.
