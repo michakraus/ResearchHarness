@@ -1,0 +1,120 @@
+#!/bin/sh
+# claudex [args...]: start Claude Code outside agentbox, with Claude Code's own sandbox, in the
+# configuration directory ~/.config/claudex. It runs
+#
+#   CLAUDE_CONFIG_DIR=$HOME/.config/claudex <program> <args...>
+#
+# where <program> is the path that `command -v claude` gives on the caller's PATH without the
+# entries that match */cmux-cli-shims/* or */cmux-cli-shims, as agentbox finds it: a cmux shim is
+# the first claude on the PATH of a cmux terminal. The filter decides only which program runs; the
+# program gets the caller's PATH. ~/.config/claudex holds its own settings.json, which `harness
+# install --apply` writes, and its own login.
+#
+# The link set: agents, commands, hooks, instructions, rules, skills, CLAUDE.md, RTK.md,
+# statusline-command.sh and projects. Each is a symbolic link in ~/.config/claudex to
+# $HOME/.claude/<name>, so that claudex reads the layer that `harness install` writes there and
+# keeps its sessions with those of a plain claude. The script checks every name before it makes any
+# link, then makes each missing one with
+#
+#   ln -s "$HOME/.claude/<name>" "$HOME/.config/claudex/<name>"
+#
+# It exits 2 with one line on stderr, and starts nothing and makes no link, when AGENTBOX is set;
+# when ~/.config/claudex/settings.json is not a file; when claude is not on the PATH without the
+# cmux shims, or what `command -v` gives does not start with / (a function that /bin/sh imports,
+# or, where /bin/sh is dash, a program in a relative PATH entry); when the caller passes --settings
+# or --settings=...: Claude Code keeps only the last --settings, so the caller's could turn its own
+# sandbox off; and when a name of the link set is in ~/.config/claudex as anything but a symbolic
+# link whose target is exactly $HOME/.claude/<name>, or $HOME/.claude/<name> does not exist. It
+# also exits 2 with one line, and starts nothing, when ln cannot make a link; the links that it
+# made before that one stay.
+#
+# The checks and the links run in subshells, so that outside a subshell the script assigns no
+# shell variable other than CLAUDE_CONFIG_DIR, which it exports, and every other variable of the
+# caller reaches the program unchanged. It ends in exec, so the program's exit status is the
+# script's.
+
+refuse() {
+    printf 'claudex: %s\n' "$1" >&2
+    exit 2
+}
+
+# resolve <program>: print what `command -v <program>` gives on the caller's PATH without the
+# entries that match */cmux-cli-shims/* or */cmux-cli-shims. Run it in a command substitution: it
+# assigns PATH and its own variables, which then stay in the subshell.
+resolve() {
+    found=
+    rest=$PATH:
+    while [ -n "$rest" ]; do
+        entry=${rest%%:*}
+        rest=${rest#*:}
+        case $entry in
+        */cmux-cli-shims/* | */cmux-cli-shims) ;;
+        *) found=$found:$entry ;;
+        esac
+    done
+    PATH=${found#:}
+    command -v "$1"
+}
+
+# names: print the link set, one name per line.
+names() {
+    printf '%s\n' agents commands hooks instructions rules skills CLAUDE.md RTK.md \
+        statusline-command.sh projects
+}
+
+# check <args...>: refuse what claudex cannot run safely, before anything is linked. It runs in a
+# subshell, so its variables stay there.
+check() (
+    if [ -n "${AGENTBOX+set}" ]; then
+        refuse "AGENTBOX is set: this runs inside agentbox, whose sandbox Claude Code's own cannot run in"
+    fi
+    if ! [ -f "$HOME/.config/claudex/settings.json" ]; then
+        refuse "$HOME/.config/claudex/settings.json is not a file; run harness install --apply"
+    fi
+    program=$(resolve claude)
+    case $program in
+    /*) ;;
+    "") refuse "no program claude on the PATH without the cmux-cli-shims entries" ;;
+    *) refuse "claude is $program on the PATH, not an absolute path: a function, an alias or a relative PATH entry" ;;
+    esac
+    for arg in "$@"; do
+        case $arg in
+        --settings | --settings=*)
+            refuse "claudex takes no --settings: Claude Code keeps only the last one, which could turn its sandbox off"
+            ;;
+        esac
+    done
+    for name in $(names); do
+        link=$HOME/.config/claudex/$name
+        target=$HOME/.claude/$name
+        if [ -L "$link" ]; then
+            if [ "$(readlink "$link")" != "$target" ]; then
+                refuse "$link is a link to $(readlink "$link"), not to $target"
+            fi
+        elif [ -e "$link" ]; then
+            refuse "$link is not a link to $target; move it away"
+        fi
+        if ! [ -e "$target" ]; then
+            case $name in
+            projects) refuse "$target does not exist; make it with mkdir $target" ;;
+            *) refuse "$target does not exist; run harness install --apply" ;;
+            esac
+        fi
+    done
+)
+
+# link: make each missing link of the link set. It runs in a subshell, so its variables stay there.
+link() (
+    for name in $(names); do
+        if ! [ -L "$HOME/.config/claudex/$name" ]; then
+            ln -s "$HOME/.claude/$name" "$HOME/.config/claudex/$name" 2>/dev/null ||
+                refuse "ln cannot make $HOME/.config/claudex/$name"
+        fi
+    done
+)
+
+check "$@" || exit 2
+link || exit 2
+CLAUDE_CONFIG_DIR=$HOME/.config/claudex
+export CLAUDE_CONFIG_DIR
+exec "$(resolve claude)" "$@"

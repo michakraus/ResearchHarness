@@ -53,7 +53,10 @@ repository's owner, on macOS only scripts/sealed.py at `~/.local/bin/ghx`, `~/.l
 and `~/.local/bin/git-credential-sealed`, each mode 755, which run gh and glab, and answer git as
 a credential helper, with the user's own secrets that Touch ID decrypts, and, with `claude`
 chosen, Claude Code's override `claude-inner-off.json` in the same directory as the files, which
-the launcher passes to Claude Code to turn its own sandbox off.
+the launcher passes to Claude Code to turn its own sandbox off. With `claude` chosen it also plans,
+on every platform, the launcher sandbox/claudex at `~/.local/bin/claudex`, mode 755, which starts
+Claude Code outside `agentbox`, with its own sandbox, in the configuration directory
+`~/.config/claudex`.
 
 The module has no subcommand; its cases run in `harness test`.
 """
@@ -90,6 +93,12 @@ GLOB_CHARS = "*?[]"
 LAUNCHER = REPO / "sandbox" / "agentbox"
 LAUNCHER_PATH = pathlib.PurePosixPath(".local", "bin", "agentbox")
 LAUNCHER_MODE = 0o755
+# The launcher that starts Claude Code outside agentbox, with Claude Code's own sandbox, in the
+# configuration directory CLAUDEX_DIR, and where the install puts it, beside agentbox, with
+# agentbox's mode; both paths are relative to the home directory.
+CLAUDEX = REPO / "sandbox" / "claudex"
+CLAUDEX_PATH = pathlib.PurePosixPath(".local", "bin", "claudex")
+CLAUDEX_DIR = pathlib.PurePosixPath(".config", "claudex")
 # The gh wrapper, which runs gh with the token of the repository's owner, and where the install puts
 # it, beside the launcher, with the launcher's mode.
 WRAPPER = REPO / "scripts" / "gh-token.py"
@@ -384,9 +393,10 @@ def plan_files(
     such an entry of any frontend that reaches a `fetch` host that no `deny` entry without a port
     removes. Each file is JSON indented by 2, the keys in the order built, with a final newline,
     and mode None. Then, where `chosen` holds claude, Claude Code's override INNER_OFF, mode None;
-    then the launcher sandbox/agentbox at ~/.local/bin/agentbox, mode 755; then the gh wrapper
-    scripts/gh-token.py at ~/.local/bin/gh, mode 755; then, on macOS (`sys.platform` "darwin")
-    only, scripts/sealed.py at ~/.local/bin/ghx, ~/.local/bin/glabx and
+    then the launcher sandbox/agentbox at ~/.local/bin/agentbox, mode 755; then, where `chosen`
+    holds claude, on every platform, the launcher sandbox/claudex at ~/.local/bin/claudex, mode
+    755; then the gh wrapper scripts/gh-token.py at ~/.local/bin/gh, mode 755; then, on macOS
+    (`sys.platform` "darwin") only, scripts/sealed.py at ~/.local/bin/ghx, ~/.local/bin/glabx and
     ~/.local/bin/git-credential-sealed, each mode 755, in that order. With no frontend chosen it
     plans nothing, so an overlay that the install does not read stops nothing."""
     names = [name for name in frontends.FRONTENDS if name in chosen]
@@ -428,6 +438,8 @@ def plan_files(
     if "claude" in names:
         files.append((home / DIRECTORY / INNER_OFF_NAME, INNER_OFF, None, f"~/{DIRECTORY}/{INNER_OFF_NAME}"))
     files.append((home / LAUNCHER_PATH, LAUNCHER.read_bytes(), LAUNCHER_MODE, f"~/{LAUNCHER_PATH}"))
+    if "claude" in names:
+        files.append((home / CLAUDEX_PATH, CLAUDEX.read_bytes(), LAUNCHER_MODE, f"~/{CLAUDEX_PATH}"))
     files.append((home / WRAPPER_PATH, WRAPPER.read_bytes(), LAUNCHER_MODE, f"~/{WRAPPER_PATH}"))
     if sys.platform == "darwin":
         sealed = SEALED.read_bytes()
@@ -586,10 +598,10 @@ def selftest() -> tuple[int, int]:
     and on the settings template, the forge token store in the frontends' guard lists
     (`forge_guard_cases`), the dotfiles token in every list that denies it
     (`dotfiles_guard_cases`), the sealed secrets in the same lists (`sealed_guard_cases`), the gh
-    wrapper and the three names of scripts/sealed.py in `plan_files` on Linux and macOS, and
-    sandbox/agentbox on scratch homes (`agentbox_cases`):
-    (cases, wrong). The cases of `harness install` on scratch HOMEs, `install_file_cases`, run in
-    the selftest of install.py."""
+    wrapper and the three names of scripts/sealed.py in `plan_files` on Linux and macOS,
+    sandbox/agentbox on scratch homes (`agentbox_cases`), and sandbox/claudex in `plan_files`
+    (`plan_claudex_cases`) and on scratch homes (`claudex_cases`): (cases, wrong). The cases of
+    `harness install` on scratch HOMEs, `install_file_cases`, run in the selftest of install.py."""
     n = wrong = 0
 
     def check(ok: object, label: str) -> None:
@@ -610,6 +622,8 @@ def selftest() -> tuple[int, int]:
         plan_network_cases(check, root / "plan")
         plan_wrapper_cases(check, root / "wrapper")
         agentbox_cases(check, root / "agentbox")
+        plan_claudex_cases(check, root / "plan-claudex")
+        claudex_cases(check, root / "claudex")
     return n, wrong
 
 
@@ -2100,6 +2114,399 @@ def resolution_cases(check: Check, root: pathlib.Path) -> None:
         )
 
 
+# The link set of sandbox/claudex, in the order in which it checks and makes the links.
+CLAUDEX_LINKS = (
+    "agents",
+    "commands",
+    "hooks",
+    "instructions",
+    "rules",
+    "skills",
+    "CLAUDE.md",
+    "RTK.md",
+    "statusline-command.sh",
+    "projects",
+)
+# The script of the cases' claude: it writes its arguments, each ended by a NUL, to claude-args and
+# its environment to claude-env, in the home directory that holds it at path/claude, then exits
+# with $STUB_STATUS.
+STUB_CLAUDE = """\
+#!/bin/sh
+home=${0%/path/claude}
+for a in "$@"; do printf '%s\\0' "$a"; done > "$home/claude-args"
+/usr/bin/env > "$home/claude-env"
+exit "${STUB_STATUS:-0}"
+"""
+# The variables of the caller in each case of sandbox/claudex: CALLER and the names of the script's
+# own variables.
+CLAUDEX_CALLER = {**CALLER, "link": "caller", "target": "caller", "arg": "caller"}
+
+
+@dataclass(frozen=True)
+class Claudex:
+    """A scratch home for sandbox/claudex: ~/.claude with each name of `names`, a file where the
+    name holds a `.` and a directory otherwise, ~/.config/claudex with an empty settings.json, and
+    the stub claude (STUB_CLAUDE) in path/. No srt."""
+
+    home: pathlib.Path
+
+    @classmethod
+    def fresh(cls, root: pathlib.Path, label: str, names: Sequence[str] = CLAUDEX_LINKS) -> Claudex:
+        home = root / label
+        (home / ".claude").mkdir(parents=True)
+        for name in names:
+            if "." in name:
+                (home / ".claude" / name).write_text("x\n")
+            else:
+                (home / ".claude" / name).mkdir()
+        (home / CLAUDEX_DIR).mkdir(parents=True)
+        (home / CLAUDEX_DIR / "settings.json").write_text("{}\n")
+        (home / "path").mkdir()
+        (home / "path" / "claude").write_text(STUB_CLAUDE)
+        (home / "path" / "claude").chmod(0o755)
+        return cls(home)
+
+    def env(self, **extra: str) -> dict[str, str]:
+        """The environment of a run: HOME, a PATH with path/ first, CLAUDEX_CALLER and `extra`."""
+        return {"HOME": str(self.home), "PATH": f"{self.home}/path:/usr/bin:/bin", **CLAUDEX_CALLER, **extra}
+
+    def run(self, *args: str, variables: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        """sandbox/claudex with `args`, in the environment `env` with `variables`."""
+        return subprocess.run(
+            [str(CLAUDEX), *args],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=self.env(**(variables or {})),
+            timeout=60,
+            check=False,
+        )
+
+    def argv(self) -> list[str] | None:
+        """The arguments that the stub claude saw, or None where it did not run."""
+        path = self.home / "claude-args"
+        return path.read_text().split("\0")[:-1] if path.exists() else None
+
+    def environment(self) -> dict[str, str]:
+        """The environment that the stub claude saw, without SHELL_SET."""
+        pairs = [line.split("=", 1) for line in (self.home / "claude-env").read_text().splitlines()]
+        return {k: v for k, v in pairs if k not in SHELL_SET}
+
+    def state(self) -> dict[str, str]:
+        """Each entry of ~/.config/claudex: `link <target>`, `dir` or `file`."""
+        directory = self.home / CLAUDEX_DIR
+        entries: list[pathlib.Path] = list(directory.iterdir()) if directory.is_dir() else []
+        return {
+            p.name: f"link {p.readlink()}" if p.is_symlink() else "dir" if p.is_dir() else "file"
+            for p in entries
+        }
+
+    def layer(self) -> list[str]:
+        """Every path below ~/.claude, relative to it, sorted."""
+        return sorted(
+            p.relative_to(self.home / ".claude").as_posix() for p in (self.home / ".claude").rglob("*")
+        )
+
+    def linked(self, names: Sequence[str] = CLAUDEX_LINKS) -> dict[str, str]:
+        """The state of ~/.config/claudex with settings.json and each name of `names` a link to
+        $HOME/.claude/<name>."""
+        return {"settings.json": "file", **{n: f"link {self.home}/.claude/{n}" for n in names}}
+
+
+def claudex_refusals() -> list[
+    tuple[str, Callable[[pathlib.Path], None], list[str], dict[str, str], list[str]]
+]:
+    """Each refusal of sandbox/claudex: (label, change of the home, arguments, variables, words that
+    its line names). `<home>` in a variable or a word is the scratch home."""
+    claudex = CLAUDEX_DIR
+
+    def nothing(home: pathlib.Path) -> None:
+        del home
+
+    def unlink(rel: str) -> Callable[[pathlib.Path], None]:
+        return lambda home: (home / rel).unlink()
+
+    def settings_dir(home: pathlib.Path) -> None:
+        (home / claudex / "settings.json").unlink()
+        (home / claudex / "settings.json").mkdir()
+
+    def shims_only(home: pathlib.Path) -> None:
+        (home / "path" / "claude").unlink()
+        stub(home / "x" / "cmux-cli-shims" / "claude")
+
+    def agents_file(home: pathlib.Path) -> None:
+        (home / claudex / "agents").write_text("x\n")
+
+    def projects_file(home: pathlib.Path) -> None:
+        (home / claudex / "projects").write_text("x\n")
+
+    def agents_dir(home: pathlib.Path) -> None:
+        (home / claudex / "agents").mkdir()
+
+    def skills_other(home: pathlib.Path) -> None:
+        (home / "other").mkdir()
+        (home / claudex / "skills").symlink_to(home / "other")
+
+    def relative(home: pathlib.Path) -> None:
+        (home / claudex / "CLAUDE.md").symlink_to("../../.claude/CLAUDE.md")
+
+    def target_missing(name: str) -> Callable[[pathlib.Path], None]:
+        return lambda home: (home / ".claude" / name).rmdir()
+
+    return [
+        ("AGENTBOX=1", nothing, [], {"AGENTBOX": "1"}, ["AGENTBOX"]),
+        ("an empty AGENTBOX", nothing, [], {"AGENTBOX": ""}, ["AGENTBOX"]),
+        (
+            "no settings file",
+            unlink(f"{claudex}/settings.json"),
+            [],
+            {},
+            ["<home>/.config/claudex/settings.json", "harness install --apply"],
+        ),
+        ("a directory at settings.json", settings_dir, [], {}, ["<home>/.config/claudex/settings.json"]),
+        ("no claude on the PATH", unlink("path/claude"), [], {}, ["claude", "cmux-cli-shims"]),
+        (
+            "claude only in cmux-cli-shims",
+            shims_only,
+            [],
+            {"PATH": "<home>/x/cmux-cli-shims:<home>/path:/usr/bin:/bin"},
+            ["claude", "cmux-cli-shims"],
+        ),
+        ("--settings x.json", nothing, ["--settings", "x.json"], {}, ["--settings"]),
+        ("--settings=x.json", nothing, ["--settings=x.json"], {}, ["--settings"]),
+        ("a later --settings", nothing, ["a", "--", "--settings", "x.json"], {}, ["--settings"]),
+        ("agents a regular file", agents_file, [], {}, ["<home>/.config/claudex/agents", "is not a link"]),
+        ("agents a directory", agents_dir, [], {}, ["<home>/.config/claudex/agents", "is not a link"]),
+        (
+            "projects a regular file",
+            projects_file,
+            [],
+            {},
+            ["<home>/.config/claudex/projects", "is not a link"],
+        ),
+        (
+            "skills a link to another directory",
+            skills_other,
+            [],
+            {},
+            ["<home>/.config/claudex/skills", "<home>/other", "<home>/.claude/skills"],
+        ),
+        (
+            "CLAUDE.md a relative link to its target",
+            relative,
+            [],
+            {},
+            ["<home>/.config/claudex/CLAUDE.md", "<home>/.claude/CLAUDE.md"],
+        ),
+        ("~/.claude/rules missing", target_missing("rules"), [], {}, ["<home>/.claude/rules"]),
+        (
+            "~/.claude/projects missing",
+            target_missing("projects"),
+            [],
+            {},
+            ["<home>/.claude/projects", "mkdir"],
+        ),
+    ]
+
+
+def layer_names(root: pathlib.Path) -> set[str]:
+    """The top-level names below ~/.claude of the files that the Claude Code layer plans from this
+    repository's sources, with an empty scratch tree as the tree instructions; the layer plans the
+    settings and the stamp apart from these files."""
+    tree = root / "tree"
+    tree.mkdir(parents=True)
+    claude: Any = frontends.adapter("claude")
+    profile = replace(profile_module.load(profile_module.DUMMY), tree_agents=str(tree))
+    planned = cast("list[tuple[str, bytes, int]]", claude.claude_plan(profile))
+    return {dst.split("/")[0] for dst, _, _ in planned}
+
+
+def claudex_cases(check: Check, root: pathlib.Path) -> None:
+    """sandbox/claudex, run as a program on a fresh `Claudex` below `root` per case: its mode; with
+    an empty claudex directory and with every link in place, the stub claude gets the caller's
+    arguments, each as one, and the caller's environment with CLAUDE_CONFIG_DIR the claudex
+    directory, each name of the link set is a link to $HOME/.claude/<name>, and ~/.claude is as it
+    was; `claudex_program_cases`; the stub's exit status; and `claudex_refusal_cases`."""
+    mode = stat.S_IMODE(CLAUDEX.stat().st_mode) if CLAUDEX.is_file() else None
+    executable = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    check(
+        mode is not None and mode & executable == executable and not mode & stat.S_IWOTH,
+        f"sandbox/claudex is a file executable by all and writable by no other: "
+        f"{'no file' if mode is None else f'{mode:o}'}",
+    )
+    if mode is None:
+        return
+    tail = ["a b", "--", "", "--model", "x"]
+    # The first case's caller has no CLAUDE_CONFIG_DIR, the second's another one, which the script
+    # replaces.
+    for label, caller in [
+        ("an empty claudex directory", {}),
+        ("every link in place", {"CLAUDE_CONFIG_DIR": "/caller"}),
+    ]:
+        box = Claudex.fresh(root / "started", label.replace(" ", "-"))
+        if caller:
+            for name in CLAUDEX_LINKS:
+                (box.home / CLAUDEX_DIR / name).symlink_to(box.home / ".claude" / name)
+        p = box.run(*tail, variables=caller)
+        got = box.argv()
+        seen = box.environment() if got is not None else {}
+        check(
+            p.returncode == 0
+            and got == tail
+            and p.stderr == ""
+            and seen == {**box.env(**caller), "CLAUDE_CONFIG_DIR": f"{box.home}/.config/claudex"},
+            f"claudex with {label} and {caller or 'no CLAUDE_CONFIG_DIR'}: claude gets each argument as one "
+            f"and the caller's environment with CLAUDE_CONFIG_DIR the claudex directory: {p.returncode}, "
+            f"{got}, {p.stderr!r}, { {k: v for k, v in seen.items() if box.env(**caller).get(k) != v} }",
+        )
+        check(
+            box.state() == box.linked() and box.layer() == sorted(CLAUDEX_LINKS),
+            f"claudex with {label}: each name of the link set is a link to $HOME/.claude/<name>, and "
+            f"~/.claude is as it was: {box.state()}, {box.layer()}",
+        )
+
+    claudex_program_cases(check, root / "program")
+
+    box = Claudex.fresh(root, "status")
+    p = box.run(variables={"STUB_STATUS": str(STUB_EXIT)})
+    check(p.returncode == STUB_EXIT, f"claudex exits with claude's status {STUB_EXIT}: {p.returncode}")
+    claudex_refusal_cases(check, root / "refused")
+
+
+def claudex_program_cases(check: Check, root: pathlib.Path) -> None:
+    """The program that sandbox/claudex starts, and its last refusal: a cmux shim first on the
+    PATH, which does not start; an exported bash function, checked against what this machine's
+    /bin/sh makes of it; a claudex directory that it cannot write, which exits 2 with no link."""
+    shims = ["x/cmux-cli-shims/A", "x/cmux-cli-shims"]
+    for entry in shims:
+        box = Claudex.fresh(root / "cmux", entry.replace("/", "-"))
+        stub(box.home / entry / "claude")
+        path = f"{box.home}/{entry}:{box.home}/path:/usr/bin:/bin"
+        p = box.run(variables={"PATH": path})
+        got = box.argv()
+        check(
+            p.returncode == 0
+            and got == []
+            and (box.environment() if got is not None else {}).get("PATH") == path,
+            f"claudex with {entry}/claude first on the PATH starts path/claude with the caller's PATH: "
+            f"{p.returncode}, {got}, {p.stderr!r}",
+        )
+
+    box = Claudex.fresh(root, "function")
+    function = {"BASH_FUNC_claude%%": "() { :; }"}
+    found = shell_finds("claude", {"PATH": box.env()["PATH"], **function}, box.home)
+    before = box.state()
+    p = box.run(variables=function)
+    if found == "claude":
+        check(
+            p.returncode == REFUSED
+            and box.argv() is None
+            and p.stderr.count("\n") == 1
+            and "claude" in p.stderr
+            and box.state() == before,
+            f"claudex with an exported function BASH_FUNC_claude%%, which /bin/sh imports: exits 2, starts "
+            f"no claude and makes no link: {p.returncode}, {box.argv()}, {p.stderr!r}",
+        )
+    else:
+        check(
+            p.returncode == 0 and box.argv() == [],
+            f"claudex with an exported function BASH_FUNC_claude%%, which /bin/sh does not import "
+            f"({found!r}): path/claude starts: {p.returncode}, {box.argv()}, {p.stderr!r}",
+        )
+
+    box = Claudex.fresh(root, "read-only")
+    (box.home / CLAUDEX_DIR).chmod(0o555)
+    try:
+        p = box.run()
+    finally:
+        (box.home / CLAUDEX_DIR).chmod(0o755)
+    check(
+        p.returncode == REFUSED
+        and box.argv() is None
+        and p.stderr.count("\n") == 1
+        and f"{box.home}/.config/claudex/agents" in p.stderr
+        and box.state() == {"settings.json": "file"},
+        f"claudex with a claudex directory that it cannot write exits 2, starts no claude and names the "
+        f"first link: {p.returncode}, {box.argv()}, {p.stderr!r}, {box.state()}",
+    )
+
+
+def claudex_refusal_cases(check: Check, root: pathlib.Path) -> None:
+    """Each refusal of `claudex_refusals`, which exits 2, starts no claude, prints one line on
+    stderr that names its cause and leaves the claudex directory as it was; arguments near
+    --settings pass; and the links made on a home whose ~/.claude holds the layer's top-level
+    names, `projects` and another name are those names and `projects`."""
+    for label, change, args, extra, words in claudex_refusals():
+        box = Claudex.fresh(root, re.sub(r"[^A-Za-z0-9.=-]", "-", label))
+        change(box.home)
+        before = box.state()
+        p = box.run(*args, variables={k: v.replace("<home>", str(box.home)) for k, v in extra.items()})
+        check(
+            p.returncode == REFUSED
+            and box.argv() is None
+            and p.stdout == ""
+            and p.stderr.count("\n") == 1
+            and p.stderr.endswith("\n")
+            and all(w.replace("<home>", str(box.home)) in p.stderr for w in words)
+            and box.state() == before,
+            f"claudex with {label} exits 2, starts no claude, leaves the claudex directory as it was and "
+            f"prints one line that names {words}: {p.returncode}, {box.argv()}, {p.stderr!r}, "
+            f"{before} -> {box.state()}",
+        )
+
+    for args in (["--settingsx"], ["--help"], ["-p", "--setting"]):
+        box = Claudex.fresh(root / "passed", "-".join(args).strip("-"))
+        p = box.run(*args)
+        check(
+            p.returncode == 0 and box.argv() == args,
+            f"claudex {args} starts claude with the arguments: {p.returncode}, {box.argv()}, {p.stderr!r}",
+        )
+
+    names = layer_names(root / "layer-tree")
+    box = Claudex.fresh(root, "layer", names=sorted({*names, "projects", "decoy"}))
+    p = box.run()
+    made = {name for name, kind in box.state().items() if kind.startswith("link ")}
+    check(
+        p.returncode == 0 and made == {*names, "projects"} and box.state() == box.linked(sorted(made)),
+        f"claudex links exactly the top-level names that the Claude Code layer installs, {sorted(names)}, "
+        f"and projects: {p.returncode}, {sorted(made)}, {p.stderr!r}",
+    )
+
+
+def plan_claudex_cases(check: Check, root: pathlib.Path) -> None:
+    """`plan_files` plans sandbox/claudex at ~/.local/bin/claudex, mode 755, once, right after the
+    launcher, with claude chosen, on Linux and on macOS; with opencode alone it plans no claudex."""
+    profile = profile_module.load(profile_module.DUMMY)
+    home = pathlib.Path("/h")
+    root.mkdir()
+    overlay = root / "network.toml"
+    claudex = (
+        home / CLAUDEX_PATH,
+        CLAUDEX.read_bytes() if CLAUDEX.is_file() else None,
+        0o755,
+        "~/.local/bin/claudex",
+    )
+    for platform in ("linux", "darwin"):
+        with mock.patch("sys.platform", platform):
+            for chosen in (("claude",), ("claude", "opencode")):
+                planned = plan_files(profile, overlay, chosen, home, None)
+                at = [i for i, f in enumerate(planned) if f[0].name == "claudex"]
+                check(
+                    len(at) == 1
+                    and planned[at[0]] == claudex
+                    and planned[at[0] - 1][0] == home / LAUNCHER_PATH,
+                    f"on {platform}, with {chosen} chosen, plan_files plans sandbox/claudex at "
+                    f"~/.local/bin/claudex, mode 755, once, after the launcher: "
+                    f"{[(str(d), m) for d, _, m, _ in planned]}",
+                )
+            planned = plan_files(profile, overlay, ("opencode",), home, None)
+            check(
+                not [d for d, _, _, _ in planned if d.name == "claudex"],
+                f"on {platform}, with opencode alone, plan_files plans no claudex: "
+                f"{[str(d) for d, _, _, _ in planned]}",
+            )
+
+
 def forge_cases(check: Check, root: pathlib.Path) -> None:
     """The variables of the forges in a run: for each frontend, the store's GitLab host and token,
     and a new GLAB_CONFIG_DIR and GH_CONFIG_DIR, in place of the caller's GITLAB_TOKEN,
@@ -2426,12 +2833,12 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
     """`real_tmpdir` on an unset, an empty and a linked $TMPDIR. Then `harness install` on scratch
     HOMEs whose profile chooses claude and opencode: one file each, of the bytes that
     `srt_settings` gives, with the real path of $TMPDIR, Claude Code's override, the launcher of
-    mode 755 (`launcher_installed`) and the gh wrapper of mode 755, and none after the dry run; a
-    second dry run with no change; the Claude Code settings.json byte for byte as `settings_bytes`
-    gives it; and `install_change_cases` on that base. With opencode alone and no $TMPDIR, no
-    tmpdir entry, the launcher and no override, and the dry run's status column is one for the srt
-    file and the other files; with no frontend, no file, no launcher and no wrapper, and a broken
-    network overlay stops nothing.
+    mode 755 (`launcher_installed`), the launcher claudex of mode 755 and the gh wrapper of mode
+    755, and none after the dry run; a second dry run with no change; the Claude Code settings.json
+    byte for byte as `settings_bytes` gives it; and `install_change_cases` on that base. With
+    opencode alone and no $TMPDIR, no tmpdir entry, the launcher, no override and no claudex, and
+    the dry run's status column is one for the srt file and the other files; with no frontend, no
+    file, no launcher and no wrapper, and a broken network overlay stops nothing.
     With claude chosen and a ~/.local/bin that is a symlink to a directory, the --apply exits 2,
     names it, and writes nothing."""
     installs = Installs(check, root)
@@ -2452,6 +2859,7 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
     labels = [
         *(f"~/{DIRECTORY}/{name}.json" for name in ("claude", "opencode", "claude-inner-off")),
         "~/.local/bin/agentbox",
+        "~/.local/bin/claudex",
         "~/.local/bin/gh",
     ]
     check(
@@ -2478,6 +2886,14 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
         launcher_installed(base),
         "the launcher is ~/.local/bin/agentbox, of the bytes of sandbox/agentbox and mode 755",
     )
+    claudex = base / "home" / CLAUDEX_PATH
+    check(
+        claudex.is_file()
+        and claudex.read_bytes() == CLAUDEX.read_bytes()
+        and stat.S_IMODE(claudex.stat().st_mode) == LAUNCHER_MODE,
+        "with claude chosen, the launcher claudex is ~/.local/bin/claudex, of the bytes of sandbox/claudex "
+        "and mode 755",
+    )
     wrapper = base / "home" / WRAPPER_PATH
     check(
         wrapper.is_file()
@@ -2489,7 +2905,7 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
         all(listed(outs[0], label, "INSTALL") for label in labels)
         and codes[2] == 0
         and all(listed(outs[2], label, "already identical") for label in labels),
-        f"the dry run lists the five files, and a second dry run reports no change for them: {codes[2]}, "
+        f"the dry run lists the six files, and a second dry run reports no change for them: {codes[2]}, "
         f"{last_line(outs[2])!r}",
     )
     check(
@@ -2507,8 +2923,10 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
         f"with no $TMPDIR, the file has no tmpdir entry: {codes}, {last_line(outs[1])!r}",
     )
     check(
-        launcher_installed(base) and not (base / "home" / DIRECTORY / "claude-inner-off.json").exists(),
-        "opencode alone gets the launcher with mode 755 and no override of Claude Code",
+        launcher_installed(base)
+        and not (base / "home" / DIRECTORY / "claude-inner-off.json").exists()
+        and not (base / "home" / CLAUDEX_PATH).exists(),
+        "opencode alone gets the launcher with mode 755, no override of Claude Code and no claudex",
     )
     check(
         listed(outs[0], f"~/{DIRECTORY}/opencode.json", "INSTALL") and len(columns(outs[0])) == 1,

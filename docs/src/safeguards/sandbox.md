@@ -164,6 +164,45 @@ that service, and without it every request of `gh` fails with `x509: OSStatus -2
 the service a possible path for data out of the sandbox, and allows it otherwise only with
 `enableWeakerNetworkIsolation`. A command that a frontend runs can reach it too.
 
+## The launcher `claudex`
+
+`claudex` starts Claude Code outside `agentbox`, with Claude Code's own sandbox on, in a
+configuration directory of its own:
+
+```sh
+claudex
+```
+
+It runs `claude` with `CLAUDE_CONFIG_DIR=~/.config/claudex` and passes your arguments on.
+`harness install --apply` installs it at `~/.local/bin/claudex` where `[setup]` chooses `claude`,
+on macOS and on Linux, and writes the Claude Code settings `~/.config/claudex/settings.json`. That
+directory also holds its own login, so you log in once with `/login` in `claudex`.
+
+**Its protection is weaker than that of `agentbox`.** Claude Code's sandbox wraps the `Bash`
+commands only. Claude Code itself, its file tools, its hooks and the MCP servers that it starts run
+outside any sandbox; the permission lists and the [guard hooks](guard-hooks.md) check the file
+tools, and are no boundary. Under `agentbox`, one sandbox wraps all of them. So start
+`agentbox claude` where it can run, and `claudex` for work that cannot run under `agentbox`.
+
+**It links the layer.** On each start, `claudex` makes each missing link of its link set in
+`~/.config/claudex`, to the same name in `~/.claude`: `agents`, `commands`, `hooks`,
+`instructions`, `rules`, `skills`, `CLAUDE.md`, `RTK.md`, `statusline-command.sh` and
+`projects`. So a `claudex` session reads the layer that `harness install` writes to `~/.claude`,
+and keeps its sessions and memory in the projects of a plain `claude`. The new settings file has
+no `statusLine`; set one there to use the linked `statusline-command.sh`.
+
+**It refuses.** `claudex` exits 2 with one line on stderr, and starts nothing and makes no link,
+when `AGENTBOX` is set; when `~/.config/claudex/settings.json` is not a file; when `claude` is
+not on the `PATH` without the `cmux-cli-shims` entries, or is no absolute path there, as `agentbox`
+finds it; when you pass `--settings`, because Claude Code keeps only the last one, which could
+turn its sandbox off; and when a name of the link set is in `~/.config/claudex` as anything but a
+link to `~/.claude/<name>`, or `~/.claude/<name>` does not exist. It checks every name before it
+makes a link.
+
+**The guard passes it.** The [launcher check](guard-hooks.md#the-launcher-check) refuses a Claude
+Code session outside `agentbox`, and passes one whose `CLAUDE_CONFIG_DIR` is `~/.config/claudex`
+with `sandbox.enabled` true in its `settings.json`. A plain `claude` stays refused.
+
 ## The daemon profiles
 
 An MCP server runs outside the session's sandbox: it is a process of its own, for example one that
