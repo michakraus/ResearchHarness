@@ -8,10 +8,10 @@
 #
 # WHAT IT CHECKS, AND WHY EACH CHECK IS HERE.
 #
-#   1. CI.yml, dependabot.yml, TagBot.yml and codecov.yml are byte-identical to the templates in
-#      workflows/. They are installed by copy and are not parameterised, so anything other than
-#      equality is drift. This is the check that makes the required-status-check list static,
-#      apart from the test groups of check 6.
+#   1. CI.yml, Downgrade.yml, dependabot.yml, TagBot.yml and codecov.yml are byte-identical to the
+#      templates in workflows/. They are installed by copy and are not parameterised, so anything
+#      other than equality is drift. This is the check that makes the required-status-check list
+#      static, apart from the test groups of check 6.
 #      TagBot.yml is the one asymmetric case: byte-identical under Packages/, and asserted
 #      ABSENT under Experiments/, none of which is registered in General.
 #   1b. The same set on the DEFAULT branch, but only for a repository whose working tree is
@@ -25,9 +25,9 @@
 #      `dependents_bases` lists, which also has .github/dependents.toml, and ABSENT from every
 #      other repository. The content of dependents.toml is not checked here: `harness dependents`
 #      writes it from the census and reports a stale copy.
-#   2. The two canonical CI jobs parse, and their job names are exactly the strings that
-#      harness ci-protection requires. A rename here silently invalidates branch protection in every
-#      repository, so it is asserted against a literal rather than derived.
+#   2. CI.yml parses, and the names of its jobs `test`, `test-other` and `doctest` are exactly the
+#      strings that harness ci-protection requires. A rename here silently invalidates branch
+#      protection in every repository, so it is asserted against a literal rather than derived.
 #   3. No Register.yml, no register.yml, no Documentation.yml, no Documentation.yaml, no
 #      CompatHelper.yml, in the working tree and on the default branch. Register.yml is removed on
 #      purpose (dispatching it uses up a version number); the Documentation
@@ -40,9 +40,10 @@
 #      error, but a silent skip is worse than a loud one.
 #   6. A repository's test/ci-groups.toml, where it has one, against its test/runtests.jl, with the
 #      rules of scripts/test-layout.jl: the file lists distinct group names, each group has an
-#      `if` there, and GROUPS runs exactly those groups for an empty ARGS, so the CI jobs together
-#      run what Pkg.test() runs. CI.yml runs one test job per group, and harness ci-protection
-#      requires a check per group, so a group file that does not match the suite splits it wrong.
+#      `if` there, or a group in TESTS in the parallel form, and GROUPS runs exactly those groups
+#      for an empty selection, so the CI jobs together run what Pkg.test() runs. CI.yml runs one
+#      test job per group, and harness ci-protection requires a check per group, so a group file
+#      that does not match the suite splits it wrong.
 #      Each extra workflow that the file names in `workflows`, such as Metal.yml, exists in
 #      .github/workflows/; harness ci-protection requires its jobs too, and check 4 parses it.
 
@@ -72,13 +73,20 @@ const QUIET = "--quiet" in ARGS
 const TEST_JOB_NAME = "Julia \${{ matrix.version }} - \${{ matrix.os }} - \${{ matrix.arch }}\${{ matrix.group && format(' - {0}', matrix.group) || '' }}"
 const DOCTEST_JOB_NAME = "Doctests - \${{ matrix.os }}"
 
-const VERSIONS = ["min", "1"]
-const OSES = ["ubuntu-latest", "macOS-latest", "windows-latest"]
+# The Julia checks that CI.yml reports on every pull request: `test` on Ubuntu with `min` and `1`,
+# and `test-other` on macOS and Windows with `1`. `min` on macOS and Windows runs on no pull request
+# or push to a branch, so it is no required check. The same list as REQUIRED_CHECKS of
+# lib/harness/protection.py, which a case of `harness test` compares with what this prints.
+const JULIA_CHECKS = [
+    "Julia min - ubuntu-latest - default",
+    "Julia 1 - ubuntu-latest - default",
+    "Julia 1 - macOS-latest - default",
+    "Julia 1 - windows-latest - default",
+]
 
 "The required checks of a repository with the test groups `groups`, or with none for `nothing`."
 required_checks(groups = nothing) = vcat(
-    ["Julia $v - $o - default$(g === nothing ? "" : " - $g")"
-     for v in VERSIONS for o in OSES for g in something(groups, [nothing])],
+    [g === nothing ? c : "$c - $g" for c in JULIA_CHECKS for g in something(groups, [nothing])],
     ["Doctests - ubuntu-latest"],
 )
 
@@ -301,6 +309,7 @@ checked in one and forgotten in the other. Paths use `/` because `git show` need
 function workflow_files(dir::String, name::String, isexperiment::Bool)
     files = [
         ("CI.yml", ".github/workflows/CI.yml"),
+        ("Downgrade.yml", ".github/workflows/Downgrade.yml"),
         ("dependabot.yml", ".github/dependabot.yml"),
         ("codecov.yml", "codecov.yml"),
     ]
@@ -467,13 +476,16 @@ function check_repo(
             get(y, "name", nothing) == "CI" ||
                 fail("CI.yml workflow name is $(repr(get(y, "name", nothing))), expected \"CI\"")
             jobs = get(y, "jobs", Dict())
-            haskey(jobs, "test") || fail("CI.yml has no `test` job")
-            haskey(jobs, "doctest") || fail("CI.yml has no `doctest` job")
-            if haskey(jobs, "test")
-                got = get(jobs["test"], "name", nothing)
-                got == TEST_JOB_NAME ||
-                    fail("CI.yml test job name is $(repr(got)), expected $(repr(TEST_JOB_NAME))")
+            for job in ("test", "test-other")
+                if haskey(jobs, job)
+                    got = get(jobs[job], "name", nothing)
+                    got == TEST_JOB_NAME ||
+                        fail("CI.yml $job job name is $(repr(got)), expected $(repr(TEST_JOB_NAME))")
+                else
+                    fail("CI.yml has no `$job` job")
+                end
             end
+            haskey(jobs, "doctest") || fail("CI.yml has no `doctest` job")
             if haskey(jobs, "doctest")
                 got = get(jobs["doctest"], "name", nothing)
                 got == DOCTEST_JOB_NAME || fail(

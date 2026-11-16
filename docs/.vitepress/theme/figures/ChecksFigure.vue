@@ -38,8 +38,8 @@ const gate = panel(0, commit.y + PANEL_H + ROW, WIDTH, [
   { title: 'Dispatch delta', icon: 'verdict', lines: ['the verifier, before', 'the pull request'] }
 ])
 const ci = panel(CX - 380, gate.y + PANEL_H + ROW, 760, [
-  { title: 'Tests', icon: 'workflow', lines: ['oldest and latest', 'Julia, three systems'] },
-  { title: 'Downgrade', icon: 'workflow', lines: ['the lowest', 'compat bounds'] },
+  { title: 'Tests', icon: 'workflow', lines: ['Ubuntu min and 1,', 'then macOS, Windows'] },
+  { title: 'Downgrade', icon: 'workflow', lines: ['lowest bounds, on a', 'Project.toml change'] },
   { title: 'Doctests', icon: 'workflow', lines: ['the examples', 'of the manual'] }
 ])
 const merge = { title: 'You merge', icon: 'pull-request', lines: ['when the required', 'checks pass'], x: CX - 130, y: ci.y + PANEL_H + ROW, w: 260, h: H2 }
@@ -67,7 +67,7 @@ const ARROWS = [
     :width="WIDTH"
     :height="HEIGHT"
     title="The checks between an edit and a merge"
-    desc="An edit of a source file meets three groups of checks before you merge it. On every commit, the pre-commit hook checks the test layout, the format with JuliaFormatter, the Unicode normal form and that the package loads. In each round of the builder-critic loop, the builder runs the affected tests with run-tests.jl, the builder and the critics run the named mutants, and julia-test-runner runs the full suite beside the critic; before the pull request, the verifier runs the dispatch delta. On every push to the pull request, CI runs the tests on the oldest and the latest Julia on three systems, the downgrade job with the lowest compat bounds, and the doctests. You merge when the required checks pass."
+    desc="An edit of a source file meets three groups of checks before you merge it. On every commit, the pre-commit hook checks the test layout, the format with JuliaFormatter, the Unicode normal form and that the package loads. In each round of the builder-critic loop, the builder runs the affected tests with run-tests.jl, the builder and the critics run the named mutants, and julia-test-runner runs the full suite beside the critic; before the pull request, the verifier runs the dispatch delta. On every push to the pull request, CI runs the tests on the oldest and the latest Julia on Ubuntu, then on the latest Julia on macOS and Windows once Ubuntu is green, and the doctests; the downgrade job with the lowest compat bounds runs when the pull request changes Project.toml or test/Project.toml. The weekly run and a tag also test the oldest Julia on macOS and Windows. You merge when the required checks pass."
   >
     <FigCard v-bind="edit" accent="blue" tinted />
     <FigPanel :box="BOX.commit" :x="commit.x" :y="commit.y" :w="commit.w" :h="commit.h" :title="BOX.commit" :badge="1" accent="violet">

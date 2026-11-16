@@ -74,8 +74,8 @@ push to the pull request.
    with a spec-delta spec, each round also runs the spec's checks on the head and pushes the branch
    for CI. [`gate.jl`](specs-and-gates.md#the-steps-of-gate-jl) runs these checks of a Julia
    package as one command, when you or an agent call it.
-3. **CI**, on every push to an open pull request, and on a push to `main` or `master`: the
-   workflow `CI.yml` below.
+3. **CI**, on every push to an open pull request, on a push to `main` or `master`, and weekly:
+   the workflow `CI.yml` below.
 
 The shared pre-push hook runs `Pkg.test` on a push to `main` or `master` only; a push of another
 branch passes at once, and CI tests it once its pull request is open. **Known issue (K133):** the
@@ -90,10 +90,12 @@ matches its template:
 
 | job or file | what it runs | required |
 |:--|:--|:--|
-| `groups` | reads the test groups of `test/ci-groups.toml`, where the file exists | no |
-| `test` | the tests on Julia `min` and `1`, on Ubuntu, macOS and Windows, once per test group; `pre` and `nightly` on Ubuntu | yes, except `pre` and `nightly` |
-| `downgrade` | the tests with each direct dependency at the lower bound of its `[compat]` entry, once per test group | no: information only |
+| `groups` | reads the test groups of `test/ci-groups.toml`, where the file exists, and the Julia versions of `test-other` for the event | no |
+| `test` | the tests on Julia `min` and `1` on Ubuntu, once per test group | yes |
+| `test-other` | the tests on macOS and Windows once every `test` job passes, once per test group: on Julia `1` for a pull request and a push to a branch, on `min` and `1` for the weekly run, a tag and a run by hand | yes, on `1` |
+| `prerelease` | the tests on Julia `pre` and `nightly` on Ubuntu, on every event | no: information only |
 | `doctest` | the doctests of the docstrings and of the manual, where `docs/Project.toml` exists | yes |
+| `Downgrade.yml` | the tests with each direct dependency at the lower bound of its `[compat]` entry, once per test group, on a change of `Project.toml` or `test/Project.toml`, on a tag and weekly | no: information only |
 | `Documenter.yml` | the documentation build and its deploy | no |
 | `TagBot.yml`, `codecov.yml`, `dependabot.yml` | the tag of a registered release, the coverage threshold, the weekly `[compat]` proposals | no |
 

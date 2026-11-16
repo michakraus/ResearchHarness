@@ -504,7 +504,7 @@ you try to install a new version.` and installs nothing. So when `juliaup --vers
 version, skip the `install.julialang.org` line, or run `juliaup self update` in its place. Run the
 `export` line and the **Check** below either way.
 
-The eight Julia packages of [Dependencies](dependencies.md#harness-setup-installs) need no command:
+The nine Julia packages of [Dependencies](dependencies.md#harness-setup-installs) need no command:
 the first install adds them.
 
 ### fatou
@@ -806,9 +806,10 @@ harness install
 `modelSettings` of the file from the settings template `settings/settings.proposal.json`, rendered
 with the profile. It keeps every other key of the file, such as the model that you choose in
 Claude Code, and it keeps the old file as a backup, `settings.json.bak-<date>-<time>`. If the file
-does not exist, the install creates it, with these four sections only. Then it writes the
-instruction files, the agents, the skills, the rules, the commands and the hooks, and last the
-stamp `~/.claude/.harness-install.json`.
+does not exist, the install creates it, with these four sections only. Its second file is
+`~/.config/claudex/settings.json`, which Claude Code reads when `claudex` runs it, merged in the
+same way. Then it writes the instruction files, the agents, the skills, the rules, the commands
+and the hooks, and last the stamp `~/.claude/.harness-install.json`.
 
 These sections are the permission settings, the hooks, the sandbox, and the
 [effort](concepts.md#effort) and auto-compact window of each model. Without them, Claude Code runs

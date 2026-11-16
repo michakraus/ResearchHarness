@@ -85,6 +85,7 @@ MINIMUMS = {
     "JSON": ("1.10",),
     "JuliaFormatter": ("2.14",),
     "JuliaSyntax": ("1.0.2",),
+    "ParallelTestRunner": ("2.10",),
     "TestEnv": ("1.103.7",),
     "YAML": ("0.4.17",),
     "fatou": ("0.22.0",),
@@ -957,6 +958,7 @@ PACKAGES = {
     "JSON": "1.11.0",
     "JuliaFormatter": "2.14.0",
     "JuliaSyntax": "1.0.2",
+    "ParallelTestRunner": "2.10.0",
     "TestEnv": "1.103.7",
     "YAML": "0.4.17",
 }

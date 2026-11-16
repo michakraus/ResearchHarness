@@ -27,15 +27,17 @@ A red check that an entry there explains is `expected red`, with the entry's id 
 
 ## The uniform-CI facts this depends on
 
-`CI.yml`, `.github/dependabot.yml` and `codecov.yml` are byte-identical across every repository, installed
-from `~/Research/Harness/githooks/workflows/`. There are **seven required status checks**, and
-their names were chosen so a matrix or Julia-version change cannot invalidate them.
+`CI.yml`, `Downgrade.yml`, `.github/dependabot.yml` and `codecov.yml` are byte-identical across
+every repository, installed from `~/Research/Harness/githooks/workflows/`. There are **five
+required status checks**, and their names were chosen so a matrix or Julia-version change cannot
+invalidate them.
 
 Two consequences you must use:
 
 - a check that is **missing** is a different finding from a check that **failed** — a missing
   required context usually means workflow drift, not a code problem. `verify-workflows.jl` is the
-  drift check;
+  drift check. The exception: `test-other` starts only after every Ubuntu `Julia` job passes, so a
+  red Ubuntu job leaves the macOS and Windows checks missing;
 - a failure that appears in *all* repositories at once is almost never 39 bugs. Suspect the shared
   workflow, an action version, or the registry.
 

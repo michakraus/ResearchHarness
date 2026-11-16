@@ -436,10 +436,20 @@ cannot list it. So the guard lists `~/.ssh`, and the listing gives one of three 
   tells the agent to stop and to ask the user to start the session again with
   `agentbox <frontend>`.
 
-One sandbox other than `agentbox` counts: Claude Code's own, in the Code tab of the Claude desktop
-app. There `CLAUDE_CODE_ENTRYPOINT` is `claude-desktop`, and the check passes when
-`~/.claude/settings.json` holds `sandbox.enabled` as `true`. A settings file that is missing or
-cannot be read or parsed counts as no sandbox. For OpenCode and oh-my-pi nothing else counts.
+One sandbox other than `agentbox` counts: Claude Code's own, in two sessions. In the Code tab of
+the Claude desktop app, `CLAUDE_CODE_ENTRYPOINT` is `claude-desktop`, and the check passes when
+`~/.claude/settings.json` holds `sandbox.enabled` as `true`. In a session that `claudex` starts,
+the check passes when two conditions hold:
+
+- `CLAUDE_CONFIG_DIR` is an absolute path that resolves to `~/.config/claudex`. A relative path is
+  refused, because Claude Code resolves it against a working directory that the guard does not
+  know. Both sides are resolved, so a link to the directory counts, and a `..` out of it does not.
+- `settings.json` in that directory holds `sandbox.enabled` as the boolean `true`.
+
+A settings file that is missing, no regular file, such as a FIFO, or cannot be read or parsed
+counts as no sandbox. A plain `claude` session stays refused, and its refusal names both ways in:
+`agentbox claude`, and `claudex` for Claude Code's own sandbox. For OpenCode and oh-my-pi nothing
+else counts.
 
 Antigravity's table runs no such check. Antigravity's terminal sandbox holds its shell commands in
 the CLI and in the desktop app, and its shell tool cannot run under `agentbox`.
@@ -450,8 +460,8 @@ readable there.
 
 The probe runs the guard of the three frontends in fixture homes whose `.ssh` has mode 000, so
 that the guard cannot list it, as under `agentbox`. Its groups `commands`, `omp` and `opencode`
-test the three answers and the Code tab, and the group `antigravity` a record of the corpus in a
-home whose `.ssh` the guard can list.
+test the three answers and the Code tab, the group `commands` also the `claudex` session, and the
+group `antigravity` a record of the corpus in a home whose `.ssh` the guard can list.
 
 ### The path list and oh-my-pi's own rows
 

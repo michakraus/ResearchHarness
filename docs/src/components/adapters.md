@@ -36,7 +36,15 @@ each other key of the template, and each `env` variable, that the file does not 
 only those values again, through `ownedjson.py`, and keeps every other byte of the file: the other
 keys and values, the layout and the text of each number. It keeps the old file as a backup, and
 creates the file if it is missing.
-The dry run prints the diff of those sections after the line of the file. After the layer, the
+The second file is `~/.config/claudex/settings.json`, which Claude Code reads when `claudex` runs
+it with `CLAUDE_CONFIG_DIR=~/.config/claudex`. The adapter merges the same template into it in the
+same way. In both files, each deny rule on a path below `~/.claude/` or on `~/.claude.json` has a
+twin below `~/.config/claudex/` right after it. The two deny rules on `**/.claude/settings*.json`
+do not match below `~/.config/claudex/`; the twins of the `~/.claude/settings*.json` rules cover
+those files, and no rule is added twice. The sandbox's read denies of `~/.claude.json`,
+`~/.claude/backups` and `~/.claude/.credentials.json` have their twins too. So each of these
+denies holds for the second name of its file below `~/.config/claudex/`.
+The dry run prints the diff of those sections after the line of each file. After the layer, the
 adapter writes the stamp `~/.claude/.harness-install.json`.
 
 The adapter exits with status 2, before it writes a file, in these cases:
