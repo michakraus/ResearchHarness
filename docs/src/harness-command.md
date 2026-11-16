@@ -1775,10 +1775,10 @@ The `srt` settings of the CLI frontends. The module has no subcommand. It reads
 `sandbox/policy.toml` (`load_policy`) and renders one frontend's `srt` settings from the `sandbox`
 object of the rendered Claude Code settings and the policy (`srt_settings`). `install` writes one
 file per chosen frontend below `~/.config/research-harness/sandbox/`, Claude Code's override there
-and the launcher `sandbox/claudex` at `~/.local/bin/claudex` when `claude` is chosen, the
-launcher `sandbox/agentbox` at `~/.local/bin/agentbox`, the gh
-wrapper `scripts/gh-token.py` at `~/.local/bin/gh`, and on macOS `scripts/sealed.py` at
-`~/.local/bin/ghx`, `~/.local/bin/glabx` and `~/.local/bin/git-credential-sealed` (`plan_files`).
+and the launcher `sandbox/claudex` at `~/.local/bin/claudex` when `claude` is chosen, the launcher
+`sandbox/agentbox` at `~/.local/bin/agentbox`, the gh wrapper `scripts/gh-token.py` at
+`~/.local/bin/gh`, and on macOS `scripts/sealed.py` at `~/.local/bin/ghx`, `~/.local/bin/glabx` and
+`~/.local/bin/git-credential-sealed` (`plan_files`).
 Each frontend's `allowedDomains` adds its `network` of the policy and of the overlay's frontend
 table to the template's. The module exits with status 2 on a policy file that breaks its schema,
 and on a frontend's `network` entry that covers a `fetch` host. Its cases check the shipped

@@ -2299,7 +2299,13 @@ def claudex_refusals() -> list[
             ["<home>/.config/claudex/CLAUDE.md", "<home>/.claude/CLAUDE.md"],
         ),
         ("~/.claude/rules missing", target_missing("rules"), [], {}, ["<home>/.claude/rules"]),
-        ("~/.claude/projects missing", target_missing("projects"), [], {}, ["<home>/.claude/projects"]),
+        (
+            "~/.claude/projects missing",
+            target_missing("projects"),
+            [],
+            {},
+            ["<home>/.claude/projects", "mkdir"],
+        ),
     ]
 
 
@@ -2831,9 +2837,8 @@ def install_file_cases(check: Check, root: pathlib.Path) -> None:
     755, and none after the dry run; a second dry run with no change; the Claude Code settings.json
     byte for byte as `settings_bytes` gives it; and `install_change_cases` on that base. With
     opencode alone and no $TMPDIR, no tmpdir entry, the launcher, no override and no claudex, and
-    the dry run's status column is one for the srt
-    file and the other files; with no frontend, no file, no launcher and no wrapper, and a broken
-    network overlay stops nothing.
+    the dry run's status column is one for the srt file and the other files; with no frontend, no
+    file, no launcher and no wrapper, and a broken network overlay stops nothing.
     With claude chosen and a ~/.local/bin that is a symlink to a directory, the --apply exits 2,
     names it, and writes nothing."""
     installs = Installs(check, root)

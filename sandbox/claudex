@@ -95,7 +95,10 @@ check() (
             refuse "$link is not a link to $target; move it away"
         fi
         if ! [ -e "$target" ]; then
-            refuse "$target does not exist; run harness install --apply"
+            case $name in
+            projects) refuse "$target does not exist; make it with mkdir $target" ;;
+            *) refuse "$target does not exist; run harness install --apply" ;;
+            esac
         fi
     done
 )
