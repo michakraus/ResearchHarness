@@ -1064,3 +1064,13 @@
   `<home>/.config/claudex` fails. The check fails closed; only such a spelling is refused.
 - kind: found late
 - found: 2026-11-16, the critic of part G4a of the sandbox plan
+
+### K170 · `harness doctor` does not count `~/.config/claudex/settings.json` as a file of an unchosen Claude Code layer.
+
+- location: `lib/harness/doctor.py:554`
+- evidence: `unchosen` lists the destinations of the Claude Code layer by hand, as
+  `root / "settings.json"`, `root / install.STAMP` and the files of `copies`, with `root` the
+  home's `.claude`. The adapter's `plan` also writes `~/.config/claudex/settings.json`, which that
+  list does not hold, so a home in which only that file of the layer exists gives no WARN.
+- kind: defect
+- found: 2026-11-15, the spec of part G4b of the sandbox plan
