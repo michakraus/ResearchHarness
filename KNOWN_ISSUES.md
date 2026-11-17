@@ -1074,3 +1074,15 @@
   list does not hold, so a home in which only that file of the layer exists gives no WARN.
 - kind: defect
 - found: 2026-11-15, the spec of part G4b of the sandbox plan
+
+### K171 · `ci_groups`, `ci_workflows`, `ci_once` and `ci_options` of `test-layout.jl` infer `Any` for a list that is a `Vector{String}` at run time.
+
+- location: `scripts/test-layout.jl:326`
+- evidence: `Vector{String}(x)` on a value read from the parsed TOML, which is `Any`, does not
+  narrow for inference (lines 326, 372 and 398). `Base.return_types` gives
+  `Tuple{Any, Vector{String}}` for `ci_groups`, `ci_workflows` and `ci_once`, and
+  `Tuple{Bool, Any}` for `ci_options`. At run time the lists are `Vector{String}`: `ci_options` on
+  a file with `once = []` returns a `Tuple{Bool, Vector{String}}`. A `::Vector{String}` assertion
+  on each conversion fixes the inferred types.
+- kind: defect
+- found: 2026-11-17, the branch verifier of part E2a of the test-speed plan
