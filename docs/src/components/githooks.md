@@ -355,7 +355,7 @@ list; it then writes nothing, and every test job is skipped. `harness ci-protect
 same file with the same text. The downgrade job runs every group, one job per group, or one job
 with `split = false`.
 
-Each job runs only the groups that it names, never empty `ARGS`, also with `split = false`. So a
+Each job of `test` and `test-other` names the groups that it runs, also with `split = false`. So a
 device group such as `metal`, which the file does not list, does not run in the required macOS
 jobs, where empty `ARGS` runs it without a group file. The file names the repository's own
 device workflow instead, and `harness ci-protection` requires every job of that workflow that is
