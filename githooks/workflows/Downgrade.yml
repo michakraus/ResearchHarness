@@ -107,8 +107,9 @@ jobs:
                           if split:
                               found += [row | {"group": g, "args": g} for g in runs]
                           else:
-                              # One job, with no argument where it runs every group.
-                              found.append(row | {"group": "", "args": "" if runs == groups else " ".join(runs)})
+                              # One job that names its groups, every group too: an empty ARGS adds
+                              # the device groups of the platform line of `runtests.jl`.
+                              found.append(row | {"group": "", "args": " ".join(runs)})
                       return found
 
                   test = rows([("min", "ubuntu-latest"), ("1", "ubuntu-latest")])

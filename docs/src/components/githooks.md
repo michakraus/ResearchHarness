@@ -304,9 +304,9 @@ The matrix names Julia versions by alias, `min` and `1`, so the names of the che
 in every repository without test groups. `test` and `test-other` share one job name, so a check
 has the same name as in one matrix over the three systems. Branch protection needs those fixed
 names. Only the entry of Julia `1` on Ubuntu measures coverage and sends it to Codecov, once per
-test group. A repository that needs another job gets its own extra workflow file, not an edit of
-this one. No checkout keeps the token, because the build and the tests run code of the package
-and its dependencies.
+test group, or once with `split = false`. A repository that needs another job gets its own extra
+workflow file, not an edit of this one. No checkout keeps the token, because the build and the
+tests run code of the package and its dependencies.
 
 ### Test groups
 
@@ -346,17 +346,18 @@ once = ["quality", "verification"]
 | key | a job of an entry | its test arguments | required checks of a pull request |
 |:--|:--|:--|:--|
 | neither | one per group | the group | each Julia check once per group |
-| `split = false` | one | none: the whole suite | the five of a repository without groups |
+| `split = false` | one | every group, joined by a space | the five of a repository without groups |
 | `once` | one per group that the entry runs | the group | each Julia check once per group, a group of `once` on Julia `1` on Ubuntu alone |
-| both | one | none on Julia `1` on Ubuntu, and on every entry of the weekly run, a tag and a run by hand; the remaining groups, joined by a space, on the other entries of a pull request and a push to a branch | the five of a repository without groups |
+| both | one | every group on Julia `1` on Ubuntu, and on every entry of the weekly run, a tag and a run by hand; the remaining groups on the other entries of a pull request and a push to a branch; each joined by a space | the five of a repository without groups |
 
 The `groups` job refuses a `split` that is not `true` or `false` and a `once` that is not such a
 list; it then writes nothing, and every test job is skipped. `harness ci-protection` refuses the
 same file with the same text. The downgrade job runs every group, one job per group, or one job
 with `split = false`.
 
-Each job runs its group alone, so a device group such as `metal` does not run in the required
-macOS jobs, where empty `ARGS` runs it without a group file. The file names the repository's own
+Each job runs only the groups that it names, never empty `ARGS`, also with `split = false`. So a
+device group such as `metal`, which the file does not list, does not run in the required macOS
+jobs, where empty `ARGS` runs it without a group file. The file names the repository's own
 device workflow instead, and `harness ci-protection` requires every job of that workflow that is
 not a warning:
 

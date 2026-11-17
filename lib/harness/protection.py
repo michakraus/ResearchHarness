@@ -1179,7 +1179,7 @@ def template_cases() -> tuple[int, int]:
         return body, repo
 
     weekly = ["Julia min - macOS-latest - default", "Julia min - windows-latest - default"]
-    two, three = 'groups = ["core", "long"]\n', 'groups = ["core", "slow", "long"]\n'
+    two, three = 'groups = ["core", "long"]\n', githooks_cases.THREE_GROUPS
     wrong = 0
     with tempfile.TemporaryDirectory() as tmp:
         scratch = pathlib.Path(tmp)

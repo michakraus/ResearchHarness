@@ -1063,6 +1063,9 @@ def groups_cases(check: Check, tmp: pathlib.Path) -> None:
     weekly, hand = ("schedule", "refs/heads/main"), ("workflow_dispatch", "refs/heads/main")
     merge = ("merge_group", "refs/heads/gh-readonly-queue/main/x")
     two, three = ["core", "long"], ["core", "slow", "long"]
+    # With `split = false` a row names every group it runs, so no row passes an empty ARGS, which
+    # adds the device groups of the platform line of `runtests.jl`.
+    all3 = " ".join(three)
     groups_two, groups_three = 'groups = ["core", "long"]\n', THREE_GROUPS
     once = groups_three + 'once = ["long"]\n'
     split = groups_three + "split = false\n"
@@ -1115,8 +1118,8 @@ def groups_cases(check: Check, tmp: pathlib.Path) -> None:
             groups_three + "once = []\n",
             want(three, per_group(ubuntu, three), per_group(OTHER_1, three)),
         ),
-        ("with split = false", pr, split, want([""], one_job(ubuntu), one_job(OTHER_1))),
-        ("with split = false", weekly, split, want([""], one_job(ubuntu), one_job(full))),
+        ("with split = false", pr, split, want([""], one_job(ubuntu, all3), one_job(OTHER_1, all3))),
+        ("with split = false", weekly, split, want([""], one_job(ubuntu, all3), one_job(full, all3))),
         (
             "with split = true",
             pr,
@@ -1127,20 +1130,22 @@ def groups_cases(check: Check, tmp: pathlib.Path) -> None:
             'with split = false and once = ["slow", "long"]',
             pr,
             both,
-            want([""], one_job([UBUNTU_MIN], "core") + one_job([UBUNTU_1]), one_job(OTHER_1, "core")),
+            want([""], one_job([UBUNTU_MIN], "core") + one_job([UBUNTU_1], all3), one_job(OTHER_1, "core")),
         ),
         (
             'with split = false and once = ["slow", "long"]',
             hand,
             both,
-            want([""], one_job(ubuntu), one_job(full)),
+            want([""], one_job(ubuntu, all3), one_job(full, all3)),
         ),
         (
             'with split = false and once = ["long"]',
             pr,
             split + 'once = ["long"]\n',
             want(
-                [""], one_job([UBUNTU_MIN], "core slow") + one_job([UBUNTU_1]), one_job(OTHER_1, "core slow")
+                [""],
+                one_job([UBUNTU_MIN], "core slow") + one_job([UBUNTU_1], all3),
+                one_job(OTHER_1, "core slow"),
             ),
         ),
     ):
