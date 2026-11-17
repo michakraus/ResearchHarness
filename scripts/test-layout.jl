@@ -18,7 +18,8 @@
 # `core` and `slow`: GROUPS lists them, each has an `if` in runtests.jl or a group in its TESTS,
 # and they may be names outside the convention's. Its optional `split = false` runs all groups of a
 # matrix entry in one job, and its optional `once = [...]` names the groups other than `core` that
-# a pull request and a push run on one matrix entry only (`ci_options`).
+# a pull request and a push run on one matrix entry only (`ci_options`). The CI workflows do not
+# read either key, so CI runs the groups as for a file without them.
 #
 # Two rules are not checked here, because no layout shows them: D6, the 60 s budget of a `core`
 # file, cold, and the JET half of D4, `test/quality/jet.jl` where the package has a hot or kernel
@@ -307,7 +308,7 @@ run outside the CI test jobs. An optional `workflows = [...]` names extra workfl
 An optional `split = false` runs all groups of a matrix entry in one CI job, in place of one job per
 group; it is `true` where absent. An optional `once = [...]` names groups of `groups`, never `core`,
 that a pull request and a push run on one matrix entry only (`ci_once`). `ci_options` gives the two.
-`once` is judged only where `groups` is a list of names.
+`once` is judged only where `groups` is a list of names. The CI workflows do not read either key.
 """
 function ci_groups(repo)
     f = joinpath(repo, "test", "ci-groups.toml")
@@ -374,8 +375,9 @@ end
     ci_once(toml, groups) -> (once, problems)
 
 The `once` of the parsed `test/ci-groups.toml` `toml`, whose `groups` in form are `groups`: the
-groups that a pull request and a push run on one matrix entry only, and the reasons the list is
-not in form. Each is a group of `groups` other than `core`, which runs on every CI job.
+groups that it names for a pull request and a push to run on one matrix entry only, and the
+reasons the list is not in form. Each is a group of `groups` other than `core`, which runs on
+every CI job.
 """
 function ci_once(toml, groups)
     once = get(toml, "once", String[])
