@@ -526,9 +526,33 @@ whose admin directory holds `commondir` `../..` and `gitdir` that names the work
 writes them. A `.git` that is a symbolic link is refused, and so is a worktree path that is a
 symbolic link. A worktree made with `--relative-paths`, or in a repository or git config with
 `worktree.useRelativePaths=true`, is refused, even one the hook made itself; leave the setting
-off. `git` then runs only in the main checkout, and every `git` gets
-`-c core.hooksPath=/dev/null -c core.fsmonitor=false`, so that no hook of the repository and no
-fsmonitor daemon runs.
+off. A repository whose `.git` holds a `commondir` is refused too, because git would read the
+config of the directory that it names. `git` then runs only in the main checkout, and every `git`
+gets `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, so that no hook of the repository and
+no fsmonitor daemon runs, and `GIT_ALLOW_PROTOCOL=https:ssh`, in place of any value of the caller.
+
+**The hook checks the repository's git config before any other `git`.** A program inside a
+sandbox can write `.git/config`, and the `git` of this hook, which runs outside it, reads that
+file, where a key can run a command. So the hook reads it with
+`git config --file <repository>/.git/config --no-includes --null --list` and refuses the
+repository when git cannot read it or when it holds a key outside this list; keys compare
+lowercased, and a key splits at its first and last dot:
+
+- `core.repositoryformatversion`, `core.filemode`, `core.bare`, `core.logallrefupdates`,
+  `core.ignorecase`, `core.precomposeunicode`, `core.hookspath`, `pull.rebase`,
+  `lfs.repositoryformatversion`, `user.name` and `user.email`, with any value;
+- `branch.<name>.remote`, `merge`, `pushremote`, `vscode-merge-base`, `github-pr-owner-number`
+  and `github-pr-base-branch`, and `remote.<name>.fetch` and `glab-resolved-head`, with any value;
+- `remote.<name>.url` and `pushurl`, with an `https://` or `ssh://` URL or a scp-like
+  `<host>:<path>`: no `/` before the first `:`, no `::`, no `://` and no leading `-`.
+
+Every other key is refused, among them `include.*`, `includeIf.*`, `url.*`, `filter.*`,
+`credential.*`, `core.sshCommand`, `core.worktree` and every `extensions.*`. The refusal is one
+line that names the key. Remove such a key with `git config --unset <key>`: for example
+`extensions.worktreeConfig`, with `git config --unset extensions.worktreeConfig`. A remote whose
+URL is a local path is refused too: remove it with `git remote remove <name>`, or give it an
+`https://` or `ssh://` URL. A `create` runs the check after the test of the worktree path, and a
+`remove` before it asks git for the worktrees.
 
 **Under `agentbox`, a broker outside the sandbox runs the `git` work.** `srt` denies writes to
 every `.githooks`, so a `git worktree add` inside it fails. `agentbox` starts the broker

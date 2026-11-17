@@ -25,9 +25,16 @@ is one of those.
 **The repository is found by reading files, before any git runs** (`main_checkout`): the
 directory must lie below `~/Research`, and the first `.git` above it must be a directory, or
 the `.git` file of a linked worktree whose admin directory holds the `commondir` and `gitdir`
-that git writes. git then runs only in that main checkout, and every git gets
-`-c core.hooksPath=/dev/null -c core.fsmonitor=false` (`run_git`), so that no hook and no
-fsmonitor daemon of the repository runs.
+that git writes, and the main checkout's `.git` must hold no `commondir`. git then runs only in
+that main checkout, and every git gets `-c core.hooksPath=/dev/null -c core.fsmonitor=false`
+and `GIT_ALLOW_PROTOCOL=https:ssh` (`run_git`), so that no hook and no fsmonitor daemon of the
+repository runs, and no transport but https and ssh.
+
+**Its git config is checked before any other git** (`checked_config`): a program inside a
+sandbox can write `.git/config`, and a key there can run a command for the git outside it. A
+create runs the check after the test of the worktree path, a remove before it asks git for the
+worktrees; a key outside the fixed list of `allowed`, or a remote URL that `remote_url` refuses,
+refuses the repository.
 
 **Under `agentbox` a broker does the git work.** srt denies writes to every `.githooks`, so a
 `git worktree add` inside it fails. With `AGENTBOX` in the environment, the hook runs no git:
@@ -89,6 +96,41 @@ LOCAL = 60
 NETWORK = 300
 # The options of every git: no hook of the repository runs, and no fsmonitor daemon starts.
 OPTIONS = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
+# The transports that every git may use, in GIT_ALLOW_PROTOCOL, in place of the caller's value.
+PROTOCOLS = "https:ssh"
+# The keys of a repository's `.git/config` that `checked_config` allows, lowercased: the keys
+# without a subsection, and the names of the keys of each `branch.<n>` and `remote.<n>`. A key
+# whose name is in URL_KEYS holds a URL that `remote_url` accepts; every other allowed key holds
+# any value.
+PLAIN_KEYS = frozenset(
+    {
+        "core.repositoryformatversion",
+        "core.filemode",
+        "core.bare",
+        "core.logallrefupdates",
+        "core.ignorecase",
+        "core.precomposeunicode",
+        "core.hookspath",
+        "pull.rebase",
+        "lfs.repositoryformatversion",
+        "user.name",
+        "user.email",
+    }
+)
+SECTION_KEYS = {
+    "branch": frozenset(
+        {
+            "remote",
+            "merge",
+            "pushremote",
+            "vscode-merge-base",
+            "github-pr-owner-number",
+            "github-pr-base-branch",
+        }
+    ),
+    "remote": frozenset({"url", "pushurl", "fetch", "glab-resolved-head"}),
+}
+URL_KEYS = frozenset({"url", "pushurl"})
 # The variable that names the broker's socket, the events it serves, and the largest request in
 # bytes.
 BROKER = "AGENTBOX_BROKER"
@@ -129,12 +171,15 @@ class Reply:
 
 
 def run_git(*args: str, cwd: Path, timeout: int = LOCAL) -> subprocess.CompletedProcess[str]:
-    """git with OPTIONS and `args` in `cwd`: the one place where this hook starts git."""
+    """git with OPTIONS and `args` in `cwd`, with GIT_ALLOW_PROTOCOL set to PROTOCOLS: the one place
+    where this hook starts git."""
     return subprocess.run(
         ["git", *OPTIONS, *args],  # noqa: S607 -- the `git` on PATH
         cwd=cwd,
+        env={**os.environ, "GIT_ALLOW_PROTOCOL": PROTOCOLS},
         capture_output=True,
         text=True,
+        errors="replace",
         check=False,
         timeout=timeout,
     )
@@ -169,12 +214,67 @@ def main_checkout(start: str, research: Path) -> Path:
         if dot.is_symlink():
             raise Refusal(f"{dot} is a symbolic link; this hook follows none")
         if dot.is_dir():
-            return directory
+            return without_commondir(directory)
         if dot.is_file():
-            return linked_checkout(dot, top)
+            return without_commondir(linked_checkout(dot, top))
         if dot.exists():
             raise Refusal(f"{dot} is neither a directory nor a file")
     raise Refusal(f"{start} is inside no repository below {top}; `cd` into the repository first")
+
+
+def without_commondir(repo: Path) -> Path:
+    """`repo`, refused where its `.git` holds a `commondir`: git would then read the config of the
+    directory that it names, which `checked_config` does not read."""
+    common = repo / ".git" / "commondir"
+    if common.is_symlink() or common.exists():
+        raise Refusal(f"{common} exists; git would read the config of the commondir that it names")
+    return repo
+
+
+def checked_config(repo: Path) -> None:
+    """Refuse `repo` where its `.git/config`, read by `git config --no-includes`, holds a key that
+    `allowed` refuses, or cannot be read: git outside the sandbox reads that file, and a key there
+    can run a command (`core.sshCommand`, a filter, a URL rewrite) or pull in another file."""
+    config = repo / ".git" / "config"
+    proc = run_git("config", "--file", str(config), "--no-includes", "--null", "--list", cwd=Path("/"))
+    if proc.returncode != 0:
+        raise Refusal(
+            f"`git config --file {config} --list` exited {proc.returncode}: {' '.join(proc.stderr.split())}"
+        )
+    for entry in proc.stdout.split("\0"):
+        if not entry:
+            continue
+        key, newline, value = entry.partition("\n")
+        if not allowed(key.lower(), value if newline else None):
+            raise Refusal(f"{config} holds {key.lower()}, which this hook does not allow")
+
+
+def allowed(key: str, value: str | None) -> bool:
+    """Whether `checked_config` allows the lowercased `key` with `value`, None for a key with no
+    value: a key of PLAIN_KEYS, or `<section>.<subsection>.<name>`, split at the first and the last
+    dot, with `name` in SECTION_KEYS of `section`; a URL key's value must pass `remote_url`."""
+    if key in PLAIN_KEYS:
+        return True
+    section, _, rest = key.partition(".")
+    subsection, _, name = rest.rpartition(".")
+    if not subsection or name not in SECTION_KEYS.get(section, frozenset()):
+        return False
+    return name not in URL_KEYS or (value is not None and remote_url(value))
+
+
+def remote_url(value: str) -> bool:
+    """Whether `value` is an `https://` or `ssh://` URL, or scp-like `<host>:<path>`: a `:` with no
+    `/` before it, no `::` (a remote helper's form), no `://` (another scheme) and no leading `-`."""
+    if value.startswith(("https://", "ssh://")):
+        return True
+    host, colon, _ = value.partition(":")
+    return (
+        bool(colon)
+        and "/" not in host
+        and "::" not in value
+        and "://" not in value
+        and not value.startswith("-")
+    )
 
 
 def linked_checkout(dot: Path, top: Path) -> Path:
@@ -252,6 +352,7 @@ def create(payload: dict[str, JsonValue]) -> Path:
 
     if path.is_symlink():
         raise Refusal(f"{path} is a symbolic link; a worktree path must be a new directory")
+    checked_config(repo)
     if path.exists():
         if registered(repo, path):
             return path
@@ -400,6 +501,7 @@ def remove(payload):
     if path.parent != ROOT.resolve():
         raise Refusal(f"{path} is not directly under {ROOT}; this hook removes only the worktrees it creates")
     repo = main_checkout(str(path), RESEARCH)
+    checked_config(repo)
     if not registered(repo, path):
         raise Refusal(f"{path} is not a registered worktree of {repo}")
     git("worktree", "remove", str(path), cwd=repo)

@@ -444,14 +444,17 @@ def manifest_cases():
 
 
 # The fixture of `worktree.py`'s git work, made by `worktree_fixture` in a home of its own below the
-# fixture directory, WT_HOME. Its `Research` holds `Repo`, a clone of the bare `wt-origin.git`, whose
-# `core.hooksPath` is its tracked `.githooks`, whose `post-checkout` writes WT_MARKER; `Linked`,
-# whose `.git` is a link to `Repo/.git`; the worktrees `.worktrees/Repo-common` and
-# `.worktrees/Repo-gitdir` of `Repo`, whose admin directories hold another `commondir` and another
-# `gitdir`, and `.worktrees/Repo-via`, whose `.git` file names its admin directory through
-# `Linked/.git`; and `.worktrees/Repo-linked`, a link to an empty directory. WT_OUTSIDE is a
-# repository outside it with one commit, whose worktree `.worktrees/Outside-x` lies inside it. The
-# `git` first on the PATH of WT_ENV appends its arguments to WT_LOG and runs git.
+# fixture directory, WT_HOME. Its `Research` holds `Repo`, a clone of the bare `wt-origin.git` with
+# the origin WT_ORIGIN's `ssh://` URL and the keys of WT_KEYS, whose `core.hooksPath` is its tracked
+# `.githooks`, whose `post-checkout` writes WT_MARKER; `Linked`, whose `.git` is a link to
+# `Repo/.git`; the worktrees `.worktrees/Repo-common` and `.worktrees/Repo-gitdir` of `Repo`, whose
+# admin directories hold another `commondir` and another `gitdir`, and `.worktrees/Repo-via`, whose
+# `.git` file names its admin directory through `Linked/.git`; `.worktrees/Repo-linked`, a link to
+# an empty directory; `Common`, whose `.git` holds a `commondir`, with its worktree
+# `.worktrees/Common-x`; and the repositories of WT_REFUSED and WT_RAW, whose `.git/config` the hook
+# refuses. WT_OUTSIDE is a repository outside it with one commit, whose worktree
+# `.worktrees/Outside-x` lies inside it. The `git` first on the PATH of WT_ENV appends its
+# arguments to WT_LOG and runs git.
 WT_HOME = "/" + FIXTURE.name + "/wt"
 WT_R = WT_HOME + "/Research"
 WT_REPO = WT_R + "/Repo"
@@ -463,7 +466,47 @@ WT_BIN = FIXTURE.name + "/wt-bin"
 # The directory of the brokers' sockets, near the top of the fixture: a socket path holds at most
 # 103 bytes on macOS.
 WT_SOCKETS = FIXTURE.name + "/s"
-WT_ENV = {**WORKTREE_ENV, "HOME": WT_HOME, "PATH": WT_BIN + ":" + WORKTREE_ENV.get("PATH", "/usr/bin:/bin")}
+# The origin of `Repo`, an `ssh://` URL that the fake ssh WT_BIN/fake-ssh serves from the bare
+# repository at the URL's path, so that the hook's fetch passes its protocol and URL tests.
+WT_ORIGIN = FIXTURE.name + "/wt-origin.git"
+WT_SSH = FIXTURE.name + "/wt-ssh.log"
+WT_ENV = {
+    **WORKTREE_ENV,
+    "HOME": WT_HOME,
+    "PATH": WT_BIN + ":" + WORKTREE_ENV.get("PATH", "/usr/bin:/bin"),
+    "GIT_SSH_COMMAND": WT_BIN + "/fake-ssh",
+    "GIT_SSH_VARIANT": "simple",
+}
+# The keys of `Repo`'s `.git/config` beyond those of a clone: every key that the hook allows by
+# name, a scp-like push URL and a second remote.
+WT_KEYS = [
+    ("remote.origin.pushurl", "fixture:" + WT_ORIGIN),
+    ("remote.origin.glab-resolved-head", "main"),
+    ("remote.private.url", "https://example.org/private.git"),
+    ("pull.rebase", "true"),
+    ("lfs.repositoryformatversion", "0"),
+    ("user.name", "probe"),
+    ("user.email", "probe@example.org"),
+    ("branch.main.pushremote", "origin"),
+    ("branch.main.vscode-merge-base", "origin/main"),
+    ("branch.main.github-pr-owner-number", "owner#repo#1"),
+    ("branch.main.github-pr-base-branch", "owner#repo#main"),
+]
+# The repositories of the fixture's Research whose `.git/config` holds one key that the hook
+# refuses, each with a worktree `.worktrees/<directory>-x` made before the key was set:
+# (directory, key, value).
+WT_REFUSED = [
+    ("Ssh", "core.sshCommand", "false"),
+    ("Include", "include.path", "elsewhere"),
+    ("Extensions", "extensions.worktreeConfig", "true"),
+    ("Data", "remote.datashare.url", "/x"),
+]
+# The repositories whose `.git/config` is these bytes, and the word of the hook's line on each:
+# (directory, bytes, word).
+WT_RAW = [
+    ("Broken", b"[core\n", "exited"),
+    ("Latin", b"[core]\n\tsshCommand = \xff\n", "core.sshcommand"),
+]
 # The options before the subcommand of every git that `worktree.py` starts.
 WT_OPTIONS = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
 # The `.git` line of a worktree that `git worktree add --relative-paths` makes in the fixture.
@@ -503,10 +546,12 @@ def worktree_fixture() -> None:
     run("init", "-q", "-b", "main", str(source))
     run("-C", str(source), "add", ".githooks")
     run("-C", str(source), "commit", "-q", "-m", "fixture")
-    origin = FIXTURE.name + "/wt-origin.git"
-    run("clone", "-q", "--bare", str(source), origin)
+    run("clone", "-q", "--bare", str(source), WT_ORIGIN)
     pathlib.Path(WT_ROOT).mkdir(parents=True)
-    run("clone", "-q", origin, WT_REPO)
+    run("clone", "-q", WT_ORIGIN, WT_REPO)
+    run("-C", WT_REPO, "remote", "set-url", "origin", "ssh://fixture" + WT_ORIGIN)
+    for key, value in WT_KEYS:
+        run("-C", WT_REPO, "config", key, value)
     for name in ("common", "gitdir", "via", "rel"):
         run("-C", WT_REPO, "worktree", "add", "-q", "--detach", f"{WT_ROOT}/Repo-{name}")
     admin = pathlib.Path(WT_REPO, ".git", "worktrees")
@@ -529,12 +574,40 @@ def worktree_fixture() -> None:
     run("init", "-q", "-b", "main", WT_OUTSIDE)
     run("-C", WT_OUTSIDE, "commit", "-q", "--allow-empty", "-m", "fixture")
     run("-C", WT_OUTSIDE, "worktree", "add", "-q", "--detach", f"{WT_ROOT}/Outside-x")
+    # `Common`, whose `.git` holds a `commondir` that names `Repo/.git`, and its worktree
+    # `.worktrees/Common-x`, made before the `commondir` was written.
+    common = WT_R + "/Common"
+    run("init", "-q", "-b", "main", common)
+    run("-C", common, "commit", "-q", "--allow-empty", "-m", "fixture")
+    run("-C", common, "worktree", "add", "-q", "--detach", f"{WT_ROOT}/Common-x")
+    pathlib.Path(common, ".git", "commondir").write_text(
+        f"{pathlib.Path(WT_REPO, '.git').resolve()}\n", encoding="utf-8"
+    )
+    for name, key, value in WT_REFUSED:
+        run("init", "-q", "-b", "main", f"{WT_R}/{name}")
+        run("-C", f"{WT_R}/{name}", "commit", "-q", "--allow-empty", "-m", "fixture")
+        run("-C", f"{WT_R}/{name}", "worktree", "add", "-q", "--detach", f"{WT_ROOT}/{name}-x")
+        run("-C", f"{WT_R}/{name}", "config", key, value)
+    for name, data, _ in WT_RAW:
+        run("init", "-q", "-b", "main", f"{WT_R}/{name}")
+        pathlib.Path(WT_R, name, ".git", "config").write_bytes(data)
     wrapper = pathlib.Path(WT_BIN, "git")
     wrapper.parent.mkdir()
     wrapper.write_text(
         f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{WT_LOG}'\nexec '{git}' \"$@\"\n", encoding="utf-8"
     )
     wrapper.chmod(0o755)
+    # The ssh of GIT_SSH_VARIANT=simple: git gives it the host and the remote command
+    # `git-upload-pack '<path>'`, which it logs and runs with the real git, not the logging one.
+    ssh = pathlib.Path(WT_BIN, "fake-ssh")
+    ssh.write_text(
+        "#!/bin/sh\n"
+        f"printf '%s\\n' \"$*\" >> '{WT_SSH}'\n"
+        'for last; do :; done\neval "set -- $last"\n'
+        f'exec \'{git}\' "${{1#git-}}" "$2"\n',
+        encoding="utf-8",
+    )
+    ssh.chmod(0o755)
     pathlib.Path(WT_SOCKETS).mkdir()
 
 
@@ -838,10 +911,98 @@ def receive_deadline_cases(hook: types.ModuleType, report: Callable[[object, str
     )
 
 
+def config_check_cases(report: Callable[[object, str], None]) -> None:
+    """The refusals of `worktree.py` for the git config that its git would read, on the fixture of
+    `worktree_fixture`: a create and a remove in `Common`, whose `.git` holds `commondir`, start no
+    git; a create and a remove in each repository of WT_REFUSED, and a create in each of WT_RAW,
+    start only the config read; each exits 1 with one line that names the cause; then
+    `config_key_cases`."""
+
+    def said(proc: subprocess.CompletedProcess[str] | None) -> str:
+        return "timeout" if proc is None else f"exit {proc.returncode}, {proc.stdout!r}, {proc.stderr!r}"
+
+    def create(cwd: str) -> dict[str, str]:
+        return {"hook_event_name": "WorktreeCreate", "cwd": cwd, "name": "config"}
+
+    def remove(name: str) -> dict[str, str]:
+        return {"hook_event_name": "WorktreeRemove", "worktree_path": f"{WT_ROOT}/{name}-x"}
+
+    for label, payload in [
+        ("a create in a repository whose .git holds commondir", create(WT_R + "/Common")),
+        ("a remove of a worktree of a repository whose .git holds commondir", remove("Common")),
+    ]:
+        proc, started = worktree_run(payload, WT_ENV)
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and proc.stderr.count("\n") == 1
+            and "commondir" in proc.stderr
+            and not started,
+            f"{label}: exits 1 with one line that names commondir, and starts no git: {said(proc)}, {started}",
+        )
+
+    def refused(label: str, payload: dict[str, str], word: str, worktree: str, *, stays: bool) -> None:
+        proc, started = worktree_run(payload, WT_ENV)
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and proc.stderr.count("\n") == 1
+            and proc.stderr.startswith("worktree hook: ")
+            and word in proc.stderr
+            and len(started) == 1
+            and " config --file " in started[0]
+            and pathlib.Path(WT_ROOT, worktree).is_dir() == stays,
+            f"{label}: exits 1 with one line that names {word}, and starts only the config read: "
+            f"{said(proc)}, {started}",
+        )
+
+    for name, key, _ in WT_REFUSED:
+        word = key.lower()
+        where = f"a repository whose .git/config holds {key}"
+        refused(f"a create in {where}", create(f"{WT_R}/{name}"), word, f"{name}-config", stays=False)
+        refused(f"a remove of a worktree of {where}", remove(name), word, f"{name}-x", stays=True)
+    for name, _, word in WT_RAW:
+        label = f"a create in {name}, whose .git/config git cannot read or is no UTF-8"
+        refused(label, create(f"{WT_R}/{name}"), word, f"{name}-config", stays=False)
+    config_key_cases(load_module("worktree_keys", WORKTREE), report)
+
+
+def config_key_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`allowed` on the keys and values of `.git/config` that the fixture's repositories do not
+    hold: a key that splits at its first and last dot, an empty subsection, a key of an allowed
+    name in another section or below a subsection of `core`, a URL key with no value, and the
+    URLs that `remote_url` refuses or accepts."""
+    allowed = getattr(hook, "allowed", None)
+    for key, value, want in [
+        ("remote.a.b.url", "https://example.org/x.git", True),
+        ("branch.feature/x.y.merge", "refs/heads/x", True),
+        ("branch..remote", "origin", False),
+        ("core.x.hookspath", ".githooks", False),
+        ("user.x.name", "probe", False),
+        ("other.a.remote", "origin", False),
+        ("remote.a.url", None, False),
+        ("remote.a.url", "host:path/x.git", True),
+        ("remote.a.url", "git@host.org:x.git", True),
+        ("remote.a.url", "ssh://host.org/x.git", True),
+        ("remote.a.url", "file:///x.git", False),
+        ("remote.a.url", "ext::sh -c x", False),
+        ("remote.a.url", "a/b:c", False),
+        ("remote.a.url", "-oProxyCommand=x:y", False),
+        ("remote.a.url", "/x.git", False),
+        ("remote.a.pushurl", "fd::3", False),
+    ]:
+        try:
+            got: object = allowed(key, value) if allowed is not None else "no allowed"
+        except (AttributeError, TypeError) as err:
+            got = repr(err)
+        report(got is want, f"the config check gives {want} for {key} = {value!r}: {got}")
+
+
 def worktree_git_cases() -> tuple[int, int]:
     """`worktree.py`'s git work on the fixture of `worktree_fixture`: a create and a remove without
     `AGENTBOX` and through a broker, with no hook of the repository run; the refusals of the
-    repository check and of a worktree path that is a link, which start no git; the client's
+    repository check and of a worktree path that is a link, which start no git; the refusals of
+    the git config (`config_check_cases`); the GIT_ALLOW_PROTOCOL of every git; the client's
     refusals under `AGENTBOX`; the life of a broker; and the options of every git that the hook
     starts, recorded in this process: (number of cases, number wrong)."""
     verdict, why = bind_verdict(unix_bind, ci="CI" in os.environ)
@@ -939,18 +1100,21 @@ def worktree_git_cases() -> tuple[int, int]:
         f"a worktree made with --relative-paths: exits 1 with a line that names its gitdir line, "
         f"and starts no git: {said(proc)}, {started}",
     )
+    config_check_cases(report)
 
     hook = load_module("worktree_recorded", WORKTREE)
     seen: list[list[str]] = []
+    protocols: list[str | None] = []
     real = subprocess.run
 
     def record(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         seen.append([str(a) for a in args])
+        protocols.append((kwargs.get("env") or os.environ).get("GIT_ALLOW_PROTOCOL"))
         return cast("subprocess.CompletedProcess[str]", real(args, **kwargs))
 
     err = io.StringIO()
     with (
-        mock.patch.dict(os.environ, WT_ENV, clear=True),
+        mock.patch.dict(os.environ, {**WT_ENV, "GIT_ALLOW_PROTOCOL": "file:https:ssh"}, clear=True),
         mock.patch.object(subprocess, "run", side_effect=record),
         mock.patch.object(hook, "RESEARCH", pathlib.Path(WT_R)),
         mock.patch.object(hook, "ROOT", pathlib.Path(WT_ROOT)),
@@ -967,6 +1131,16 @@ def worktree_git_cases() -> tuple[int, int]:
         and seen
         and all(pathlib.Path(a[0]).name == "git" and a[1:5] == WT_OPTIONS for a in seen),
         f"every process that the hook starts is git with {' '.join(WT_OPTIONS)} first: {outcome}, {seen}",
+    )
+    report(
+        protocols and all(p == "https:ssh" for p in protocols),
+        f"every git that the hook starts gets GIT_ALLOW_PROTOCOL=https:ssh, also where the caller sets "
+        f"file:https:ssh: {protocols}",
+    )
+    ssh = pathlib.Path(WT_SSH).read_text(encoding="utf-8") if pathlib.Path(WT_SSH).exists() else ""
+    report(
+        f"fixture git-upload-pack '{WT_ORIGIN}'" in ssh.splitlines(),
+        f"git calls the fixture's ssh with the host and the remote command alone: {ssh.splitlines()[:2]}",
     )
 
     proc, started = worktree_run(create("nul", "/a\0b"), WT_ENV)

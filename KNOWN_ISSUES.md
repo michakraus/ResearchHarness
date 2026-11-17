@@ -697,7 +697,7 @@
 
 ### K137 · `srt_settings` raises a bare `KeyError` for a frontend that the policy does not name.
 
-- location: `lib/harness/sandbox.py:243`
+- location: `lib/harness/sandbox.py:297`
 - evidence: `policy.frontends[frontend]` has no guard, so `srt_settings("codex", …)` ends with
   `KeyError: 'codex'`, not with a `HarnessError`. Every caller passes a name of `FRONTENDS`, and
   `load_policy` requires a table for each of them, so no command reaches it.
@@ -956,7 +956,7 @@
 
 ### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
 
-- location: `hooks/probe.py:1840`
+- location: `hooks/probe.py:2750`
 - evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
   reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
   calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
@@ -1077,7 +1077,7 @@
 
 ### K171 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte or is no string.
 
-- location: `hooks/worktree.py:399`
+- location: `hooks/worktree.py:500`
 - evidence: `remove` calls `Path(payload.get("worktree_path", "")).resolve()`, which raises
   `ValueError: lstat: embedded null character in path`, and `main` does not catch it:
   `printf '%s' '{"hook_event_name":"WorktreeRemove","worktree_path":"/a\u0000b"}' | python3.14
@@ -1100,11 +1100,11 @@
 
 ### K173 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
 
-- location: `hooks/probe.py:623`
-- evidence: `hooks/probe.py:623-639` defines `unix_bind` and `bind_verdict`, and `:858-869`
+- location: `hooks/probe.py:696`
+- evidence: `hooks/probe.py:696-712` defines `unix_bind` and `bind_verdict`, and `:1023-1034`
   repeats the body of `bind_verdict_cases`, the same code as `lib/harness/sandbox.py:1982-2016`,
   about 30 lines. `hooks/probe.py` already puts `REPO/lib` on `sys.path` and imports `harness` in
-  other groups (`from harness import install_cases`, `:3016`), so it can import them. Each copy
+  other groups (`from harness import install_cases`, `:3193`), so it can import them. Each copy
   has its own mutants: the three mutants of the three-way decision run twice.
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
