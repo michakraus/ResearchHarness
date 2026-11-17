@@ -72,16 +72,20 @@ tagged with its rule, and exits 1 if there is any.
   order of the file, so `Pkg.test()` still runs every group. A `metal` group appends `"metal"`
   to the Apple list of the platform line. `verify-workflows.jl` checks the file too.
 - **Two optional keys of `test/ci-groups.toml` plan the CI jobs of its groups.** `split = false`
-  runs all groups of a matrix entry in one job, for a suite in the parallel form; the default,
-  `split = true`, runs one job per group. `once = ["quality", "verification"]` names the groups
-  that a pull request and a push run on Ubuntu × `1` only; the default is an empty list. Each
-  group of `once` is a group of `groups`, at most once, and never `core`. `test-layout.jl --check`
-  and `verify-workflows.jl` judge both keys, but the CI workflows and `harness ci-protection` read
-  neither, so CI runs the groups as it does for a file without them.
-- **A group job runs its group alone, so a device group leaves the required macOS jobs.** The file
-  then names the repository's device workflow, `workflows = ["Metal.yml"]`, and
-  `harness ci-protection` requires its jobs. `run-tests.jl <repo> affected` selects from every
-  group of the file except `slow`, so a file moved out of `core` keeps its quick check.
+  runs all groups of a matrix entry in one job that names them in `ARGS`, for a suite in the
+  parallel form; the default, `split = true`, runs one job per group. `once = ["quality",
+  "verification"]` names the groups that a pull request and a push run on Ubuntu × `1` only; the
+  default is an empty list. Each group of `once` is a group of `groups`, at most once, and never
+  `core`, and `once` leaves at least one group out. With `split = false`, the required checks are
+  those of a repository without groups; with `once`, a group of `once` is a required check on
+  Ubuntu × `1` alone. The weekly run, a tag and a run by hand run every group on every entry.
+  `test-layout.jl --check`, `verify-workflows.jl`, the CI workflows and `harness ci-protection`
+  judge both keys.
+- **A job of `test` and `test-other` runs only the groups that it names, so a device group
+  leaves the required macOS jobs.** The file then names the repository's device workflow,
+  `workflows = ["Metal.yml"]`, and `harness ci-protection` requires its jobs.
+  `run-tests.jl <repo> affected` selects from every group of the file except `slow`, so a file
+  moved out of `core` keeps its quick check.
 - **A repository with a `metal` group has the platform line, and only such a repository has it:**
   `const GROUPS = isempty(ARGS) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? ["core", "slow", "metal"] : ["core", "slow"]) : ARGS`.
   Empty `ARGS` on Apple silicon then runs `metal` too. The check compares both lines as

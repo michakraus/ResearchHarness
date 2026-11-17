@@ -14,7 +14,8 @@
 # requests without its checks, so harness ci-protection requires none of them.
 #
 # Its `groups` job is the one of CI.yml, so that both workflows read test/ci-groups.toml with one
-# script, and the downgrade job runs one job per test group, as the `test` job of CI.yml does.
+# script, and the downgrade job runs one job per test group, or one job of every group where the
+# file sets `split = false`. `once` does not change it: it runs every group on every event.
 
 name: Downgrade
 
@@ -43,18 +44,19 @@ concurrency:
 
 jobs:
     groups:
-        # The test groups of test/ci-groups.toml as a JSON list, or `[""]` where the file is absent;
-        # and the Julia versions of the `test-other` job of CI.yml for this event, which this
-        # workflow does not read. The job is the `groups` job of CI.yml, so both read the file
-        # alike.
+        # The test groups of the downgrade job as a JSON list, `[""]` for one job of the whole
+        # suite; and the matrix rows of the `test` and `test-other` jobs of CI.yml for this event,
+        # which this workflow does not read. The job is the `groups` job of CI.yml, so both read
+        # the file alike.
         name: Test groups
         runs-on: ubuntu-latest
         timeout-minutes: 10
         permissions:
             contents: read
         outputs:
+            test: ${{ steps.read.outputs.test }}
+            other: ${{ steps.read.outputs.other }}
             list: ${{ steps.read.outputs.list }}
-            versions: ${{ steps.read.outputs.versions }}
         steps:
             - uses: actions/checkout@v7
               with:
@@ -66,22 +68,59 @@ jobs:
               run: |
                   import json, os, pathlib, re, tomllib
                   path = pathlib.Path("test/ci-groups.toml")
-                  groups = tomllib.loads(path.read_text()).get("groups") if path.is_file() else [""]
+                  data = tomllib.loads(path.read_text()) if path.is_file() else {}
+                  groups = data.get("groups") if path.is_file() else [""]
                   if path.is_file() and not (
                       isinstance(groups, list) and groups
                       and all(isinstance(g, str) and re.fullmatch("[a-z][a-z0-9]*", g) for g in groups)
                       and len(set(groups)) == len(groups)
                   ):
                       raise SystemExit(f"{path}: `groups` is not a list of distinct group names: {groups!r}")
-                  # `1` alone for a pull request and a push to a branch; `min` and `1` for a tag, the
-                  # schedule, a run by hand and every other event, so a new trigger never runs less.
+                  # `split = false` runs all groups of an entry in one job; `once` names the groups
+                  # that a pull request and a push to a branch run on Ubuntu with `1` alone.
+                  split, once = data.get("split", True), data.get("once", [])
+                  if not isinstance(split, bool):
+                      raise SystemExit(f"{path}: `split` is not true or false")
+                  if not (
+                      isinstance(once, list)
+                      and all(isinstance(g, str) and g in groups and g != "core" for g in once)
+                      and len(set(once)) == len(once)
+                  ):
+                      raise SystemExit(f"{path}: `once` is not a list of distinct groups of `groups` other than core")
+                  # macOS and Windows would run no group, or with `split = false` every group.
+                  if len(once) == len(groups):
+                      raise SystemExit(f"{path}: `once` holds every group of `groups`")
+                  # A pull request and a push to a branch are short: macOS and Windows on `1` alone,
+                  # and the groups of `once` on Ubuntu with `1` alone. A tag, the schedule, a run by
+                  # hand and every other event run every group on `min` and `1`, so a new trigger
+                  # never runs less.
                   event, ref = os.environ["GITHUB_EVENT_NAME"], os.environ["GITHUB_REF"]
                   short = event == "pull_request" or (event == "push" and ref.startswith("refs/heads/"))
+
+                  def rows(entries):
+                      found = []
+                      for version, system in entries:
+                          runs = groups
+                          if short and (version, system) != ("1", "ubuntu-latest"):
+                              runs = [g for g in groups if g not in once]
+                          row = {"version": version, "os": system, "arch": "default"}
+                          if split:
+                              found += [row | {"group": g, "args": g} for g in runs]
+                          else:
+                              # One job that names its groups, every group too: an empty ARGS adds
+                              # the device groups of the platform line of `runtests.jl`.
+                              found.append(row | {"group": "", "args": " ".join(runs)})
+                      return found
+
+                  test = rows([("min", "ubuntu-latest"), ("1", "ubuntu-latest")])
                   versions = ["1"] if short else ["min", "1"]
-                  print("groups:", groups, "versions:", versions)
+                  other = rows([(v, s) for v in versions for s in ("macOS-latest", "windows-latest")])
+                  listed = groups if split else [""]
+                  print("test:", test, "other:", other, "list:", listed, sep="\n")
                   with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-                      out.write(f"list={json.dumps(groups)}\n")
-                      out.write(f"versions={json.dumps(versions)}\n")
+                      out.write(f"test={json.dumps(test)}\n")
+                      out.write(f"other={json.dumps(other)}\n")
+                      out.write(f"list={json.dumps(listed)}\n")
 
     downgrade:
         # The `[compat]` lower bounds. `min` tests the lowest Julia with the newest dependencies,
@@ -102,8 +141,8 @@ jobs:
         # every stdlib a repository here depends on, and the common rest; add one when a
         # repository takes a stdlib that is not on it.
         #
-        # One job per test group, as the `test` job of CI.yml: the whole suite on the lowest Julia
-        # takes as long as the longest entry of the matrix.
+        # One job per test group of the list of the `groups` job, as the `test` job of CI.yml: the
+        # whole suite on the lowest Julia takes as long as the longest entry of the matrix.
         name: Downgrade - ubuntu-latest${{ matrix.group && format(' - {0}', matrix.group) || '' }}
         needs: groups
         runs-on: ubuntu-latest
