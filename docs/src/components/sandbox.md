@@ -234,10 +234,9 @@ otherwise reads a `--settings` of the frontend as its own.
 
 The frontend gets `AGENTBOX=1`, the three cache variables below, `AGENTBOX_BROKER` and the
 variables of the forges ([The forge tokens](#the-forge-tokens)) in its environment; every other
-variable stays the
-caller's, but `GITLAB_ACCESS_TOKEN` and `OAUTH_TOKEN`, which `agentbox` removes. `agentbox` runs
-only the `srt` in `~/.local/bin`, never one found on the `PATH`. So it starts nothing before
-`harness setup` has installed `srt` in `~/.local/bin`.
+variable stays the caller's, but `GITLAB_ACCESS_TOKEN` and `OAUTH_TOKEN`, which `agentbox`
+removes. `agentbox` runs only the `srt` in `~/.local/bin`, never one found on the `PATH`. So it
+starts nothing before `harness setup` has installed `srt` in `~/.local/bin`.
 
 Each run makes one new directory with `mktemp -d "${TMPDIR:-/tmp}/agentbox.XXXXXX"`, below
 `$TMPDIR`, or below `/tmp` where `TMPDIR` is unset or empty, with the subdirectories `npm`, `uv`,
