@@ -1037,7 +1037,7 @@
 
 ### K167 · BlueStyle turns the platform `GROUPS` line of both forms of `runtests.jl` into an `if` block, and `test-layout.jl` then reports D5.
 
-- location: `scripts/test-layout.jl:402-411`
+- location: `scripts/test-layout.jl:458-467`
 - evidence: the checker compares `GROUPS` with the expression
   `isempty(sel) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? [..., "metal"] : [...]) : sel`.
   JuliaFormatter with `style = "blue"` rewrites the inner ternary into an `if` block, so a
@@ -1049,8 +1049,8 @@
 
 ### K168 · Three comments of `test-layout.jl` say "the groups that an empty `ARGS` runs", which is incomplete for the parallel form.
 
-- location: `scripts/test-layout.jl:168`
-- evidence: the lines 168, 301 and 364 say "an empty `ARGS`". In the parallel form an `ARGS` of
+- location: `scripts/test-layout.jl:172`
+- evidence: the lines 172, 304 and 420 say "an empty `ARGS`". In the parallel form an `ARGS` of
   only `--` arguments, such as `["--jobs=3"]`, gives an empty `SELECTED` and runs the same
   default groups. The rest of the file says "an empty selection".
 - kind: docs
