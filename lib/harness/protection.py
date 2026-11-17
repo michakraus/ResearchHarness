@@ -942,6 +942,8 @@ def plan_cases() -> tuple[int, int]:
         'once = ["long", "long"], refused': (three + 'once = ["long", "long"]\n', once_text),
         'once = "long", refused': (three + 'once = "long"\n', once_text),
         "once = [1], refused": (three + "once = [1]\n", once_text),
+        'once = "", refused': (three + 'once = ""\n', once_text),
+        "once = 3, refused": (three + "once = 3\n", once_text),
         "a once that holds every group, refused": (
             'groups = ["slow", "long"]\nsplit = false\nonce = ["slow", "long"]\n',
             "`once` holds every group of `groups`",

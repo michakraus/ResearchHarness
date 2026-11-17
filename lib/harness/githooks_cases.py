@@ -1152,6 +1152,8 @@ def groups_cases(check: Check, tmp: pathlib.Path) -> None:
         ('once = ["long", "long"]', groups_three + 'once = ["long", "long"]\n', once_text),
         ('once = "long"', groups_three + 'once = "long"\n', once_text),
         ("once = [1]", groups_three + "once = [1]\n", once_text),
+        ('once = ""', groups_three + 'once = ""\n', once_text),
+        ("once = 3", groups_three + "once = 3\n", once_text),
         (
             "a once that holds every group",
             'groups = ["slow", "long"]\nsplit = false\nonce = ["slow", "long"]\n',

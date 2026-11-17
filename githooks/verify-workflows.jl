@@ -46,7 +46,7 @@
 #      for an empty selection, so the CI jobs together run what Pkg.test() runs. The `groups` job
 #      of CI.yml writes the matrix rows from the file: one test job per group, or with
 #      `split = false` one per matrix entry, and with `once` some groups on Ubuntu with `1` alone
-#      on a pull request. harness ci-protection requires the check of each row of a pull request,
+#      on a pull request and a push to a branch. harness ci-protection requires the check of each row of a pull request,
 #      so a group file that does not match the suite splits it wrong. The list that this script
 #      prints for a repository follows `split` and `once`, and it prints none for a group file
 #      that this check refuses.
