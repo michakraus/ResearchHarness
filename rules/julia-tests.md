@@ -81,8 +81,8 @@ tagged with its rule, and exits 1 if there is any.
   Ubuntu × `1` alone. The weekly run, a tag and a run by hand run every group on every entry.
   `test-layout.jl --check`, `verify-workflows.jl`, the CI workflows and `harness ci-protection`
   judge both keys.
-- **A CI job runs only the groups that it names, so a device group leaves the required macOS
-  jobs.** The file then names the repository's device workflow, `workflows = ["Metal.yml"]`, and
+- **A job of `test` and `test-other` runs only the groups that it names, so a device group
+  leaves the required macOS jobs.** The file then names the repository's device workflow, `workflows = ["Metal.yml"]`, and
   `harness ci-protection` requires its jobs. `run-tests.jl <repo> affected` selects from every
   group of the file except `slow`, so a file moved out of `core` keeps its quick check.
 - **A repository with a `metal` group has the platform line, and only such a repository has it:**
