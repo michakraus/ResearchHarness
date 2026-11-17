@@ -1087,3 +1087,13 @@
   broker, the traceback comes back as the reply's `stderr`.
 - kind: defect
 - found: 2026-11-17, the fix round of part G3a of the sandbox plan
+
+### K172 · The settings template gives the `WorktreeCreate` hook 120 seconds, but the hook's fetch may take 300.
+
+- location: `settings/settings.proposal.json:793`
+- evidence: the template's `WorktreeCreate` entry holds `"timeout": 120`, and
+  `hooks/worktree.py` runs `git fetch` with `timeout=NETWORK`, `NETWORK = 300`. The two values are
+  the same on `f3a56a15`. Under the worktree broker, which gives a create `WORK` = 400 seconds, a
+  create can end after Claude Code has reported the hook as failed, and the worktree then exists.
+- kind: defect
+- found: 2026-11-17, the verification of part G3a of the sandbox plan
