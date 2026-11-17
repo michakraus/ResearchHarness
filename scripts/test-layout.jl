@@ -308,7 +308,8 @@ run outside the CI test jobs. An optional `workflows = [...]` names extra workfl
 An optional `split = false` runs all groups of a matrix entry in one CI job, in place of one job per
 group; it is `true` where absent. An optional `once = [...]` names groups of `groups`, never `core`,
 that a pull request and a push run on one matrix entry only (`ci_once`). `ci_options` gives the two.
-`once` is judged only where `groups` is a list of names. The CI workflows do not read either key.
+Every key but `groups` is judged only where `groups` is a list of names. The CI workflows read
+neither `split` nor `once`.
 """
 function ci_groups(repo)
     f = joinpath(repo, "test", "ci-groups.toml")
@@ -402,7 +403,7 @@ end
 
 The `split` and `once` of `test/ci-groups.toml` of `repo`. Each takes its default, `true` and an
 empty list, where the file or the key is absent or its value is not in form; `ci_groups` reports a
-value not in form. `once` is in form only beside a `groups` in form.
+value not in form where `groups` is a list of names. `once` is in form only beside such a `groups`.
 """
 function ci_options(repo)
     f = joinpath(repo, "test", "ci-groups.toml")
