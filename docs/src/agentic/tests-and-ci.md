@@ -91,7 +91,7 @@ matches its template:
 | job or file | what it runs | required |
 |:--|:--|:--|
 | `groups` | reads `test/ci-groups.toml`, where the file exists, and writes the matrix rows of `test` and `test-other` for the event | no |
-| `test` | the tests on Julia `min` and `1` on Ubuntu, once per test group, or once with `split = false` | yes |
+| `test` | the tests on Julia `min` and `1` on Ubuntu, once per test group, or once with `split = false`: on `min`, without the groups of `once` for a pull request and a push to a branch | yes |
 | `test-other` | the tests on macOS and Windows once every `test` job passes, once per test group, or once with `split = false`: on Julia `1` for a pull request and a push to a branch, without the groups of `once`; on `min` and `1`, with every group, for the weekly run, a tag and a run by hand | yes, on `1` |
 | `prerelease` | the tests on Julia `pre` and `nightly` on Ubuntu, on every event | no: information only |
 | `doctest` | the doctests of the docstrings and of the manual, where `docs/Project.toml` exists | yes |

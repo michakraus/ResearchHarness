@@ -1028,6 +1028,27 @@ def one_job(entries: list[tuple[str, str]], args: str = "") -> list[Row]:
     return [(version, system, "", args) for version, system in entries]
 
 
+# A group file with three groups, and the group files whose `split` or `once` both CI.yml's `groups`
+# job and `protection.required_checks` refuse: a label, the file, and the text after its path.
+THREE_GROUPS = 'groups = ["core", "slow", "long"]\n'
+ONCE_REFUSAL = "`once` is not a list of distinct groups of `groups` other than core"
+REFUSED_PLANS = [
+    ('split = "false"', THREE_GROUPS + 'split = "false"\n', "`split` is not true or false"),
+    ('once = ["core"]', THREE_GROUPS + 'once = ["core"]\n', ONCE_REFUSAL),
+    ('once = ["huge"]', THREE_GROUPS + 'once = ["huge"]\n', ONCE_REFUSAL),
+    ('once = ["long", "long"]', THREE_GROUPS + 'once = ["long", "long"]\n', ONCE_REFUSAL),
+    ('once = "long"', THREE_GROUPS + 'once = "long"\n', ONCE_REFUSAL),
+    ("once = [1]", THREE_GROUPS + "once = [1]\n", ONCE_REFUSAL),
+    ('once = ""', THREE_GROUPS + 'once = ""\n', ONCE_REFUSAL),
+    ("once = 3", THREE_GROUPS + "once = 3\n", ONCE_REFUSAL),
+    (
+        "a once that holds every group",
+        'groups = ["slow", "long"]\nsplit = false\nonce = ["slow", "long"]\n',
+        "`once` holds every group of `groups`",
+    ),
+]
+
+
 def groups_cases(check: Check, tmp: pathlib.Path) -> None:
     """The `groups` job of CI.yml for each event: the groups of the downgrade job, and the rows of
     `test` and `test-other`. A pull request and a push to a branch run macOS and Windows on `1`, and
@@ -1042,7 +1063,7 @@ def groups_cases(check: Check, tmp: pathlib.Path) -> None:
     weekly, hand = ("schedule", "refs/heads/main"), ("workflow_dispatch", "refs/heads/main")
     merge = ("merge_group", "refs/heads/gh-readonly-queue/main/x")
     two, three = ["core", "long"], ["core", "slow", "long"]
-    groups_two, groups_three = 'groups = ["core", "long"]\n', 'groups = ["core", "slow", "long"]\n'
+    groups_two, groups_three = 'groups = ["core", "long"]\n', THREE_GROUPS
     once = groups_three + 'once = ["long"]\n'
     split = groups_three + "split = false\n"
     both = groups_three + 'split = false\nonce = ["slow", "long"]\n'
@@ -1051,20 +1072,26 @@ def groups_cases(check: Check, tmp: pathlib.Path) -> None:
     def want(listed: list[str], test: list[Row], other: list[Row]) -> dict[str, object]:
         return {"list": listed, "test": sorted(test, key=str), "other": sorted(other, key=str)}
 
+    # the rows of a pull request, which a push to a branch writes too
+    short = (
+        (
+            "with the groups core and long",
+            groups_two,
+            want(two, per_group(ubuntu, two), per_group(OTHER_1, two)),
+        ),
+        (
+            'with once = ["long"]',
+            once,
+            want(
+                three,
+                per_group([UBUNTU_MIN], ["core", "slow"]) + per_group([UBUNTU_1], three),
+                per_group(OTHER_1, ["core", "slow"]),
+            ),
+        ),
+    )
     for label, (event, ref), text, expected in (
         ("without a group file", pr, None, want([""], one_job(ubuntu), one_job(OTHER_1))),
-        (
-            "with the groups core and long",
-            pr,
-            groups_two,
-            want(two, per_group(ubuntu, two), per_group(OTHER_1, two)),
-        ),
-        (
-            "with the groups core and long",
-            main,
-            groups_two,
-            want(two, per_group(ubuntu, two), per_group(OTHER_1, two)),
-        ),
+        *((label, on, text, expected) for on in (pr, main) for label, text, expected in short),
         (
             "without a group file",
             ("push", "refs/heads/master"),
@@ -1080,26 +1107,6 @@ def groups_cases(check: Check, tmp: pathlib.Path) -> None:
         ),
         ("without a group file", hand, None, want([""], one_job(ubuntu), one_job(full))),
         ("without a group file", merge, None, want([""], one_job(ubuntu), one_job(full))),
-        (
-            'with once = ["long"]',
-            pr,
-            once,
-            want(
-                three,
-                per_group([UBUNTU_MIN], ["core", "slow"]) + per_group([UBUNTU_1], three),
-                per_group(OTHER_1, ["core", "slow"]),
-            ),
-        ),
-        (
-            'with once = ["long"]',
-            main,
-            once,
-            want(
-                three,
-                per_group([UBUNTU_MIN], ["core", "slow"]) + per_group([UBUNTU_1], three),
-                per_group(OTHER_1, ["core", "slow"]),
-            ),
-        ),
         ('with once = ["long"]', tag, once, want(three, per_group(ubuntu, three), per_group(full, three))),
         ('with once = ["long"]', weekly, once, want(three, per_group(ubuntu, three), per_group(full, three))),
         (
@@ -1143,22 +1150,9 @@ def groups_cases(check: Check, tmp: pathlib.Path) -> None:
             f"the groups job for {event} on {ref} {label} writes {expected} -> {got}",
         )
     names = "`groups` is not a list of distinct group names"
-    once_text = "`once` is not a list of distinct groups of `groups` other than core"
     for label, text, expected in (
         ("a group twice", 'groups = ["core", "core"]\n', f"{names}: ['core', 'core']"),
-        ('split = "false"', groups_three + 'split = "false"\n', "`split` is not true or false"),
-        ('once = ["core"]', groups_three + 'once = ["core"]\n', once_text),
-        ('once = ["huge"]', groups_three + 'once = ["huge"]\n', once_text),
-        ('once = ["long", "long"]', groups_three + 'once = ["long", "long"]\n', once_text),
-        ('once = "long"', groups_three + 'once = "long"\n', once_text),
-        ("once = [1]", groups_three + "once = [1]\n", once_text),
-        ('once = ""', groups_three + 'once = ""\n', once_text),
-        ("once = 3", groups_three + "once = 3\n", once_text),
-        (
-            "a once that holds every group",
-            'groups = ["slow", "long"]\nsplit = false\nonce = ["slow", "long"]\n',
-            "`once` holds every group of `groups`",
-        ),
+        *REFUSED_PLANS,
         ('groups = "core" beside a once', 'groups = "core"\nonce = ["long"]\n', f"{names}: 'core'"),
     ):
         got = groups_output(scratch_repository(tmp, text), *pr)

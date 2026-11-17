@@ -1029,9 +1029,10 @@
 - location: `agents/ci-triage.md:31-32`
 - evidence: the agent says "There are **five required status checks**". `required_checks` of
   `lib/harness/protection.py` returns the four Julia checks once per group of
-  `test/ci-groups.toml` that their entry runs on a pull request, the doctests and the jobs of its
-  `workflows`: nine for the groups `core` and `long` (`GROUPED_CHECKS` of the `protection` cases).
-  The count of the base, seven, had the same limit.
+  `test/ci-groups.toml` that their entry runs on a pull request, or once with no group where the
+  file sets `split = false`, the doctests and the jobs of its `workflows`: nine for the groups
+  `core` and `long` (`GROUPED_CHECKS` of the `protection` cases). The count of the base, seven, had
+  the same limit.
 - kind: docs
 - found: 2026-11-16, the critic round of the tiered CI matrix
 

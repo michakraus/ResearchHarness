@@ -76,6 +76,7 @@ not skipped forever.
 
 import argparse
 import contextlib
+import dataclasses
 import functools
 import importlib.util
 import io
@@ -402,10 +403,22 @@ GROUP_NAME = re.compile(r"[a-z][a-z0-9]*")
 WORKFLOW_NAME = re.compile(r"(?!(?i:CI|Documenter|TagBot)\.yml$)[A-Za-z0-9_-]+\.yml")
 
 
-def ci_groups(repo: pathlib.Path) -> list[str] | None:
-    """The groups of the repository's test/ci-groups.toml, or None where it has none. A file whose
-    `groups` is not a list of distinct group names, which CI.yml's `groups` job refuses too, is a
-    HarnessError."""
+@dataclasses.dataclass(frozen=True)
+class GroupFile:
+    """A repository's test/ci-groups.toml, as CI.yml's `groups` job reads it: its groups, whether
+    each group runs as a job of its own (`split`), the groups that a pull request runs on ONCE_ENTRY
+    alone (`once`), and the extra workflows that it names, as paths in .github/workflows/."""
+
+    groups: tuple[str, ...]
+    split: bool
+    once: tuple[str, ...]
+    workflows: tuple[pathlib.Path, ...]
+
+
+def group_file(repo: pathlib.Path) -> GroupFile | None:
+    """The repository's test/ci-groups.toml, parsed once, or None where it has none. A file that is
+    not TOML, or whose `groups`, `split`, `once` or `workflows` is not in form, is a HarnessError;
+    the keys are judged in that order."""
     path = repo / "test" / "ci-groups.toml"
     if not path.is_file():
         return None
@@ -413,6 +426,14 @@ def ci_groups(repo: pathlib.Path) -> list[str] | None:
         data = tomllib.loads(path.read_text())
     except tomllib.TOMLDecodeError as e:
         raise HarnessError(f"{path}: not valid TOML: {e}") from e
+    groups = ci_groups(path, data)
+    split, once = ci_plan(path, data, groups)
+    return GroupFile(tuple(groups), split, tuple(once), tuple(ci_workflows(repo, path, data)))
+
+
+def ci_groups(path: pathlib.Path, data: dict[str, object]) -> list[str]:
+    """The groups of the group file at `path`, whose table is `data`. A `groups` that is not a list
+    of distinct group names, which CI.yml's `groups` job refuses too, is a HarnessError."""
     value: object = data.get("groups")
     items = cast("list[object]", value) if isinstance(value, list) else []
     groups = [g for g in items if isinstance(g, str) and GROUP_NAME.fullmatch(g)]
@@ -421,17 +442,11 @@ def ci_groups(repo: pathlib.Path) -> list[str] | None:
     return groups
 
 
-def ci_workflows(repo: pathlib.Path) -> list[pathlib.Path]:
-    """The extra workflows that the repository's test/ci-groups.toml names in `workflows`, such as
-    Metal.yml, as paths in .github/workflows/; none without the file or the key. A value that is not
-    a list of distinct WORKFLOW_NAMEs, or a name that is not a file there, is a HarnessError."""
-    path = repo / "test" / "ci-groups.toml"
-    if not path.is_file():
-        return []
-    try:
-        data = tomllib.loads(path.read_text())
-    except tomllib.TOMLDecodeError as e:
-        raise HarnessError(f"{path}: not valid TOML: {e}") from e
+def ci_workflows(repo: pathlib.Path, path: pathlib.Path, data: dict[str, object]) -> list[pathlib.Path]:
+    """The extra workflows that the group file at `path`, whose table is `data`, names in
+    `workflows`, such as Metal.yml, as paths in the repository's .github/workflows/; none without
+    the key. A value that is not a list of distinct WORKFLOW_NAMEs, or a name that is not a file
+    there, is a HarnessError."""
     value: object = data.get("workflows", [])
     items = cast("list[object]", value) if isinstance(value, list) else None
     names = [w for w in items or [] if isinstance(w, str) and WORKFLOW_NAME.fullmatch(w)]
@@ -473,13 +488,11 @@ def runs_on_every_pull_request(path: pathlib.Path) -> bool:
     return pr is None or (isinstance(pr, dict) and not any(k in pr for k in filters))
 
 
-def ci_plan(repo: pathlib.Path, groups: list[str]) -> tuple[bool, list[str]]:
-    """The `split` and `once` of the repository's test/ci-groups.toml, whose `groups` are `groups`,
-    judged as CI.yml's `groups` job judges them: `split` is true or false, and true where absent;
-    `once` is a list of distinct groups of `groups` other than `core`, empty where absent, that
-    does not hold every group. Any other value is a HarnessError with the job's text."""
-    path = repo / "test" / "ci-groups.toml"
-    data = tomllib.loads(path.read_text())
+def ci_plan(path: pathlib.Path, data: dict[str, object], groups: list[str]) -> tuple[bool, list[str]]:
+    """The `split` and `once` of the group file at `path`, whose table is `data` and whose groups
+    are `groups`, judged as CI.yml's `groups` job judges them: `split` is true or false, and true
+    where absent; `once` is a list of distinct groups of `groups` other than `core`, empty where
+    absent, that does not hold every group. Any other value is a HarnessError with the job's text."""
     split: object = data.get("split", True)
     if not isinstance(split, bool):
         raise HarnessError(f"{path}: `split` is not true or false")
@@ -504,14 +517,15 @@ def required_checks(repo: pathlib.Path) -> list[str]:
     in `workflows`. With `split` true, each `Julia` check comes once per group that its entry runs,
     ` - <group>` at its end, as CI.yml names its jobs: every group on ONCE_ENTRY, and the groups
     outside `once` elsewhere. With `split = false`, each comes once, with no group."""
-    groups = ci_groups(repo)
-    if groups is None:
+    plan = group_file(repo)
+    if plan is None:
         return REQUIRED_CHECKS
-    split, once = ci_plan(repo, groups)
     julia = [c for c in REQUIRED_CHECKS if c.startswith("Julia ")]
-    extra = [c for w in ci_workflows(repo) for c in workflow_checks(w)]
+    extra = [c for w in plan.workflows for c in workflow_checks(w)]
     rows = (
-        [f"{c} - {g}" for c in julia for g in groups if c == ONCE_ENTRY or g not in once] if split else julia
+        [f"{c} - {g}" for c in julia for g in plan.groups if c == ONCE_ENTRY or g not in plan.once]
+        if plan.split
+        else julia
     )
     return [*rows, *(c for c in REQUIRED_CHECKS if c not in julia), *extra]
 
@@ -822,8 +836,9 @@ ONCE_CHECKS = [
 
 def target_cases() -> tuple[int, int]:
     """`targets()` on a scratch research root: the repositories with a CI.yml, each with the list
-    of its group file or REQUIRED_CHECKS, then the Harness; and `required_checks` on group files
-    that CI.yml's `groups` job refuses."""
+    of its group file or REQUIRED_CHECKS, then the Harness; `required_checks` on group files with
+    `workflows`, `split` and `once`; and `required_checks` on group files that CI.yml's `groups`
+    job refuses."""
     wrong = 0
 
     def check(label: str, got: object, expected: object) -> None:
@@ -860,13 +875,21 @@ def target_cases() -> tuple[int, int]:
             "a text in place of a list": 'groups = "core"\n',
             "no `groups`": 'group = ["core"]\n',
             "a file that is not TOML": "groups = [\n",
+            "a text in place of a list beside a once": 'groups = "core"\nonce = ["long"]\n',
         }
-        for label, text in refused.items():
+
+        def read(text: str) -> list[str] | str:
+            """`required_checks` of A with the group file `text`, or the text of its refusal after
+            the path of the file."""
             groups.write_text(text)
             try:
-                got = required_checks(root / "Packages" / "A")
+                return required_checks(root / "Packages" / "A")
             except HarnessError as e:
-                got = str(e).removeprefix(f"{groups}: ").split(":")[0]
+                return str(e).removeprefix(f"{groups}: ")
+
+        for label, text in refused.items():
+            got = read(text)
+            got = got.split(":")[0] if isinstance(got, str) else got
             expected = (
                 "not valid TOML"
                 if label == "a file that is not TOML"
@@ -884,11 +907,14 @@ def target_cases() -> tuple[int, int]:
             "    strategy:\n      matrix:\n        version: ['min', '1']\n        os: [macos-15]\n"
         )
         groups.write_text('groups = ["core", "long"]\nworkflows = ["Metal.yml"]\n')
+        with mock.patch.object(tomllib, "loads", wraps=tomllib.loads) as loads:
+            got = required_checks(root / "Packages" / "A")
         check(
             "required_checks: `workflows` adds the jobs of Metal.yml",
-            required_checks(root / "Packages" / "A"),
+            got,
             [*GROUPED_CHECKS, "Metal - Julia 1 - macos-15", "Metal - Julia min - macos-15"],
         )
+        check("required_checks: reads the group file once", loads.call_count, 1)
         bad_workflows = {
             "a workflow that does not exist": ('["Other.yml"]', "`workflows` names Other.yml, not in"),
             "a workflow of pushes only": ('["Push.yml"]', "`workflows` names Push.yml, which does not run"),
@@ -908,68 +934,35 @@ def target_cases() -> tuple[int, int]:
             "a text in place of a list": ('"Metal.yml"', "`workflows` is not a list of distinct workflow"),
         }
         for label, (value, expected) in bad_workflows.items():
-            groups.write_text(f'groups = ["core", "long"]\nworkflows = {value}\n')
-            try:
-                got = required_checks(root / "Packages" / "A")
-            except HarnessError as e:
-                got = str(e).removeprefix(f"{groups}: ")
+            got = read(f'groups = ["core", "long"]\nworkflows = {value}\n')
             check(
                 f"required_checks: a group file with {label} in `workflows` is refused",
                 got[: len(expected)] if isinstance(got, str) else got,
                 expected,
             )
-    return 3 + len(refused) + len(bad_workflows), wrong
-
-
-def plan_cases() -> tuple[int, int]:
-    """`required_checks` on group files with `split` and `once`, which the rows of a pull request
-    follow, and on group files whose `split` or `once` CI.yml's `groups` job refuses, each refused
-    with the job's text."""
-    three = 'groups = ["core", "slow", "long"]\n'
-    once_text = "`once` is not a list of distinct groups of `groups` other than core"
-    cases: dict[str, tuple[str, list[str] | str]] = {
-        "split = true": ('groups = ["core", "long"]\nsplit = true\n', GROUPED_CHECKS),
-        "once = []": ('groups = ["core", "long"]\nonce = []\n', GROUPED_CHECKS),
-        'once = ["long"]': (three + 'once = ["long"]\n', ONCE_CHECKS),
-        "split = false": (three + "split = false\n", REQUIRED_CHECKS),
-        'split = false and once = ["slow", "long"]': (
-            three + 'split = false\nonce = ["slow", "long"]\n',
-            REQUIRED_CHECKS,
-        ),
-        'split = "false", refused': (three + 'split = "false"\n', "`split` is not true or false"),
-        'once = ["core"], refused': (three + 'once = ["core"]\n', once_text),
-        'once = ["huge"], refused': (three + 'once = ["huge"]\n', once_text),
-        'once = ["long", "long"], refused': (three + 'once = ["long", "long"]\n', once_text),
-        'once = "long", refused': (three + 'once = "long"\n', once_text),
-        "once = [1], refused": (three + "once = [1]\n", once_text),
-        'once = "", refused': (three + 'once = ""\n', once_text),
-        "once = 3, refused": (three + "once = 3\n", once_text),
-        "a once that holds every group, refused": (
-            'groups = ["slow", "long"]\nsplit = false\nonce = ["slow", "long"]\n',
-            "`once` holds every group of `groups`",
-        ),
-        'groups = "core" beside a once, refused': (
-            'groups = "core"\nonce = ["long"]\n',
-            "`groups` is not a list of distinct group names",
-        ),
-    }
-    wrong = 0
-    with tempfile.TemporaryDirectory() as tmp:
-        repo = pathlib.Path(tmp)
-        (repo / "test").mkdir()
-        groups = repo / "test" / "ci-groups.toml"
-        for label, (text, expected) in cases.items():
-            groups.write_text(text)
-            try:
-                got: list[str] | str = required_checks(repo)
-            except HarnessError as e:
-                got = str(e).removeprefix(f"{groups}: ")
-            ok = got == expected
-            wrong += not ok
-            print(f"{'ok ' if ok else 'BAD'}  required_checks: a group file with {label}")
-            if not ok:
-                print(f"     got {got!r}")
-    return len(cases), wrong
+        # `split` and `once`, which the rows of a pull request follow, and the values of them that
+        # CI.yml's `groups` job refuses, each refused with the job's text
+        three = githooks_cases.THREE_GROUPS
+        plans: list[tuple[str, str, list[str] | str]] = [
+            ("split = true", 'groups = ["core", "long"]\nsplit = true\n', GROUPED_CHECKS),
+            ("once = []", 'groups = ["core", "long"]\nonce = []\n', GROUPED_CHECKS),
+            ('once = ["long"]', three + 'once = ["long"]\n', ONCE_CHECKS),
+            ("split = false", three + "split = false\n", REQUIRED_CHECKS),
+            (
+                'split = false and once = ["slow", "long"]',
+                three + 'split = false\nonce = ["slow", "long"]\n',
+                REQUIRED_CHECKS,
+            ),
+            *((f"{label}, refused", text, refusal) for label, text, refusal in githooks_cases.REFUSED_PLANS),
+            (
+                'once = ["core"] beside a workflow twice, refused with the text of `once`',
+                three + 'once = ["core"]\nworkflows = ["Metal.yml", "Metal.yml"]\n',
+                githooks_cases.ONCE_REFUSAL,
+            ),
+        ]
+        for label, text, expected in plans:
+            check(f"required_checks: a group file with {label}", read(text), expected)
+    return 4 + len(refused) + len(bad_workflows) + len(plans), wrong
 
 
 def workflow_cases() -> tuple[int, int]:
@@ -1210,7 +1203,6 @@ def template_cases() -> tuple[int, int]:
             ),
         ]
         for label, groups_file in (
-            ("the groups core and long", two),
             ('once = ["long"]', three + 'once = ["long"]\n'),
             ("split = false", three + "split = false\n"),
             ('split = false and once = ["slow", "long"]', three + 'split = false\nonce = ["slow", "long"]\n'),
@@ -1555,7 +1547,6 @@ def selftest():
     for cases in (
         ruleset_cases,
         target_cases,
-        plan_cases,
         workflow_cases,
         template_cases,
         token_cases,
