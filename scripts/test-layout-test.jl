@@ -727,7 +727,35 @@ const CI_GROUP_CASES = [
             line = "const GROUPS = isempty(ARGS) ? [\"core\", \"slow\", \"long\", \"long\"] : ARGS\n"),
         ["[ci-groups] group \"long\" is in test/ci-groups.toml more than once"]),
     ("a group file with another key", grouped(toml = GROUPED_TOML * "jobs = 3\n"),
-        ["[ci-groups] test/ci-groups.toml has the key `jobs`; it has `groups` and `workflows` only"]),
+        ["[ci-groups] test/ci-groups.toml has the key `jobs`; it has `groups`, `workflows`, `split` and `once` only"]),
+    ("a group file with `split = false` and `once`",
+        grouped(toml = GROUPED_TOML * "split = false\nonce = [\"long\"]\n"), String[]),
+    ("a group file with `split = true`", grouped(toml = GROUPED_TOML * "split = true\n"),
+        String[]),
+    ("a group file with `slow` in `once`", grouped(toml = GROUPED_TOML * "once = [\"slow\"]\n"),
+        String[]),
+    ("a group file with an empty `once`", grouped(toml = GROUPED_TOML * "once = []\n"),
+        String[]),
+    ("a group file whose `split` is text", grouped(toml = GROUPED_TOML * "split = \"false\"\n"),
+        ["[ci-groups] `split` of test/ci-groups.toml is not true or false"]),
+    ("a group file with `core` in `once`",
+        grouped(toml = GROUPED_TOML * "once = [\"core\", \"long\"]\n"),
+        ["[ci-groups] group \"core\" of `once` in test/ci-groups.toml runs on every CI job; `once` never holds core"]),
+    ("a group file whose `once` names a group that `groups` does not list",
+        grouped(toml = GROUPED_TOML * "once = [\"huge\"]\n"),
+        ["[ci-groups] group \"huge\" of `once` in test/ci-groups.toml is not in `groups`"]),
+    ("a group file with a group twice in `once`",
+        grouped(toml = GROUPED_TOML * "once = [\"long\", \"long\"]\n"),
+        ["[ci-groups] group \"long\" is in `once` of test/ci-groups.toml more than once"]),
+    ("a group file whose `once` is text", grouped(toml = GROUPED_TOML * "once = \"long\"\n"),
+        ["[ci-groups] `once` of test/ci-groups.toml is not a list of group names"]),
+    ("a group file whose `once` holds a number", grouped(toml = GROUPED_TOML * "once = [1]\n"),
+        ["[ci-groups] `once` of test/ci-groups.toml is not a list of group names"]),
+    ("a group file whose groups are no list of names, with a `once`",
+        grouped(toml = "groups = \"core\"\nonce = [\"huge\"]\nsplit = 1\n"),
+        ["[ci-groups] test/ci-groups.toml has no `groups` list of names",
+            "[D5] GROUPS is not `isempty(ARGS) ? [\"core\", \"slow\"] : ARGS`",
+            "[D5] group \"long\" is not one of core, slow, doctests, metal, cuda, broken"]),
     ("a group file whose workflows name an extra workflow file",
         merge(grouped(toml = GROUPED_TOML * "workflows = [\"Metal.yml\"]\n"),
             Changes(".github/workflows/Metal.yml" => "name: Metal\n")),
@@ -793,6 +821,51 @@ push!(CI_GROUP_CASES,
         @test length(lines) == length(texts)
         @test all(occursin.(texts, lines))
     end
+end
+
+# (what, the text of test/ci-groups.toml or `nothing` for none, the `(split, once)` of `ci_options`)
+const CI_OPTION_CASES = [
+    ("no group file", nothing, (true, String[])),
+    ("neither key", GROUPED_TOML, (true, String[])),
+    ("split = false", GROUPED_TOML * "split = false\n", (false, String[])),
+    ("split = true", GROUPED_TOML * "split = true\n", (true, String[])),
+    ("once = [\"long\"]", GROUPED_TOML * "once = [\"long\"]\n", (true, ["long"])),
+    ("two groups in once", GROUPED_TOML * "once = [\"slow\", \"long\"]\n",
+        (true, ["slow", "long"])),
+    ("both keys", GROUPED_TOML * "split = false\nonce = [\"long\"]\n", (false, ["long"])),
+    ("an empty once", GROUPED_TOML * "once = []\n", (true, String[])),
+    # a value not in form gives the default, and `ci_groups` reports it
+    ("split is text", GROUPED_TOML * "split = \"false\"\n", (true, String[])),
+    ("core in once", GROUPED_TOML * "split = false\nonce = [\"core\", \"long\"]\n",
+        (false, String[])),
+    ("a group of once outside groups", GROUPED_TOML * "once = [\"huge\"]\n", (true, String[])),
+    ("a group twice in once", GROUPED_TOML * "once = [\"long\", \"long\"]\n", (true, String[])),
+    ("once is text", GROUPED_TOML * "once = \"long\"\n", (true, String[])),
+    ("once holds a number", GROUPED_TOML * "once = [1]\n", (true, String[])),
+    # `once` means nothing without a `groups` in form; `split` stands on its own
+    ("groups is text", "groups = \"core\"\nsplit = false\nonce = [\"long\"]\n", (false, String[])),
+    ("a group file that is not TOML", "groups = [\n", (true, String[]))
+]
+
+@testset "ci_options" begin
+    @testset "$what" for (what, toml, (split, once)) in CI_OPTION_CASES
+        dir = fixture(Changes("test/ci-groups.toml" => toml))
+        got = L.ci_options(dir)
+        @test got isa Tuple{Bool, Vector{String}}
+        @test got == (split, once)
+    end
+end
+
+@testset "tests_table reads the parsed runtests.jl" begin
+    table = L.tests_table(Meta.parseall(PARALLEL))
+    @test first.(table) == ["core", "doctests", "broken"]
+    @test last(only(last(table[2]))) == "quality/doctests.jl"
+    # no TESTS, and a TESTS that is not a literal, give nothing, never an empty table
+    @test L.tests_table(Meta.parseall(RUNTESTS)) === nothing
+    parallel(change) = Meta.parseall(replace(PARALLEL, change))
+    @test L.tests_table(parallel("const TESTS = [" => "const TESTS = TABLE = [")) === nothing
+    @test L.tests_table(parallel("\"core\" => [" => "CORE => [")) === nothing
+    @test L.tests_table(Meta.parseall("const TESTS = []\n")) == []
 end
 
 @testset "a nested runtests.jl is not checked for the platform line" begin

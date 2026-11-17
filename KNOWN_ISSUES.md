@@ -1037,7 +1037,7 @@
 
 ### K167 · BlueStyle turns the platform `GROUPS` line of both forms of `runtests.jl` into an `if` block, and `test-layout.jl` then reports D5.
 
-- location: `scripts/test-layout.jl:402-411`
+- location: `scripts/test-layout.jl:458-467`
 - evidence: the checker compares `GROUPS` with the expression
   `isempty(sel) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? [..., "metal"] : [...]) : sel`.
   JuliaFormatter with `style = "blue"` rewrites the inner ternary into an `if` block, so a
@@ -1049,8 +1049,8 @@
 
 ### K168 · Three comments of `test-layout.jl` say "the groups that an empty `ARGS` runs", which is incomplete for the parallel form.
 
-- location: `scripts/test-layout.jl:168`
-- evidence: the lines 168, 301 and 364 say "an empty `ARGS`". In the parallel form an `ARGS` of
+- location: `scripts/test-layout.jl:172`
+- evidence: the lines 172, 304 and 420 say "an empty `ARGS`". In the parallel form an `ARGS` of
   only `--` arguments, such as `["--jobs=3"]`, gives an empty `SELECTED` and runs the same
   default groups. The rest of the file says "an empty selection".
 - kind: docs
@@ -1074,3 +1074,15 @@
   list does not hold, so a home in which only that file of the layer exists gives no WARN.
 - kind: defect
 - found: 2026-11-15, the spec of part G4b of the sandbox plan
+
+### K171 · `ci_groups`, `ci_workflows`, `ci_once` and `ci_options` of `test-layout.jl` infer `Any` for a list that is a `Vector{String}` at run time.
+
+- location: `scripts/test-layout.jl:326`
+- evidence: `Vector{String}(x)` on a value read from the parsed TOML, which is `Any`, does not
+  narrow for inference (lines 326, 372 and 398). `Base.return_types` gives
+  `Tuple{Any, Vector{String}}` for `ci_groups`, `ci_workflows` and `ci_once`, and
+  `Tuple{Bool, Any}` for `ci_options`. At run time the lists are `Vector{String}`: `ci_options` on
+  a file with `once = []` returns a `Tuple{Bool, Vector{String}}`. A `::Vector{String}` assertion
+  on each conversion fixes the inferred types.
+- kind: defect
+- found: 2026-11-17, the branch verifier of part E2a of the test-speed plan

@@ -93,7 +93,8 @@ julia --startup-file=no test-census.jl [<root> ...]
 The default roots are `~/Research/Packages` and `~/Research/Experiments`. For each repository
 with a `Project.toml` and a `.git`, a row gives these values:
 
-- how `runtests.jl` reaches its files;
+- how `runtests.jl` reaches its files: through `@safetestset`, `@testset`, a bare `include`, the
+  table `TESTS` of the parallel form, or a nested `runtests.jl`, with the count of each;
 - the gates on `ARGS` or `ENV`;
 - where the test dependencies are;
 - whether Aqua and JET run;

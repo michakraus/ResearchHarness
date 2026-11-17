@@ -71,6 +71,13 @@ tagged with its rule, and exits 1 if there is any.
   `const GROUPS = isempty(ARGS) ? ["core", "slow", "properties", "long"] : ARGS`, in the
   order of the file, so `Pkg.test()` still runs every group. A `metal` group appends `"metal"`
   to the Apple list of the platform line. `verify-workflows.jl` checks the file too.
+- **Two optional keys of `test/ci-groups.toml` plan the CI jobs of its groups.** `split = false`
+  runs all groups of a matrix entry in one job, for a suite in the parallel form; the default,
+  `split = true`, runs one job per group. `once = ["quality", "verification"]` names the groups
+  that a pull request and a push run on Ubuntu × `1` only; the default is an empty list. Each
+  group of `once` is a group of `groups`, at most once, and never `core`. `test-layout.jl --check`
+  and `verify-workflows.jl` judge both keys, but the CI workflows and `harness ci-protection` read
+  neither, so CI runs the groups as it does for a file without them.
 - **A group job runs its group alone, so a device group leaves the required macOS jobs.** The file
   then names the repository's device workflow, `workflows = ["Metal.yml"]`, and
   `harness ci-protection` requires its jobs. `run-tests.jl <repo> affected` selects from every
