@@ -30,10 +30,15 @@ no error anywhere; so the list is correct only while the workflows are canonical
 subcommand refuses to run unless `verify-workflows.jl` passes.
 
 A repository with test/ci-groups.toml runs each test job once per group, and CI.yml then ends
-each job name with ` - <group>`. Its matrix is an expression that reads the file at run time,
-which `workflow_checks` does not read, so `required_checks` reads the file of the working tree
-instead. The pull request that adds or changes the file still runs against the old list, so
-merge it with the admin bypass and run this subcommand after the merge.
+each job name with ` - <group>`. The file's `split = false` runs all groups of a matrix entry in
+one job with the name of a repository without groups, and its `once` names the groups that a pull
+request runs on Ubuntu with `1` alone. CI.yml's matrices are the rows that its `groups` job
+writes from the file at run time, which `workflow_checks` does not read, so `required_checks`
+reads the file of the working tree instead, judges `split` and `once` as that job does, and gives
+the contexts of the rows of a pull request. A case runs the job's script for a pull request,
+fills its rows into CI.yml and compares the contexts with `required_checks`. The pull request
+that adds or changes the file still runs against the old list, so merge it with the admin bypass
+and run this subcommand after the merge.
 
 `pre` and `nightly` are not required: their job, `prerelease`, continues on error, and requiring
 them would block merges whenever an unreleased Julia breaks upstream. Downgrade.yml is not
@@ -91,9 +96,9 @@ from importlib.machinery import ModuleSpec
 from typing import Any, cast
 from unittest import mock
 
-# `githooks` by module, not by name: `githooks_cases`, which `githooks` imports, reads
-# REQUIRED_CHECKS from here, so this module may load while `githooks` is half loaded.
-from . import REPO, HarnessError, changing, fmt, githooks, jsonio, outcome
+# `githooks` and `githooks_cases` by module, not by name: `githooks_cases`, which `githooks`
+# imports, reads REQUIRED_CHECKS from here, so this module may load while either is half loaded.
+from . import REPO, HarnessError, changing, fmt, githooks, githooks_cases, jsonio, outcome
 
 # The required status checks of a repository without test/ci-groups.toml: the checks that the
 # canonical CI.yml reports on every pull request and that are not warnings. They are `test` on
@@ -468,20 +473,47 @@ def runs_on_every_pull_request(path: pathlib.Path) -> bool:
     return pr is None or (isinstance(pr, dict) and not any(k in pr for k in filters))
 
 
+def ci_plan(repo: pathlib.Path, groups: list[str]) -> tuple[bool, list[str]]:
+    """The `split` and `once` of the repository's test/ci-groups.toml, whose `groups` are `groups`,
+    judged as CI.yml's `groups` job judges them: `split` is true or false, and true where absent;
+    `once` is a list of distinct groups of `groups` other than `core`, empty where absent, that
+    does not hold every group. Any other value is a HarnessError with the job's text."""
+    path = repo / "test" / "ci-groups.toml"
+    data = tomllib.loads(path.read_text())
+    split: object = data.get("split", True)
+    if not isinstance(split, bool):
+        raise HarnessError(f"{path}: `split` is not true or false")
+    value: object = data.get("once", [])
+    items = cast("list[object]", value) if isinstance(value, list) else None
+    once = [g for g in items or [] if isinstance(g, str) and g in groups and g != "core"]
+    if items is None or len(once) != len(items) or len(set(once)) != len(once):
+        raise HarnessError(f"{path}: `once` is not a list of distinct groups of `groups` other than core")
+    if len(once) == len(groups):
+        raise HarnessError(f"{path}: `once` holds every group of `groups`")
+    return split, once
+
+
+# The required check of the one entry that runs the groups of `once` on a pull request.
+ONCE_ENTRY = "Julia 1 - ubuntu-latest - default"
+
+
 def required_checks(repo: pathlib.Path) -> list[str]:
     """The required checks of a package or an experiment: REQUIRED_CHECKS without a group file, and
-    with one, each `Julia` check once per group, ` - <group>` at its end, as CI.yml names its jobs,
-    the doctest check, and the checks of each workflow that the file names in `workflows`."""
+    with one, the contexts of the rows of `test` and `test-other` that CI.yml's `groups` job writes
+    for a pull request, then the doctest check and the checks of each workflow that the file names
+    in `workflows`. With `split` true, each `Julia` check comes once per group that its entry runs,
+    ` - <group>` at its end, as CI.yml names its jobs: every group on ONCE_ENTRY, and the groups
+    outside `once` elsewhere. With `split = false`, each comes once, with no group."""
     groups = ci_groups(repo)
     if groups is None:
         return REQUIRED_CHECKS
+    split, once = ci_plan(repo, groups)
     julia = [c for c in REQUIRED_CHECKS if c.startswith("Julia ")]
     extra = [c for w in ci_workflows(repo) for c in workflow_checks(w)]
-    return [
-        *(f"{c} - {g}" for c in julia for g in groups),
-        *(c for c in REQUIRED_CHECKS if c not in julia),
-        *extra,
-    ]
+    rows = (
+        [f"{c} - {g}" for c in julia for g in groups if c == ONCE_ENTRY or g not in once] if split else julia
+    )
+    return [*rows, *(c for c in REQUIRED_CHECKS if c not in julia), *extra]
 
 
 def targets() -> list[tuple[pathlib.Path, list[str]]]:
@@ -772,6 +804,21 @@ GROUPED_CHECKS = [
     "Doctests - ubuntu-latest",
 ]
 
+# The required checks of a repository whose test/ci-groups.toml lists `core`, `slow` and `long`,
+# with `once = ["long"]`: `long` on Ubuntu with `1` alone.
+ONCE_CHECKS = [
+    "Julia min - ubuntu-latest - default - core",
+    "Julia min - ubuntu-latest - default - slow",
+    "Julia 1 - ubuntu-latest - default - core",
+    "Julia 1 - ubuntu-latest - default - slow",
+    "Julia 1 - ubuntu-latest - default - long",
+    "Julia 1 - macOS-latest - default - core",
+    "Julia 1 - macOS-latest - default - slow",
+    "Julia 1 - windows-latest - default - core",
+    "Julia 1 - windows-latest - default - slow",
+    "Doctests - ubuntu-latest",
+]
+
 
 def target_cases() -> tuple[int, int]:
     """`targets()` on a scratch research root: the repositories with a CI.yml, each with the list
@@ -872,6 +919,55 @@ def target_cases() -> tuple[int, int]:
                 expected,
             )
     return 3 + len(refused) + len(bad_workflows), wrong
+
+
+def plan_cases() -> tuple[int, int]:
+    """`required_checks` on group files with `split` and `once`, which the rows of a pull request
+    follow, and on group files whose `split` or `once` CI.yml's `groups` job refuses, each refused
+    with the job's text."""
+    three = 'groups = ["core", "slow", "long"]\n'
+    once_text = "`once` is not a list of distinct groups of `groups` other than core"
+    cases: dict[str, tuple[str, list[str] | str]] = {
+        "split = true": ('groups = ["core", "long"]\nsplit = true\n', GROUPED_CHECKS),
+        "once = []": ('groups = ["core", "long"]\nonce = []\n', GROUPED_CHECKS),
+        'once = ["long"]': (three + 'once = ["long"]\n', ONCE_CHECKS),
+        "split = false": (three + "split = false\n", REQUIRED_CHECKS),
+        'split = false and once = ["slow", "long"]': (
+            three + 'split = false\nonce = ["slow", "long"]\n',
+            REQUIRED_CHECKS,
+        ),
+        'split = "false", refused': (three + 'split = "false"\n', "`split` is not true or false"),
+        'once = ["core"], refused': (three + 'once = ["core"]\n', once_text),
+        'once = ["huge"], refused': (three + 'once = ["huge"]\n', once_text),
+        'once = ["long", "long"], refused': (three + 'once = ["long", "long"]\n', once_text),
+        'once = "long", refused': (three + 'once = "long"\n', once_text),
+        "once = [1], refused": (three + "once = [1]\n", once_text),
+        "a once that holds every group, refused": (
+            'groups = ["slow", "long"]\nsplit = false\nonce = ["slow", "long"]\n',
+            "`once` holds every group of `groups`",
+        ),
+        'groups = "core" beside a once, refused': (
+            'groups = "core"\nonce = ["long"]\n',
+            "`groups` is not a list of distinct group names",
+        ),
+    }
+    wrong = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = pathlib.Path(tmp)
+        (repo / "test").mkdir()
+        groups = repo / "test" / "ci-groups.toml"
+        for label, (text, expected) in cases.items():
+            groups.write_text(text)
+            try:
+                got: list[str] | str = required_checks(repo)
+            except HarnessError as e:
+                got = str(e).removeprefix(f"{groups}: ")
+            ok = got == expected
+            wrong += not ok
+            print(f"{'ok ' if ok else 'BAD'}  required_checks: a group file with {label}")
+            if not ok:
+                print(f"     got {got!r}")
+    return len(cases), wrong
 
 
 def workflow_cases() -> tuple[int, int]:
@@ -1055,46 +1151,77 @@ GROUP_TERM = "${{ matrix.group && format(' - {0}', matrix.group) || '' }}"
 
 def template_cases() -> tuple[int, int]:
     """`workflow_checks` on the canonical CI.yml: refused as it is, because its matrices read the
-    outputs of the `groups` job; and with those outputs filled in for one event, and the group term
-    of a name read as the group's suffix, the contexts that the event reports. A pull request
-    reports `Test groups` and REQUIRED_CHECKS, or GROUPED_CHECKS with the groups `core` and `long`;
-    the weekly run adds `min` on macOS and Windows."""
+    outputs of the `groups` job; and with the rows that the script of that job writes for one event
+    filled in as the `include` of `test` and `test-other`, and the group term of a name read as the
+    group's suffix, the contexts that the event reports. A pull request reports `Test groups` and
+    REQUIRED_CHECKS, or GROUPED_CHECKS with the groups `core` and `long`, and for each group file
+    `Test groups` and the list of `required_checks`; the weekly run adds `min` on macOS and Windows."""
     ci = REPO / "githooks" / "workflows" / "CI.yml"
     text = ci.read_text()
+    pr, weekly_run = ("pull_request", "refs/pull/1/merge"), ("schedule", "refs/heads/main")
 
-    def filled(groups: list[str], versions: list[str]) -> str:
-        """CI.yml with the outputs `list` and `versions` of the `groups` job written in."""
-        return (
-            text.replace(
-                "${{ fromJSON(needs.groups.outputs.list) }}",
-                json.dumps([f" - {g}" if g else "" for g in groups]),
-            )
-            .replace("${{ fromJSON(needs.groups.outputs.versions) }}", json.dumps(versions))
-            .replace(GROUP_TERM, "${{ matrix.group }}")
-        )
+    def filled(
+        tmp: pathlib.Path, groups_file: str | None, event: tuple[str, str]
+    ) -> tuple[str, pathlib.Path]:
+        """CI.yml with the rows `test` and `other` that the script of the `groups` job writes for
+        `event` in a new repository with the group file `groups_file` written in, and that
+        repository."""
+        repo = githooks_cases.scratch_repository(tmp, groups_file)
+        status, lines, error = githooks_cases.groups_output(repo, *event)
+        if status != 0:
+            return f"the groups job refuses the group file: {error}", repo
+        body = text.replace(GROUP_TERM, "${{ matrix.group }}")
+        for line in lines:
+            name, _, value = line.partition("=")
+            rows = jsonio.loads(value, where=f"the output {name}", top=object)
+            if name in {"test", "other"} and isinstance(rows, list):
+                suffixed = [
+                    r | {"group": f" - {r['group']}" if r.get("group") else ""}
+                    for r in rows
+                    if isinstance(r, dict)
+                ]
+                body = body.replace(f"${{{{ fromJSON(needs.groups.outputs.{name}) }}}}", json.dumps(suffixed))
+        return body, repo
 
     weekly = ["Julia min - macOS-latest - default", "Julia min - windows-latest - default"]
-    cases: list[tuple[str, str, list[str] | str]] = [
-        ("CI.yml as it is is refused", text, "job test: the matrix is not a table of lists"),
-        (
-            "CI.yml on a pull request reports Test groups and REQUIRED_CHECKS",
-            filled([""], ["1"]),
-            sorted([*REQUIRED_CHECKS, "Test groups"]),
-        ),
-        (
-            "CI.yml on a pull request with the groups core and long reports Test groups and GROUPED_CHECKS",
-            filled(["core", "long"], ["1"]),
-            sorted([*GROUPED_CHECKS, "Test groups"]),
-        ),
-        (
-            "CI.yml on a weekly run adds min on macOS and Windows",
-            filled([""], ["min", "1"]),
-            sorted([*REQUIRED_CHECKS, "Test groups", *weekly]),
-        ),
-    ]
+    two, three = 'groups = ["core", "long"]\n', 'groups = ["core", "slow", "long"]\n'
     wrong = 0
     with tempfile.TemporaryDirectory() as tmp:
-        path = pathlib.Path(tmp) / "CI.yml"
+        scratch = pathlib.Path(tmp)
+        cases: list[tuple[str, str, list[str] | str]] = [
+            ("CI.yml as it is is refused", text, "job test: the matrix is not a table of lists"),
+            (
+                "CI.yml on a pull request reports Test groups and REQUIRED_CHECKS",
+                filled(scratch, None, pr)[0],
+                sorted([*REQUIRED_CHECKS, "Test groups"]),
+            ),
+            (
+                "CI.yml on a pull request with the groups core and long reports Test groups and "
+                "GROUPED_CHECKS",
+                filled(scratch, two, pr)[0],
+                sorted([*GROUPED_CHECKS, "Test groups"]),
+            ),
+            (
+                "CI.yml on a weekly run adds min on macOS and Windows",
+                filled(scratch, None, weekly_run)[0],
+                sorted([*REQUIRED_CHECKS, "Test groups", *weekly]),
+            ),
+        ]
+        for label, groups_file in (
+            ("the groups core and long", two),
+            ('once = ["long"]', three + 'once = ["long"]\n'),
+            ("split = false", three + "split = false\n"),
+            ('split = false and once = ["slow", "long"]', three + 'split = false\nonce = ["slow", "long"]\n'),
+        ):
+            body, repo = filled(scratch, groups_file, pr)
+            cases.append(
+                (
+                    f"CI.yml on a pull request with {label} reports Test groups and required_checks",
+                    body,
+                    sorted([*required_checks(repo), "Test groups"]),
+                )
+            )
+        path = scratch / "CI.yml"
         for label, body, expected in cases:
             path.write_text(body)
             try:
@@ -1426,6 +1553,7 @@ def selftest():
     for cases in (
         ruleset_cases,
         target_cases,
+        plan_cases,
         workflow_cases,
         template_cases,
         token_cases,

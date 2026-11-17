@@ -18,8 +18,9 @@
 # `core` and `slow`: GROUPS lists them, each has an `if` in runtests.jl or a group in its TESTS,
 # and they may be names outside the convention's. Its optional `split = false` runs all groups of a
 # matrix entry in one job, and its optional `once = [...]` names the groups other than `core` that
-# a pull request and a push run on one matrix entry only (`ci_options`). The CI workflows do not
-# read either key, so CI runs the groups as for a file without them.
+# a pull request and a push run on one matrix entry only (`ci_options`). The `groups` job of the
+# CI workflows and `harness ci-protection` judge and follow both keys, and `verify-workflows.jl`
+# prints the required checks that they give.
 #
 # Two rules are not checked here, because no layout shows them: D6, the 60 s budget of a `core`
 # file, cold, and the JET half of D4, `test/quality/jet.jl` where the package has a hot or kernel
@@ -308,8 +309,8 @@ run outside the CI test jobs. An optional `workflows = [...]` names extra workfl
 An optional `split = false` runs all groups of a matrix entry in one CI job, in place of one job per
 group; it is `true` where absent. An optional `once = [...]` names groups of `groups`, never `core`,
 that a pull request and a push run on one matrix entry only (`ci_once`). `ci_options` gives the two.
-Every key but `groups` is judged only where `groups` is a list of names. The CI workflows read
-neither `split` nor `once`.
+Every key but `groups` is judged only where `groups` is a list of names. The `groups` job of the
+CI workflows writes its matrix rows from `groups`, `split` and `once`.
 """
 function ci_groups(repo)
     f = joinpath(repo, "test", "ci-groups.toml")

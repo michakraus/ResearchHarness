@@ -30,9 +30,13 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
 - githooks/workflows/CI.yml: which job waits for which, so that test-other starts only after test
   and prerelease waits for nothing; that test-other runs after no failure; the matrix, the name and
   the continue-on-error of each job; the coverage of test alone; the triggers with the weekly cron,
-  and the concurrency group with the event. The script of its `groups` job, run for each event: the
-  list of groups, and `["1"]` for a pull request and a push to a branch, `["min", "1"]` for a tag,
-  the schedule, a run by hand and `merge_group`; a group twice writes nothing.
+  and the concurrency group with the event. The script of its `groups` job, run for each event
+  without a group file and with groups, `split` and `once`: the groups of the downgrade job, and the
+  rows of `test` and `test-other`, with macOS and Windows on `1` for a pull request and a push to a
+  branch and on `min` and `1` for a tag, the schedule, a run by hand and `merge_group`; one row per
+  entry with `split = false`, and the groups of `once` on Ubuntu with `1` alone on a pull request
+  and a push to a branch. A group twice, and each value of `split` and `once` that it refuses, writes
+  nothing and is refused with the text that names the key.
 - githooks/workflows/Downgrade.yml: its name, its triggers with their paths, the tags and the cron,
   the concurrency group of CI.yml, the `groups` job of CI.yml, and its downgrade job; `actionlint`
   passes on it, and without shellcheck on CI.yml, where it is on the PATH.
@@ -58,10 +62,11 @@ a temporary directory. No subcommand of its own; `githooks.selftest` runs them.
   pre-commit hook of a base checks its installed copy.
 - githooks/verify-workflows.jl, where `julia` is on the PATH and the harness's Julia environment
   holds a Project.toml: a clean fixture passes, and prints the required checks of
-  `protection.REQUIRED_CHECKS`, and for a repository with the groups `core` and `slow` those of
-  `protection.required_checks`; a drifted Downgrade.yml, a CI.yml whose test-other job has
-  another name, a CI.yml without a test-other job, a drifted Dependents.yml, a missing
-  dependents.jl, a Dependents.yml in an unlisted repository and a listed base without
+  `protection.REQUIRED_CHECKS`, and for a repository with the groups `core` and `slow`, alone, with
+  `split = false`, with `once`, and with both, those of `protection.required_checks`; a group file
+  with `once = ["core"]` fails check 6 and prints no list; a drifted Downgrade.yml, a CI.yml whose
+  test-other job has another name, a CI.yml without a test-other job, a drifted Dependents.yml, a
+  missing dependents.jl, a Dependents.yml in an unlisted repository and a listed base without
   dependents.toml each fail with a line that names the repository; an experiment that
   `dependents_bases` names is no base; without `dependents_bases`, the fixture of the other
   templates passes, and so it does with a profile without `docs_exceptions` and
@@ -81,7 +86,7 @@ from collections.abc import Callable, Generator, Mapping
 from typing import cast
 from unittest import mock
 
-from . import REPO, HarnessError, githooks, install, protection, wikilint
+from . import REPO, HarnessError, githooks, install, jsonio, protection, wikilint
 from . import profile as profile_module
 from .sweep import GIT
 
@@ -98,9 +103,17 @@ DOWNGRADE_YML = REPO / "githooks" / "workflows" / "Downgrade.yml"
 # The weekly trigger and the concurrency group of CI.yml and Downgrade.yml.
 WEEKLY = [{"cron": "17 3 * * 1"}]
 CONCURRENCY = "${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}"
-# The matrix values that the outputs of the `groups` job give.
+# The matrix values that the outputs of the `groups` job give: the groups of the downgrade job, and
+# the rows of `test` and of `test-other`.
 GROUPS_LIST = "${{ fromJSON(needs.groups.outputs.list) }}"
-GROUPS_VERSIONS = "${{ fromJSON(needs.groups.outputs.versions) }}"
+GROUPS_TEST = "${{ fromJSON(needs.groups.outputs.test) }}"
+GROUPS_OTHER = "${{ fromJSON(needs.groups.outputs.other) }}"
+# The keys of a row of the outputs `test` and `other`, sorted.
+ROW_KEYS = ["arch", "args", "group", "os", "version"]
+# The Julia version and the system of each matrix entry of `test` and `test-other`.
+UBUNTU_MIN, UBUNTU_1 = ("min", "ubuntu-latest"), ("1", "ubuntu-latest")
+OTHER_1 = [("1", "macOS-latest"), ("1", "windows-latest")]
+OTHER_MIN = [("min", "macOS-latest"), ("min", "windows-latest")]
 # The names of the Julia jobs of CI.yml, which are the names of the required checks.
 TEST_NAME = (
     "Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}"
@@ -865,22 +878,12 @@ def ci_cases(check: Check) -> None:
         matrices
         == {
             "groups": None,
-            "test": {
-                "version": ["min", "1"],
-                "os": ["ubuntu-latest"],
-                "arch": ["default"],
-                "group": GROUPS_LIST,
-            },
-            "test-other": {
-                "version": GROUPS_VERSIONS,
-                "os": ["macOS-latest", "windows-latest"],
-                "arch": ["default"],
-                "group": GROUPS_LIST,
-            },
+            "test": {"include": GROUPS_TEST},
+            "test-other": {"include": GROUPS_OTHER},
             "prerelease": {"version": ["pre", "nightly"], "os": ["ubuntu-latest"], "arch": ["default"]},
             "doctest": {"os": ["ubuntu-latest"]},
         },
-        f"CI.yml: Ubuntu on min and 1, macOS and Windows on the versions of the event, pre and "
+        f"CI.yml: test and test-other read the rows test and other of the groups job, pre and "
         f"nightly on Ubuntu, the doctests on Ubuntu -> {matrices}",
     )
     names = {name: (job.get("name"), job.get("continue-on-error")) for name, job in jobs.items()}
@@ -926,13 +929,14 @@ def ci_cases(check: Check) -> None:
             "test": {
                 "check_bounds": "auto",
                 "coverage": "${{ env.COVERAGE }}",
-                "test_args": "${{ matrix.group }}",
+                "test_args": "${{ matrix.args }}",
             },
-            "test-other": {"check_bounds": "auto", "coverage": False, "test_args": "${{ matrix.group }}"},
+            "test-other": {"check_bounds": "auto", "coverage": False, "test_args": "${{ matrix.args }}"},
             "prerelease": {"check_bounds": "auto", "coverage": False},
         },
         f"CI.yml: test, test-other and prerelease set up the Julia and the architecture of their matrix "
-        f"entry, and test and test-other run the group of their entry -> setup {setup}, runtest {runtest}",
+        f"entry, and test and test-other run the test arguments of their row -> setup {setup}, "
+        f"runtest {runtest}",
     )
     on = triggers(data)
     concurrency = cast("dict[str, object]", data.get("concurrency") or {})
@@ -950,16 +954,22 @@ def ci_cases(check: Check) -> None:
     )
 
 
-def groups_output(tmp: pathlib.Path, event: str, ref: str, text: str | None) -> tuple[int, list[str]]:
-    """The script of the `groups` job of CI.yml, run as a runner runs it for `event` on `ref`, in a
-    new directory below `tmp` whose test/ci-groups.toml holds `text`, or which has none for None:
-    its exit status, and the lines that it writes to GITHUB_OUTPUT."""
-    _, jobs = template(CI_YML)
-    script = next((str(s["run"]) for s in job_steps(jobs.get("groups", {})) if s.get("id") == "read"), "")
+def scratch_repository(tmp: pathlib.Path, text: str | None) -> pathlib.Path:
+    """A new directory below `tmp` whose test/ci-groups.toml holds `text`, or which has none for
+    None."""
     root = pathlib.Path(tempfile.mkdtemp(dir=tmp))
     if text is not None:
         (root / "test").mkdir()
         (root / "test" / "ci-groups.toml").write_text(text)
+    return root
+
+
+def groups_output(root: pathlib.Path, event: str, ref: str) -> tuple[int, list[str], str]:
+    """The script of the `groups` job of CI.yml, run as a runner runs it for `event` on `ref` in the
+    repository `root`: its exit status, the lines that it writes to GITHUB_OUTPUT, and the last line
+    of its standard error."""
+    _, jobs = template(CI_YML)
+    script = next((str(s["run"]) for s in job_steps(jobs.get("groups", {})) if s.get("id") == "read"), "")
     out = root / "github_output"
     out.write_text("")
     env = {k: v for k, v in os.environ.items() if not k.startswith("GITHUB_")} | {
@@ -976,33 +986,184 @@ def groups_output(tmp: pathlib.Path, event: str, ref: str, text: str | None) -> 
         check=False,
         timeout=TIMEOUT,
     )
-    return p.returncode, out.read_text().splitlines()
+    error = p.stderr.strip().splitlines()
+    return p.returncode, out.read_text().splitlines(), error[-1] if error else ""
+
+
+# A row of the output `test` or `other`: its version, its system, its group and its test arguments.
+type Row = tuple[str, str, str, str]
+
+
+def groups_rows(root: pathlib.Path, event: str, ref: str) -> tuple[int, dict[str, object], str]:
+    """`groups_output`, with each output by its name: `list` as its value, and `test` and `other` as
+    their rows, sorted, each a Row, or its text where its keys are not ROW_KEYS or its `arch` is not
+    `default`."""
+    code, lines, error = groups_output(root, event, ref)
+    outputs: dict[str, object] = {}
+    for line in lines:
+        name, _, text = line.partition("=")
+        value = jsonio.loads(text, where=f"the output {name}", top=object)
+        if name in {"test", "other"} and isinstance(value, list):
+            rows: list[Row | str] = []
+            for r in value:
+                row = r if isinstance(r, dict) else {}
+                fields = [str(row.get(k)) for k in ("version", "os", "group", "args")]
+                good = sorted(row) == ROW_KEYS and row.get("arch") == "default"
+                rows.append((fields[0], fields[1], fields[2], fields[3]) if good else repr(r))
+            outputs[name] = sorted(rows, key=str)
+        else:
+            outputs[name] = value
+    return code, outputs, error
+
+
+def per_group(entries: list[tuple[str, str]], groups: list[str]) -> list[Row]:
+    """The rows of one job per group on each of `entries`, (version, os), with the group as the
+    test argument."""
+    return [(version, system, g, g) for version, system in entries for g in groups]
+
+
+def one_job(entries: list[tuple[str, str]], args: str = "") -> list[Row]:
+    """The rows of one job with no group on each of `entries`, (version, os), with the test
+    arguments `args`."""
+    return [(version, system, "", args) for version, system in entries]
 
 
 def groups_cases(check: Check, tmp: pathlib.Path) -> None:
-    """The `groups` job of CI.yml for each event: the list of test groups, and the versions of
-    macOS and Windows, `1` for a pull request and a push to a branch and `min` and `1` for every
-    other event; a group file that it refuses writes nothing."""
-    two = 'groups = ["core", "long"]\n'
-    one, full = 'versions=["1"]', 'versions=["min", "1"]'
-    for event, ref, text, want in (
-        ("pull_request", "refs/pull/1/merge", None, ['list=[""]', one]),
-        ("pull_request", "refs/pull/1/merge", two, ['list=["core", "long"]', one]),
-        ("push", "refs/heads/main", two, ['list=["core", "long"]', one]),
-        ("push", "refs/heads/master", None, ['list=[""]', one]),
-        ("push", "refs/tags/v1.2.3", None, ['list=[""]', full]),
-        ("schedule", "refs/heads/main", two, ['list=["core", "long"]', full]),
-        ("workflow_dispatch", "refs/heads/main", None, ['list=[""]', full]),
-        ("merge_group", "refs/heads/gh-readonly-queue/main/x", None, ['list=[""]', full]),
+    """The `groups` job of CI.yml for each event: the groups of the downgrade job, and the rows of
+    `test` and `test-other`. A pull request and a push to a branch run macOS and Windows on `1`, and
+    every other event on `min` and `1`; `split = false` runs all groups of an entry in one job; on a
+    pull request and a push to a branch, the groups of `once` run on Ubuntu with `1` alone. A group
+    file that it refuses writes nothing, and its error names the key."""
+    pr, main, tag = (
+        ("pull_request", "refs/pull/1/merge"),
+        ("push", "refs/heads/main"),
+        ("push", "refs/tags/v1"),
+    )
+    weekly, hand = ("schedule", "refs/heads/main"), ("workflow_dispatch", "refs/heads/main")
+    merge = ("merge_group", "refs/heads/gh-readonly-queue/main/x")
+    two, three = ["core", "long"], ["core", "slow", "long"]
+    groups_two, groups_three = 'groups = ["core", "long"]\n', 'groups = ["core", "slow", "long"]\n'
+    once = groups_three + 'once = ["long"]\n'
+    split = groups_three + "split = false\n"
+    both = groups_three + 'split = false\nonce = ["slow", "long"]\n'
+    ubuntu, full = [UBUNTU_MIN, UBUNTU_1], OTHER_1 + OTHER_MIN
+
+    def want(listed: list[str], test: list[Row], other: list[Row]) -> dict[str, object]:
+        return {"list": listed, "test": sorted(test, key=str), "other": sorted(other, key=str)}
+
+    for label, (event, ref), text, expected in (
+        ("without a group file", pr, None, want([""], one_job(ubuntu), one_job(OTHER_1))),
+        (
+            "with the groups core and long",
+            pr,
+            groups_two,
+            want(two, per_group(ubuntu, two), per_group(OTHER_1, two)),
+        ),
+        (
+            "with the groups core and long",
+            main,
+            groups_two,
+            want(two, per_group(ubuntu, two), per_group(OTHER_1, two)),
+        ),
+        (
+            "without a group file",
+            ("push", "refs/heads/master"),
+            None,
+            want([""], one_job(ubuntu), one_job(OTHER_1)),
+        ),
+        ("without a group file", tag, None, want([""], one_job(ubuntu), one_job(full))),
+        (
+            "with the groups core and long",
+            weekly,
+            groups_two,
+            want(two, per_group(ubuntu, two), per_group(full, two)),
+        ),
+        ("without a group file", hand, None, want([""], one_job(ubuntu), one_job(full))),
+        ("without a group file", merge, None, want([""], one_job(ubuntu), one_job(full))),
+        (
+            'with once = ["long"]',
+            pr,
+            once,
+            want(
+                three,
+                per_group([UBUNTU_MIN], ["core", "slow"]) + per_group([UBUNTU_1], three),
+                per_group(OTHER_1, ["core", "slow"]),
+            ),
+        ),
+        (
+            'with once = ["long"]',
+            main,
+            once,
+            want(
+                three,
+                per_group([UBUNTU_MIN], ["core", "slow"]) + per_group([UBUNTU_1], three),
+                per_group(OTHER_1, ["core", "slow"]),
+            ),
+        ),
+        ('with once = ["long"]', tag, once, want(three, per_group(ubuntu, three), per_group(full, three))),
+        ('with once = ["long"]', weekly, once, want(three, per_group(ubuntu, three), per_group(full, three))),
+        (
+            "with once = []",
+            pr,
+            groups_three + "once = []\n",
+            want(three, per_group(ubuntu, three), per_group(OTHER_1, three)),
+        ),
+        ("with split = false", pr, split, want([""], one_job(ubuntu), one_job(OTHER_1))),
+        ("with split = false", weekly, split, want([""], one_job(ubuntu), one_job(full))),
+        (
+            "with split = true",
+            pr,
+            groups_two + "split = true\n",
+            want(two, per_group(ubuntu, two), per_group(OTHER_1, two)),
+        ),
+        (
+            'with split = false and once = ["slow", "long"]',
+            pr,
+            both,
+            want([""], one_job([UBUNTU_MIN], "core") + one_job([UBUNTU_1]), one_job(OTHER_1, "core")),
+        ),
+        (
+            'with split = false and once = ["slow", "long"]',
+            hand,
+            both,
+            want([""], one_job(ubuntu), one_job(full)),
+        ),
+        (
+            'with split = false and once = ["long"]',
+            pr,
+            split + 'once = ["long"]\n',
+            want(
+                [""], one_job([UBUNTU_MIN], "core slow") + one_job([UBUNTU_1]), one_job(OTHER_1, "core slow")
+            ),
+        ),
     ):
-        got = groups_output(tmp, event, ref, text)
+        got = groups_rows(scratch_repository(tmp, text), event, ref)
         check(
-            got == (0, want),
-            f"the groups job writes {want} for {event} on {ref} {'with' if text else 'without'} a group "
-            f"file -> {got}",
+            got == (0, expected, ""),
+            f"the groups job for {event} on {ref} {label} writes {expected} -> {got}",
         )
-    got = groups_output(tmp, "pull_request", "refs/pull/1/merge", 'groups = ["core", "core"]\n')
-    check(got[0] != 0 and not got[1], f"the groups job refuses a group twice and writes nothing -> {got}")
+    names = "`groups` is not a list of distinct group names"
+    once_text = "`once` is not a list of distinct groups of `groups` other than core"
+    for label, text, expected in (
+        ("a group twice", 'groups = ["core", "core"]\n', f"{names}: ['core', 'core']"),
+        ('split = "false"', groups_three + 'split = "false"\n', "`split` is not true or false"),
+        ('once = ["core"]', groups_three + 'once = ["core"]\n', once_text),
+        ('once = ["huge"]', groups_three + 'once = ["huge"]\n', once_text),
+        ('once = ["long", "long"]', groups_three + 'once = ["long", "long"]\n', once_text),
+        ('once = "long"', groups_three + 'once = "long"\n', once_text),
+        ("once = [1]", groups_three + "once = [1]\n", once_text),
+        (
+            "a once that holds every group",
+            'groups = ["slow", "long"]\nsplit = false\nonce = ["slow", "long"]\n',
+            "`once` holds every group of `groups`",
+        ),
+        ('groups = "core" beside a once', 'groups = "core"\nonce = ["long"]\n', f"{names}: 'core'"),
+    ):
+        got = groups_output(scratch_repository(tmp, text), *pr)
+        check(
+            got[0] != 0 and not got[1] and got[2] == f"test/ci-groups.toml: {expected}",
+            f"the groups job refuses a group file with {label}, writes nothing, and names the key -> {got}",
+        )
 
 
 def downgrade_cases(check: Check) -> None:
@@ -1338,6 +1499,34 @@ def verify_cases(check: Check, tmp: pathlib.Path, julia: str) -> None:
         p.returncode == 0 and bool(printed) and sorted(printed) == sorted(expected),
         f"verify-workflows prints the required checks of harness ci-protection for a repository with "
         f"the groups core and slow -> {p.returncode}, {printed}",
+    )
+    for label, keys in (
+        ("split = false", "split = false\n"),
+        ('once = ["slow"]', 'once = ["slow"]\n'),
+        ('split = false and once = ["slow"]', 'split = false\nonce = ["slow"]\n'),
+    ):
+        with (
+            changed_file(grouped / "test" / "ci-groups.toml", f'groups = ["core", "slow"]\n{keys}'),
+            changed_file(grouped / "test" / "runtests.jl", runtests),
+        ):
+            p = verify(julia, root, listed, quiet=False)
+            expected = protection.required_checks(grouped)
+        printed = printed_checks(p.stdout, "Required status checks of Other,")
+        check(
+            p.returncode == 0 and bool(printed) and sorted(printed) == sorted(expected),
+            f"verify-workflows prints the required checks of harness ci-protection for a repository with "
+            f"{label} -> {p.returncode}, {printed}, expected {expected}",
+        )
+    with (
+        changed_file(grouped / "test" / "ci-groups.toml", 'groups = ["core", "slow"]\nonce = ["core"]\n'),
+        changed_file(grouped / "test" / "runtests.jl", runtests),
+    ):
+        p = verify(julia, root, listed, quiet=False)
+    printed = printed_checks(p.stdout, "Required status checks of Other,")
+    check(
+        p.returncode == 1 and "`once` never holds core" in p.stdout and not printed,
+        f'verify-workflows fails check 6 for once = ["core"] and prints no required checks of the '
+        f"repository -> {p.returncode}, {printed}",
     )
     workflow = repos["Base"] / ".github" / "workflows" / "Dependents.yml"
     for label, path, text, repo, phrase in (

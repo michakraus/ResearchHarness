@@ -290,9 +290,9 @@ on a pull request, by hand, and weekly on Monday at 03:17 UTC. It reads the pack
 
 | job | what it runs |
 |:--|:--|
-| `groups` | reads `test/ci-groups.toml` and gives the list of test groups to the jobs below; one empty group where the file does not exist. It also gives the Julia versions of `test-other` for the event: `1` on a pull request and a push to a branch, `min` and `1` on the weekly run, a tag, a run by hand and every other event |
-| `test` | the tests on Julia `min` and `1` on Ubuntu, once per test group |
-| `test-other` | the tests on macOS and Windows, with the versions of `groups`, once per test group; it starts only after every job of `test` passes |
+| `groups` | reads `test/ci-groups.toml` and writes the matrix rows of `test` and `test-other` for the event, each with its Julia version, system, architecture, group and test arguments; one row per entry with an empty group where the file does not exist. `test-other` gets `1` on a pull request and a push to a branch, `min` and `1` on the weekly run, a tag, a run by hand and every other event. It also gives the test groups of the downgrade job |
+| `test` | the tests on Julia `min` and `1` on Ubuntu, one job per row of `groups` |
+| `test-other` | the tests on macOS and Windows, one job per row of `groups`; it starts only after every job of `test` passes |
 | `prerelease` | the tests on Julia `pre` and `nightly` on Ubuntu, the whole suite, on every event; information only |
 | `doctest` | `doctest` of the package on Julia `1` on Ubuntu, where `docs/Project.toml` exists |
 
@@ -328,8 +328,32 @@ suite in one job either way.
 The file lists `core`, `slow` and the repository's own groups, and `GROUPS` in `runtests.jl`
 runs exactly these groups for empty `ARGS`, so `Pkg.test()` and the `pre-push` hook still run
 every group. The rule `julia-tests`, `scripts/test-layout.jl` and `verify-workflows.jl` check
-this. `harness ci-protection` reads the file and requires one check per group for each required
-Julia check.
+this. `harness ci-protection` reads the file and requires the check of each job of a pull
+request: one per group for each required Julia check, unless the keys below change the jobs.
+
+Two optional keys of the file plan the jobs. `split = false` runs all groups of a matrix entry
+in one job, with no group in its name, so the required checks are the five of a repository
+without groups. `once` names groups, never `core` and never every group, that a pull request and
+a push to a branch run on Julia `1` on Ubuntu alone; the other entries of such an event run the
+remaining groups. The weekly run, a tag and a run by hand run every group on every entry:
+
+```toml
+groups = ["core", "slow", "quality", "verification"]
+split = false
+once = ["quality", "verification"]
+```
+
+| key | a job of an entry | its test arguments | required checks of a pull request |
+|:--|:--|:--|:--|
+| neither | one per group | the group | each Julia check once per group |
+| `split = false` | one | none: the whole suite | the five of a repository without groups |
+| `once` | one per group that the entry runs | the group | the groups of `once` on Julia `1` on Ubuntu alone |
+| both | one | none on Julia `1` on Ubuntu and on a full event; the remaining groups, joined by a space, on the other entries of a pull request | the five of a repository without groups |
+
+The `groups` job refuses a `split` that is not `true` or `false` and a `once` that is not such a
+list; it then writes nothing, and every test job is skipped. `harness ci-protection` refuses the
+same file with the same text. The downgrade job runs every group, one job per group, or one job
+with `split = false`.
 
 Each job runs its group alone, so a device group such as `metal` does not run in the required
 macOS jobs, where empty `ARGS` runs it without a group file. The file names the repository's own
@@ -358,7 +382,7 @@ by hand, and weekly with `CI.yml`. GitHub reads no path filter for a tag, so eve
 | job | what it runs |
 |:--|:--|
 | `groups` | the `groups` job of `CI.yml`, the same lines |
-| `downgrade` | the tests with each direct dependency of `Project.toml` and `test/Project.toml` at the lower bound of its `[compat]` entry, the two resolved together, on Julia `min`, once per test group; information only |
+| `downgrade` | the tests with each direct dependency of `Project.toml` and `test/Project.toml` at the lower bound of its `[compat]` entry, the two resolved together, on Julia `min`, once per test group, or once with `split = false`; information only |
 
 The workflow is advisory: `harness ci-protection` does not require it, because its path filter
 leaves most pull requests without its checks.
@@ -505,7 +529,9 @@ It checks these points:
    `core`; no other key is accepted.
 
 Without `--quiet`, it prints the required checks of a repository without test groups, and those of
-each repository that has a `test/ci-groups.toml`. It also checks that a repository of
+each repository whose `test/ci-groups.toml` passes point 6, with its `split` and `once`: the
+checks of the jobs of a pull request, as `harness ci-protection` requires them. It prints none for
+a repository whose file fails point 6. It also checks that a repository of
 `docs_additions` keeps the body of `Documenter.yml`. It reports the repositories whose `doctest`
 job skips itself. It exits with status 1 when a repository deviates. It reads the profile for
 `docs_exceptions`, `docs_additions` and `dependents_bases`. It reads a key that the profile does
