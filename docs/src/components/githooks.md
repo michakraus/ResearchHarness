@@ -347,8 +347,8 @@ once = ["quality", "verification"]
 |:--|:--|:--|:--|
 | neither | one per group | the group | each Julia check once per group |
 | `split = false` | one | none: the whole suite | the five of a repository without groups |
-| `once` | one per group that the entry runs | the group | the groups of `once` on Julia `1` on Ubuntu alone |
-| both | one | none on Julia `1` on Ubuntu and on a full event; the remaining groups, joined by a space, on the other entries of a pull request | the five of a repository without groups |
+| `once` | one per group that the entry runs | the group | each Julia check once per group, a group of `once` on Julia `1` on Ubuntu alone |
+| both | one | none on Julia `1` on Ubuntu, and on every entry of the weekly run, a tag and a run by hand; the remaining groups, joined by a space, on the other entries of a pull request and a push to a branch | the five of a repository without groups |
 
 The `groups` job refuses a `split` that is not `true` or `false` and a `once` that is not such a
 list; it then writes nothing, and every test job is skipped. `harness ci-protection` refuses the
