@@ -427,7 +427,7 @@
 
 ### K111 · No case of the `protection` part runs `gh()`.
 
-- location: `lib/harness/protection.py:113`
+- location: `lib/harness/protection.py:240`
 - evidence: with `check=False` changed to `check=True` in the `subprocess.run` of `gh()`,
   `bin/harness test protection` still prints `part protection: 7 cases, 0 wrong`. So no case
   shows that a failed `gh` call reaches the retry and the `GhError`, and not a
