@@ -694,6 +694,7 @@ def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], No
             outcome = "answered"
         except OSError as err:
             outcome = repr(err)
+        sending = ours.gettimeout()
         ours.shutdown(socket.SHUT_WR)
         sent = theirs.recv(65536)
     line = json_object(sent.decode("utf-8", "replace"))
@@ -701,8 +702,10 @@ def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], No
         line is not None
         and isinstance(line.get("error"), str)
         and absent in str(line["error"])
-        and "path" not in line,
-        f"answer sends that error as one JSON line: {outcome}, {sent!r}",
+        and "path" not in line
+        and sending == getattr(hook, "LOCAL", None),
+        f"answer sends that error as one JSON line, with a timeout of LOCAL seconds: {outcome}, {sent!r}, "
+        f"timeout {sending}",
     )
 
     runs: list[dict[str, str]] = []
@@ -716,15 +719,19 @@ def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], No
         mock.patch.object(subprocess, "run", side_effect=run),
     ):
         reply = hook.respond(payload)
+        valid = len(runs)
         big = [
             hook.respond(json.dumps({"hook_event_name": "WorktreeCreate", "pad": "x" * 70 * 1024}).encode()),
             hook.respond(payload + b" " * 70 * 1024),
         ]
+        after_big = len(runs)
         other = hook.respond(b'{"hook_event_name": "Other", "cwd": "/"}')
-    env = runs[0] if len(runs) == 1 else {}
+        after_other = len(runs)
+    env = runs[0] if valid == 1 else {}
     report(
-        "Other" in str(getattr(other, "error", None)) and len(runs) == 1,
-        f"a request of hook_event_name Other gets an error that names it and starts nothing: {other!r}",
+        "Other" in str(getattr(other, "error", None)) and after_other == after_big,
+        f"a request of hook_event_name Other gets an error that names it and starts nothing: {other!r}, "
+        f"{after_other - after_big} runs",
     )
     report(
         getattr(reply, "path", None) == f"{WT_ROOT}/Repo-unit"
@@ -738,10 +745,12 @@ def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], No
         f"{ {k: env.get(k) for k in ('GIT_TERMINAL_PROMPT', 'AGENTBOX', 'AGENTBOX_BROKER')} }",
     )
     report(
-        all(f"larger than {64 * 1024} bytes" in str(getattr(r, "error", None)) for r in big),
+        all(f"larger than {64 * 1024} bytes" in str(getattr(r, "error", None)) for r in big)
+        and after_big == valid,
         f"a request of more than 64 KiB, inside the object or after it, gets an error that names the "
-        f"limit and starts nothing: {[getattr(r, 'error', r) for r in big]}",
+        f"limit and starts nothing: {[getattr(r, 'error', r) for r in big]}, {after_big - valid} runs",
     )
+    receive_deadline_cases(hook, report)
 
     read = getattr(hook, "read_reply", None)
     for text, want in [
@@ -772,6 +781,61 @@ def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], No
             sent.endswith(b"\n") and sent.count(b"\n") == 1 and json_object(sent.decode()) == want_line,
             f"the broker sends {fields} as the one JSON line {want_line}: {sent!r}",
         )
+
+
+class DripClock:
+    """A clock that advances by `step` seconds at each reading, from 0."""
+
+    def __init__(self, step: float) -> None:
+        self.step = step
+        self.now = -step
+
+    def __call__(self) -> float:
+        self.now += self.step
+        return self.now
+
+
+class DripConnection:
+    """A connection whose `recv` returns one byte at each call, for at most 20 calls, and which
+    records each timeout that it is given with the time of `clock` at that moment."""
+
+    def __init__(self, clock: DripClock) -> None:
+        self.clock = clock
+        self.timeouts: list[tuple[float, float]] = []
+        self.reads = 0
+
+    def settimeout(self, value: float) -> None:
+        self.timeouts.append((value, self.clock.now))
+
+    def recv(self, size: int) -> bytes:
+        del size
+        self.reads += 1
+        return b"x" if self.reads <= 20 else b""
+
+
+def receive_deadline_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`receive` bounds the whole read by its deadline: a client that sends one byte per read, while
+    the clock advances by a quarter of LOCAL per reading, gets TimeoutError within 5 reads, and
+    each timeout that a read gets is at most the time left."""
+    local = float(getattr(hook, "LOCAL", 60))
+    clock = DripClock(local / 4)
+    connection = DripConnection(clock)
+    try:
+        hook.receive(connection, getattr(hook, "LIMIT", 65536), local, clock)
+        outcome = "returned"
+    except TimeoutError:
+        outcome = "TimeoutError"
+    except TypeError as err:
+        outcome = f"TypeError: {err}"
+    report(
+        outcome == "TimeoutError"
+        and connection.reads <= 5
+        and connection.timeouts
+        and all(0 < value <= local - now for value, now in connection.timeouts),
+        f"a client that sends one byte per read gets TimeoutError within 5 reads, each read with a "
+        f"timeout of at most the time left before the deadline {local}: {outcome}, {connection.reads} "
+        f"reads, timeouts {connection.timeouts}",
+    )
 
 
 def worktree_git_cases() -> tuple[int, int]:
@@ -966,12 +1030,16 @@ def worktree_git_cases() -> tuple[int, int]:
         check=False,
     )
     report(
-        proc.returncode != 0 and "parent" in proc.stderr and not os.path.lexists(orphan),
+        proc.returncode != 0 and "parent" in proc.stderr and not orphan.exists(follow_symlinks=False),
         f"a broker whose --parent is not its parent exits non-zero, names the parent and binds nothing: "
         f"{proc.returncode}, {proc.stderr!r}",
     )
 
     if verdict == "skip":
+        report(
+            verdict == "skip",
+            f"the bind cases skip only where the probe bind is refused: {verdict} {why}",
+        )
         print(
             f"skip  payloads: AF_UNIX bind refused in this environment ({why}); the worktree cases of a "
             "socket where nothing listens, of a broker's create, remove, refusals, bad requests, mode, "
@@ -1059,7 +1127,7 @@ def worktree_git_cases() -> tuple[int, int]:
         if broker.parent.stdin is not None:
             broker.parent.stdin.close()
         broker.parent.wait(timeout=TIMEOUT)
-        gone = until(lambda: ended(broker.pid) and not os.path.lexists(broker.socket), 10)
+        gone = until(lambda: ended(broker.pid) and not broker.socket.exists(follow_symlinks=False), 10)
         report(gone, "the broker exits and removes its socket within 10 s after its parent ends")
     finally:
         stop_broker(broker)
@@ -1084,7 +1152,7 @@ def worktree_git_cases() -> tuple[int, int]:
             up = until(lambda: is_socket(broker.socket), 10)
             if up:
                 os.kill(broker.pid, signum)
-            removed = up and until(lambda: not os.path.lexists(broker.socket), 10)
+            removed = up and until(lambda: not broker.socket.exists(follow_symlinks=False), 10)
         finally:
             stop_broker(broker)
         # The broker stays a zombie of its parent shell until that shell ends, so `ended` is looked at

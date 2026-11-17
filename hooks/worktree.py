@@ -70,7 +70,8 @@ import socket
 import stat
 import subprocess
 import sys
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
@@ -421,7 +422,7 @@ def ask(payload: dict[str, JsonValue], *, created: bool) -> None:
             connection.connect(address)
             connection.sendall((json.dumps(payload) + "\n").encode())
             connection.shutdown(socket.SHUT_WR)
-            data = receive(connection, None)
+            data = receive(connection, None, time.monotonic() + ANSWER)
     except OSError as err:
         raise Refusal(f"the worktree broker at {address} does not answer: {err}") from None
     reply = read_reply(data, f"the reply of the worktree broker at {address}")
@@ -446,11 +447,20 @@ def read_reply(data: bytes, where: str) -> Reply:
     return Reply(path, error if isinstance(error, str) else None, stderr)
 
 
-def receive(connection: socket.socket, limit: int | None) -> bytes:
+def receive(
+    connection: socket.socket, limit: int | None, deadline: float, clock: Callable[[], float] = time.monotonic
+) -> bytes:
     """The bytes from `connection` up to its first newline or its end; where `limit` is given, it
-    reads at most `limit` + 1 bytes, and returns them all when no newline comes before them."""
+    reads at most `limit` + 1 bytes, and returns them all when no newline comes before them. The
+    whole read ends by `deadline`, a time of `clock`: each `recv` waits at most the time left, and
+    TimeoutError is raised once none is left, so a client that sends a byte now and then cannot
+    hold the read longer."""
     data = b""
     while b"\n" not in data and (limit is None or len(data) <= limit):
+        left = deadline - clock()
+        if left <= 0:
+            raise TimeoutError(f"the read did not end by its deadline, {len(data)} bytes read")
+        connection.settimeout(left)
         chunk = connection.recv(65536 if limit is None else limit + 1 - len(data))
         if not chunk:
             break
@@ -505,14 +515,15 @@ def ended(signum: int, frame: FrameType | None) -> None:
 
 def answer(connection: socket.socket) -> None:
     """Read one request from `connection` and send `respond`'s answer as one JSON line. A client that
-    leaves or stalls past LOCAL seconds takes its reply with it; the broker serves the next."""
-    connection.settimeout(LOCAL)
+    leaves, or has not sent its request within LOCAL seconds, takes its reply with it; the broker
+    serves the next."""
     try:
-        data = receive(connection, LIMIT)
+        data = receive(connection, LIMIT, time.monotonic() + LOCAL)
     except OSError:
         return
     reply = respond(data)
     with contextlib.suppress(OSError):
+        connection.settimeout(LOCAL)
         connection.sendall(reply.line())
 
 

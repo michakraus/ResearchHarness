@@ -1077,7 +1077,7 @@
 
 ### K171 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte or is no string.
 
-- location: `hooks/worktree.py:398`
+- location: `hooks/worktree.py:399`
 - evidence: `remove` calls `Path(payload.get("worktree_path", "")).resolve()`, which raises
   `ValueError: lstat: embedded null character in path`, and `main` does not catch it:
   `printf '%s' '{"hook_event_name":"WorktreeRemove","worktree_path":"/a\u0000b"}' | python3.14
@@ -1095,5 +1095,16 @@
   `hooks/worktree.py` runs `git fetch` with `timeout=NETWORK`, `NETWORK = 300`. The two values are
   the same on `f3a56a15`. Under the worktree broker, which gives a create `WORK` = 400 seconds, a
   create can end after Claude Code has reported the hook as failed, and the worktree then exists.
+- kind: defect
+- found: 2026-11-17, the verification of part G3a of the sandbox plan
+
+### K173 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
+
+- location: `hooks/probe.py:623`
+- evidence: `hooks/probe.py:623-639` defines `unix_bind` and `bind_verdict`, and `:858-869`
+  repeats the body of `bind_verdict_cases`, the same code as `lib/harness/sandbox.py:1982-2016`,
+  about 30 lines. `hooks/probe.py` already puts `REPO/lib` on `sys.path` and imports `harness` in
+  other groups (`from harness import install_cases`, `:3016`), so it can import them. Each copy
+  has its own mutants: the three mutants of the three-way decision run twice.
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan

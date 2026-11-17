@@ -2035,6 +2035,10 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
         f"the probe bind of an AF_UNIX socket succeeds, or is refused where CI is not set: {verdict} {why}",
     )
     if not bound:
+        check(
+            verdict == "skip",
+            f"the bind cases skip only where the probe bind is refused: {verdict} {why}",
+        )
         print(
             f"skip  sandbox: AF_UNIX bind refused in this environment ({why}); the agentbox cases of "
             "srt's arguments and environment for each frontend, forge_cases and the started cases "
