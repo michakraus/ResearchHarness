@@ -28,7 +28,9 @@ the `.git` file of a linked worktree whose admin directory holds the `commondir`
 that git writes, and the main checkout's `.git` must hold no `commondir`. git then runs only in
 that main checkout, and every git gets `-c core.hooksPath=/dev/null -c core.fsmonitor=false`
 and `GIT_ALLOW_PROTOCOL=https:ssh` (`run_git`), so that no hook and no fsmonitor daemon of the
-repository runs, and no transport but https and ssh.
+repository runs, and no transport but https and ssh. Every git also gets `GIT_DIR` set to that
+checkout's `.git` and none of the caller's `GIT_WORK_TREE` and `GIT_COMMON_DIR`, so that git
+uses the repository that was checked and does not search for one itself.
 
 **Its git config is checked before any other git** (`checked_config`): a program inside a
 sandbox can write `.git/config`, and a key there can run a command for the git outside it. A
@@ -98,6 +100,9 @@ NETWORK = 300
 OPTIONS = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
 # The transports that every git may use, in GIT_ALLOW_PROTOCOL, in place of the caller's value.
 PROTOCOLS = "https:ssh"
+# The variables of the caller that no git of this hook gets: each would name another work tree or
+# another common directory, whose config git would read, beside the GIT_DIR that `run_git` sets.
+UNSET = frozenset({"GIT_WORK_TREE", "GIT_COMMON_DIR"})
 # The keys of a repository's `.git/config` that `checked_config` allows, lowercased: the keys
 # without a subsection, and the names of the keys of each `branch.<n>` and `remote.<n>`. A key
 # whose name is in URL_KEYS holds a URL that `remote_url` accepts; every other allowed key holds
@@ -170,13 +175,20 @@ class Reply:
         return (json.dumps({**head, "stderr": self.stderr}) + "\n").encode()
 
 
-def run_git(*args: str, cwd: Path, timeout: int = LOCAL) -> subprocess.CompletedProcess[str]:
-    """git with OPTIONS and `args` in `cwd`, with GIT_ALLOW_PROTOCOL set to PROTOCOLS: the one place
-    where this hook starts git."""
+def run_git(
+    *args: str, repo: Path, cwd: Path | None = None, timeout: int = LOCAL
+) -> subprocess.CompletedProcess[str]:
+    """git with OPTIONS and `args` in `cwd`, by default `repo`, with GIT_DIR set to `repo`'s `.git`,
+    GIT_ALLOW_PROTOCOL set to PROTOCOLS, and no GIT_WORK_TREE or GIT_COMMON_DIR of the caller: the one
+    place where this hook starts git. GIT_DIR pins git to the repository that `main_checkout` and
+    `checked_config` read, so that git does not search for one itself: a `.git` that git does not
+    take as a repository would make it walk up to a parent's, and a directory with a HEAD, `objects`
+    and `refs` would make it take that directory as a bare repository."""
+    env = {key: value for key, value in os.environ.items() if key not in UNSET}
     return subprocess.run(
         ["git", *OPTIONS, *args],  # noqa: S607 -- the `git` on PATH
-        cwd=cwd,
-        env={**os.environ, "GIT_ALLOW_PROTOCOL": PROTOCOLS},
+        cwd=repo if cwd is None else cwd,
+        env={**env, "GIT_DIR": str(repo / ".git"), "GIT_ALLOW_PROTOCOL": PROTOCOLS},
         capture_output=True,
         text=True,
         errors="replace",
@@ -185,11 +197,11 @@ def run_git(*args: str, cwd: Path, timeout: int = LOCAL) -> subprocess.Completed
     )
 
 
-def git(*args: str, cwd: Path, timeout: int = LOCAL) -> str:
-    proc = run_git(*args, cwd=cwd, timeout=timeout)
+def git(*args: str, repo: Path, timeout: int = LOCAL) -> str:
+    proc = run_git(*args, repo=repo, timeout=timeout)
     sys.stderr.write(proc.stderr)
     if proc.returncode != 0:
-        raise Refusal(f"`git {' '.join(args)}` in {cwd} exited {proc.returncode}")
+        raise Refusal(f"`git {' '.join(args)}` in {repo} exited {proc.returncode}")
     return proc.stdout.strip()
 
 
@@ -236,7 +248,9 @@ def checked_config(repo: Path) -> None:
     `allowed` refuses, or cannot be read: git outside the sandbox reads that file, and a key there
     can run a command (`core.sshCommand`, a filter, a URL rewrite) or pull in another file."""
     config = repo / ".git" / "config"
-    proc = run_git("config", "--file", str(config), "--no-includes", "--null", "--list", cwd=Path("/"))
+    proc = run_git(
+        "config", "--file", str(config), "--no-includes", "--null", "--list", repo=repo, cwd=Path("/")
+    )
     if proc.returncode != 0:
         raise Refusal(
             f"`git config --file {config} --list` exited {proc.returncode}: {' '.join(proc.stderr.split())}"
@@ -327,16 +341,16 @@ def slug(name):
     return "-".join(segments)
 
 
-def registered(repo, path):
-    listing = git("worktree", "list", "--porcelain", cwd=repo)
+def registered(repo: Path, path: Path) -> bool:
+    listing = git("worktree", "list", "--porcelain", repo=repo)
     return f"worktree {path}" in listing.splitlines()
 
 
 def base_ref(repo: Path) -> str:
-    head = run_git("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", cwd=repo)
+    head = run_git("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", repo=repo)
     if head.returncode == 0:
         return head.stdout.strip()
-    if run_git("rev-parse", "--verify", "--quiet", "refs/remotes/origin/main", cwd=repo).returncode == 0:
+    if run_git("rev-parse", "--verify", "--quiet", "refs/remotes/origin/main", repo=repo).returncode == 0:
         return "origin/main"
     raise Refusal(
         f"{repo} has neither `origin/HEAD` nor `origin/main`; run `git remote set-head origin --auto` there"
@@ -358,15 +372,15 @@ def create(payload: dict[str, JsonValue]) -> Path:
             return path
         raise Refusal(f"{path} exists and is not a worktree of {repo}; look at it before removing it")
 
-    git("fetch", "--quiet", "origin", cwd=repo, timeout=NETWORK)
+    git("fetch", "--quiet", "origin", repo=repo, timeout=NETWORK)
     if AGENT.match(name):
-        git("worktree", "add", "--detach", str(path), base_ref(repo), cwd=repo)
+        git("worktree", "add", "--detach", str(path), base_ref(repo), repo=repo)
         copy_manifest(repo, path)
         return path
-    if run_git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}", cwd=repo).returncode == 0:
-        git("worktree", "add", str(path), name, cwd=repo)
+    if run_git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}", repo=repo).returncode == 0:
+        git("worktree", "add", str(path), name, repo=repo)
     else:
-        git("worktree", "add", "--no-track", "-b", name, str(path), base_ref(repo), cwd=repo)
+        git("worktree", "add", "--no-track", "-b", name, str(path), base_ref(repo), repo=repo)
     copy_manifest(repo, path)
     return path
 
@@ -504,7 +518,7 @@ def remove(payload):
     checked_config(repo)
     if not registered(repo, path):
         raise Refusal(f"{path} is not a registered worktree of {repo}")
-    git("worktree", "remove", str(path), cwd=repo)
+    git("worktree", "remove", str(path), repo=repo)
 
 
 def ask(payload: dict[str, JsonValue], *, created: bool) -> None:

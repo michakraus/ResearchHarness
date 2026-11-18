@@ -13,6 +13,8 @@
   `srt` can write `.git/config` or a `.git/commondir`, and the broker's `git` outside `srt` reads
   them. Before any other `git`, the hook refuses a `.git` that holds `commondir`, and a
   `.git/config` with a key outside a fixed list or with a remote URL that is not `https://`,
-  `ssh://` or scp-like; every `git` gets `GIT_ALLOW_PROTOCOL=https:ssh`. A repository that holds
-  `extensions.worktreeConfig` or a remote at a local path gets no worktree until the key goes:
-  `guard-hooks.md` gives the fix of each.
+  `ssh://` or scp-like; every `git` gets `GIT_ALLOW_PROTOCOL=https:ssh`, and `GIT_DIR` set to the
+  checked repository's `.git`, with no `GIT_WORK_TREE` or `GIT_COMMON_DIR` of the caller, so that
+  `git` cannot walk up to a parent repository or take a directory as a bare repository whose
+  config the hook did not read. A repository that holds `extensions.worktreeConfig` or a remote
+  at a local path gets no worktree until the key goes: `guard-hooks.md` gives the fix of each.

@@ -530,6 +530,11 @@ off. A repository whose `.git` holds a `commondir` is refused too, because git w
 config of the directory that it names. `git` then runs only in the main checkout, and every `git`
 gets `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, so that no hook of the repository and
 no fsmonitor daemon runs, and `GIT_ALLOW_PROTOCOL=https:ssh`, in place of any value of the caller.
+Every `git` also gets `GIT_DIR=<repository>/.git`, and none of the caller's `GIT_WORK_TREE` and
+`GIT_COMMON_DIR`: this pins `git` to the repository that the hook checked. Without the pin, `git`
+looks for the repository itself. A `.git` that `git` does not take as a repository then makes it
+walk up to a parent's, and a directory with a `HEAD`, `objects` and `refs` makes it take that
+directory as a bare repository, whose config the hook does not check.
 
 **The hook checks the repository's git config before any other `git`.** A program inside a
 sandbox can write `.git/config`, and the `git` of this hook, which runs outside it, reads that
