@@ -231,6 +231,32 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   never runs where a global helper such as Git Credential Manager answers. An empty `helper` line
   resets the list: write it first, and check the order with a probe that has a global helper
   (git 2.54.0; E5n2 finish, verifier, *Sandbox the agent frontends*)
+- **a socket read bounded per `recv`, not as a whole:** `settimeout(LIMIT)` before each `recv`
+  lets a client that sends one byte per interval hold a one-at-a-time server for as long as the
+  size limit allows, so "at most `LIMIT`" is false. Set one deadline for the whole read, give each
+  `recv` the time that remains, and test it with a fake connection and an injected clock (G3a
+  finish, arbitrator, *Sandbox the agent frontends*)
+- **a client that reads a reply inside `try … except OSError: return None`:** a server that
+  replies and closes with part of the request unread makes Linux send a reset, so the client's
+  next `recv` raises `ConnectionResetError` and the reply it already read is lost; macOS keeps it.
+  Keep the bytes read before the error, and run the case on Linux (G3a round 1, *Sandbox the agent
+  frontends*)
+- **a process outside the sandbox that runs `git` in a repository the sandboxed side can write:**
+  git reads the config of a `.git` that holds `commondir`, and of a directory renamed to `.git`,
+  neither of which a write deny on `.git/config` covers; `core.sshCommand`, filter drivers, `url.*`
+  and `include.path` then run commands outside the sandbox. Refuse `commondir`, read the config
+  with `--no-includes` against an allowlist of keys, and set `GIT_ALLOW_PROTOCOL` (G3a finish,
+  arbitrator, *Sandbox the agent frontends*)
+- **a check of one repository's config, then a `git` that finds its repository itself:** where the
+  checked `.git` is no repository, git walks up to a parent whose config no check read, and with a
+  ceiling it takes the `cwd` as a bare repository. Pin the repository with `GIT_DIR` on every call
+  and drop an inherited `GIT_WORK_TREE` and `GIT_COMMON_DIR`; `GIT_CEILING_DIRECTORIES` does not
+  close it (G3a verify 3, *Sandbox the agent frontends*)
+- **a check of a path that the sandboxed side can rename, before a reader outside opens it:** the
+  sandbox lets a rename move the checked `.git` away and put another in its place between the check
+  and the read, and a pin by path does not stop it. No check closes the race; read from a copy that
+  the outside process owns, or deny the rename, and probe the rename inside the sandbox, never in a
+  plain terminal (G3a verify 4, *Sandbox the agent frontends*)
 
 ## A numerical method
 
