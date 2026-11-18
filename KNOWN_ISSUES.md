@@ -956,7 +956,7 @@
 
 ### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
 
-- location: `hooks/probe.py:2869`
+- location: `hooks/probe.py:2895`
 - evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
   reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
   calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
@@ -1075,7 +1075,7 @@
 - kind: defect
 - found: 2026-11-15, the spec of part G4b of the sandbox plan
 
-### K171 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte or is no string.
+### K172 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte or is no string.
 
 - location: `hooks/worktree.py:514`
 - evidence: `remove` calls `Path(payload.get("worktree_path", "")).resolve()`, which raises
@@ -1088,7 +1088,7 @@
 - kind: defect
 - found: 2026-11-17, the fix round of part G3a of the sandbox plan
 
-### K172 · The settings template gives the `WorktreeCreate` hook 120 seconds, but the hook's fetch may take 300.
+### K173 · The settings template gives the `WorktreeCreate` hook 120 seconds, but the hook's fetch may take 300.
 
 - location: `settings/settings.proposal.json:793`
 - evidence: the template's `WorktreeCreate` entry holds `"timeout": 120`, and
@@ -1098,7 +1098,7 @@
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
 
-### K173 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
+### K174 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
 
 - location: `hooks/probe.py:733`
 - evidence: `hooks/probe.py:733-749` defines `unix_bind` and `bind_verdict`, and `:1133-1144`
@@ -1109,7 +1109,7 @@
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
 
-### K174 · The worktree hook's `git fetch` reads a legacy `.git/remotes/<name>` file, whose URL the config check does not see.
+### K175 · The worktree hook's `git fetch` reads a legacy `.git/remotes/<name>` or `.git/branches/<name>` file, whose URL the config check does not see.
 
 - location: `hooks/worktree.py:375`
 - evidence: `checked_config` reads only `.git/config`, and `remote_url` tests only the URLs there.
@@ -1118,12 +1118,14 @@
   hook's fetch: it warns `reading remote from "remotes/origin", which is nominated for removal`.
   `GIT_ALLOW_PROTOCOL=https:ssh` of `run_git` stops this URL: the fetch exits 128 with `fatal:
   transport 'ext' not allowed`, and the marker is not written. With `GIT_ALLOW_PROTOCOL=ext`, the
-  same `git fetch origin` writes the marker. An `https://` or `ssh://` URL in that file reaches
-  the fetch with no test of its form.
+  same `git fetch origin` writes the marker. A `.git/branches/origin` that holds the line
+  `ext::sh -c touch% <marker>` gives the same three results, with the warning `reading remote
+  from "branches/origin"`. An `https://` or `ssh://` URL in either file reaches the fetch with no
+  test of its form.
 - kind: defect
 - found: 2026-11-18, the verification of part G3a of the sandbox plan
 
-### K175 · The worktree hook's git reads the user's global and system config, so a global `filter.lfs` driver runs outside the sandbox on a branch that a sandboxed program made.
+### K176 · The worktree hook's git reads the user's global and system config, so a global `filter.lfs` driver runs outside the sandbox on a branch that a sandboxed program made.
 
 - location: `hooks/worktree.py:178`
 - evidence: `run_git` sets `GIT_DIR`, `GIT_ALLOW_PROTOCOL` and the two `-c` options, and passes the
@@ -1135,3 +1137,30 @@
   chose. No case shows what `git-lfs` then does.
 - kind: not verified
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
+
+### K177 · A sandboxed program can replace a repository's `.git` between the worktree hook's config check and git's own read of that config.
+
+- location: `hooks/worktree.py:246`
+- evidence: `checked_config` reads `<repo>/.git/config` once, and each later `run_git` names the
+  same path in `GIT_DIR`, so git reads whatever `.git` is at that path when it starts. Under
+  `agentbox`, a program renamed an existing `.git` directory below `~/Research` to another name and
+  renamed a prepared directory to `.git` in its place: srt allows both renames. So a program in the
+  box can let the check pass on one config and give the `git fetch` and `git worktree add` that
+  follow, which run outside srt, another one, with a key that the check refuses. No check that
+  reads the file before git does closes this; a fix lets git read a copy that the hook owns, or
+  has srt refuse a rename of `.git`. No case measures the swap within the hook's run.
+- kind: defect
+- found: 2026-11-18, the verification of part G3a of the sandbox plan
+
+### K178 · The worktree hook's git inherits every `GIT_*` variable of its caller except `GIT_WORK_TREE` and `GIT_COMMON_DIR`.
+
+- location: `hooks/worktree.py:187`
+- evidence: `run_git` drops only the names of `UNSET`, `GIT_WORK_TREE` and `GIT_COMMON_DIR`, and
+  sets `GIT_DIR` and `GIT_ALLOW_PROTOCOL`. `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`,
+  `GIT_CONFIG_COUNT` with its `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, and
+  `GIT_CONFIG_PARAMETERS` reach every git that the hook starts, and the config check does not
+  read the config that the last three give. The process that runs git is the broker, which
+  `agentbox` starts before srt, or, without `AGENTBOX`, the hook that the frontend starts, so a
+  program in srt sets none of them.
+- kind: found late
+- found: 2026-11-18, the verification of part G3a of the sandbox plan

@@ -574,8 +574,8 @@ def worktree_fixture() -> None:
     common = pathlib.Path(WT_REPO, ".git").resolve()
     (admin / "Repo-common" / "commondir").write_text(f"{common}\n", encoding="utf-8")
     (admin / "Repo-gitdir" / "gitdir").write_text(f"{FIXTURE.name}/elsewhere/.git\n", encoding="utf-8")
-    # A `.git` file as `git worktree add --relative-paths` writes it, and an admin `gitdir` that
-    # is a relative path, as that option writes it.
+    # A `.git` file as `git worktree add --relative-paths` writes it, and a relative admin `gitdir`;
+    # git writes `../../../../.worktrees/Repo-rel/.git` there, but the case refuses at the `.git` line.
     pathlib.Path(WT_ROOT, "Repo-rel", ".git").write_text(WT_RELATIVE + "\n", encoding="utf-8")
     (admin / "Repo-rel" / "gitdir").write_text("../../../.worktrees/Repo-rel/.git\n", encoding="utf-8")
     run("-C", WT_REPO, "config", "core.hooksPath", ".githooks")

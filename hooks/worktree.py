@@ -33,10 +33,10 @@ checkout's `.git` and none of the caller's `GIT_WORK_TREE` and `GIT_COMMON_DIR`,
 uses the repository that was checked and does not search for one itself.
 
 **Its git config is checked before any other git** (`checked_config`): a program inside a
-sandbox can write `.git/config`, and a key there can run a command for the git outside it. A
-create runs the check after the test of the worktree path, a remove before it asks git for the
-worktrees; a key outside the fixed list of `allowed`, or a remote URL that `remote_url` refuses,
-refuses the repository.
+sandbox can rename a directory of its own into place as `.git`, with a `config` that it chose,
+and a key there can run a command for the git outside it. A create runs the check after the
+test of the worktree path, a remove before it asks git for the worktrees; a key outside the
+fixed list of `allowed`, or a remote URL that `remote_url` refuses, refuses the repository.
 
 **Under `agentbox` a broker does the git work.** srt denies writes to every `.githooks`, so a
 `git worktree add` inside it fails. With `AGENTBOX` in the environment, the hook runs no git:

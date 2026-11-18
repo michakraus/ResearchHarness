@@ -537,8 +537,9 @@ walk up to a parent's, and a directory with a `HEAD`, `objects` and `refs` makes
 directory as a bare repository, whose config the hook does not check.
 
 **The hook checks the repository's git config before any other `git`.** A program inside a
-sandbox can write `.git/config`, and the `git` of this hook, which runs outside it, reads that
-file, where a key can run a command. So the hook reads it with
+sandbox can rename a directory of its own into place as `.git`, with a `config` that it chose,
+and the `git` of this hook, which runs outside it, reads that file, where a key can run a
+command. So the hook reads it with
 `git config --file <repository>/.git/config --no-includes --null --list` and refuses the
 repository when git cannot read it or when it holds a key outside this list; keys compare
 lowercased, and a key splits at its first and last dot:

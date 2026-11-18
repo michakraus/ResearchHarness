@@ -10,8 +10,8 @@
   `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, so no hook of the repository runs. A
   `git pull`, `switch` or `rebase` that changes `.githooks/` still fails under `agentbox`.
 - **The worktree hook refuses a repository whose git config it does not allow.** A program inside
-  `srt` can write `.git/config` or a `.git/commondir`, and the broker's `git` outside `srt` reads
-  them. Before any other `git`, the hook refuses a `.git` that holds `commondir`, and a
+  `srt` can rename a directory of its own into place as `.git`, with a `config` or a `commondir`
+  that it chose, and the broker's `git` outside `srt` reads them. Before any other `git`, the hook refuses a `.git` that holds `commondir`, and a
   `.git/config` with a key outside a fixed list or with a remote URL that is not `https://`,
   `ssh://` or scp-like; every `git` gets `GIT_ALLOW_PROTOCOL=https:ssh`, and `GIT_DIR` set to the
   checked repository's `.git`, with no `GIT_WORK_TREE` or `GIT_COMMON_DIR` of the caller, so that
