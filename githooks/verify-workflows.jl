@@ -11,7 +11,8 @@
 #   1. CI.yml, Downgrade.yml, dependabot.yml, TagBot.yml and codecov.yml are byte-identical to the
 #      templates in workflows/. They are installed by copy and are not parameterised, so anything
 #      other than equality is drift. This is the check that makes the required-status-check list
-#      static, apart from the test groups of check 6.
+#      static, apart from the matrix rows that the `groups` job of CI.yml writes from the test
+#      groups of check 6.
 #      TagBot.yml is the one asymmetric case: byte-identical under Packages/, and asserted
 #      ABSENT under Experiments/, none of which is registered in General.
 #   1b. The same set on the DEFAULT branch, but only for a repository whose working tree is
@@ -26,8 +27,9 @@
 #      other repository. The content of dependents.toml is not checked here: `harness dependents`
 #      writes it from the census and reports a stale copy.
 #   2. CI.yml parses, and the names of its jobs `test`, `test-other` and `doctest` are exactly the
-#      strings that harness ci-protection requires. A rename here silently invalidates branch
-#      protection in every repository, so it is asserted against a literal rather than derived.
+#      strings that harness ci-protection requires, filled in from the values of each matrix row.
+#      A rename here silently invalidates branch protection in every repository, so it is
+#      asserted against a literal rather than derived.
 #   3. No Register.yml, no register.yml, no Documentation.yml, no Documentation.yaml, no
 #      CompatHelper.yml, in the working tree and on the default branch. Register.yml is removed on
 #      purpose (dispatching it uses up a version number); the Documentation
@@ -41,9 +43,13 @@
 #   6. A repository's test/ci-groups.toml, where it has one, against its test/runtests.jl, with the
 #      rules of scripts/test-layout.jl: the file lists distinct group names, each group has an
 #      `if` there, or a group in TESTS in the parallel form, and GROUPS runs exactly those groups
-#      for an empty selection, so the CI jobs together run what Pkg.test() runs. CI.yml runs one
-#      test job per group, and harness ci-protection requires a check per group, so a group file
-#      that does not match the suite splits it wrong.
+#      for an empty selection, so the CI jobs together run what Pkg.test() runs. The `groups` job
+#      of CI.yml writes the matrix rows from the file: one test job per group, or with
+#      `split = false` one per matrix entry, and with `once` some groups on Ubuntu with `1` alone
+#      on a pull request and a push to a branch. harness ci-protection requires the check of each
+#      row of a pull request, so a group file that does not match the suite splits it wrong. The
+#      list that this script prints for a repository follows `split` and `once`, and it prints
+#      none for a group file that this check refuses.
 #      Each extra workflow that the file names in `workflows`, such as Metal.yml, exists in
 #      .github/workflows/; harness ci-protection requires its jobs too, and check 4 parses it.
 
@@ -84,11 +90,25 @@ const JULIA_CHECKS = [
     "Julia 1 - windows-latest - default",
 ]
 
-"The required checks of a repository with the test groups `groups`, or with none for `nothing`."
-required_checks(groups = nothing) = vcat(
-    [g === nothing ? c : "$c - $g" for c in JULIA_CHECKS for g in something(groups, [nothing])],
-    ["Doctests - ubuntu-latest"],
-)
+"The Julia check of the one entry that runs the groups of `once` on a pull request."
+const ONCE_CHECK = "Julia 1 - ubuntu-latest - default"
+
+"""
+    required_checks(groups = nothing; split = true, once = String[])
+
+The required checks of a repository with the test groups `groups`, or with none for `nothing`:
+the contexts of the rows that CI.yml's `groups` job writes for a pull request, and the doctest
+check. With `split`, each Julia check comes once per group that its entry runs, every group on
+`ONCE_CHECK` and the groups outside `once` elsewhere; with `split = false`, once with no group.
+"""
+function required_checks(groups = nothing; split = true, once = String[])
+    julia = if groups === nothing || !split
+        JULIA_CHECKS
+    else
+        ["$c - $g" for c in JULIA_CHECKS for g in groups if c == ONCE_CHECK || !(g in once)]
+    end
+    return vcat(julia, ["Doctests - ubuntu-latest"])
+end
 
 # Expected major version of every action used anywhere in the tree. Queried from GitHub on
 # 2026-08-31, the docker/* actions on 2026-10-24; julia-actions/julia-processcoverage publishes no
@@ -380,7 +400,7 @@ function check_repo(
         findings::Vector{Finding},
         skips::Vector{String},
         offbranch::Vector{OffBranch},
-        grouped::Dict{String, Vector{String}},
+        grouped::Dict{String, Tuple{Vector{String}, Bool, Vector{String}}},
 )
     name = basename(dir)
     wf = joinpath(dir, ".github", "workflows")
@@ -532,18 +552,23 @@ function check_repo(
     # loud one.
     tracked(dir, "docs/Project.toml") || push!(skips, name)
 
-    # 6. the test groups, where the repository has test/ci-groups.toml
+    # 6. the test groups, where the repository has test/ci-groups.toml. Only a file that passes
+    # gets its required checks printed: `ci_options` gives a default beside a value not in form.
     if isfile(joinpath(dir, "test", "ci-groups.toml"))
         runtests = Layout.layout(dir).runtests
-        if runtests === nothing
+        violations = runtests === nothing ? nothing : Layout.groups_violations(dir, runtests)
+        if violations === nothing
             fail("test/ci-groups.toml exists, and test/runtests.jl does not exist or does not parse")
         else
-            for (rule, what) in Layout.groups_violations(dir, runtests)
+            for (rule, what) in violations
                 fail("[$rule] $what")
             end
         end
         groups = first(Layout.ci_groups(dir))
-        groups === nothing || (grouped[name] = groups)
+        if violations !== nothing && isempty(violations) && groups !== nothing
+            split, once = Layout.ci_options(dir)
+            grouped[name] = (groups, split, once)
+        end
     end
     return nothing
 end
@@ -555,7 +580,7 @@ function main()
     findings = Finding[]
     skips = String[]
     offbranch = OffBranch[]
-    grouped = Dict{String, Vector{String}}()
+    grouped = Dict{String, Tuple{Vector{String}, Bool, Vector{String}}}()
     dir_of = Dict(basename(d) => d for d in all)
     for dir in all
         check_repo(dir, findings, skips, offbranch, grouped)
@@ -567,9 +592,9 @@ function main()
             println("    ", c)
         end
         println()
-        for (repo, groups) in sort!(collect(grouped); by = first)
+        for (repo, (groups, split, once)) in sort!(collect(grouped); by = first)
             println("Required status checks of $repo, from test/ci-groups.toml:")
-            for c in required_checks(groups)
+            for c in required_checks(groups; split, once)
                 println("    ", c)
             end
             dir = dir_of[repo]

@@ -427,7 +427,7 @@
 
 ### K111 · No case of the `protection` part runs `gh()`.
 
-- location: `lib/harness/protection.py:113`
+- location: `lib/harness/protection.py:240`
 - evidence: with `check=False` changed to `check=True` in the `subprocess.run` of `gh()`,
   `bin/harness test protection` still prints `part protection: 7 cases, 0 wrong`. So no case
   shows that a failed `gh` call reaches the retry and the `GhError`, and not a
@@ -1029,15 +1029,16 @@
 - location: `agents/ci-triage.md:31-32`
 - evidence: the agent says "There are **five required status checks**". `required_checks` of
   `lib/harness/protection.py` returns the four Julia checks once per group of
-  `test/ci-groups.toml`, the doctests and the jobs of its `workflows`: nine for the groups `core`
-  and `long` (`GROUPED_CHECKS` of the `protection` cases). The count of the base, seven, had the
-  same limit.
+  `test/ci-groups.toml` that their entry runs on a pull request, or once with no group where the
+  file sets `split = false`, the doctests and the jobs of its `workflows`: nine for the groups
+  `core` and `long` (`GROUPED_CHECKS` of the `protection` cases). The count of the base, seven, had
+  the same limit.
 - kind: docs
 - found: 2026-11-16, the critic round of the tiered CI matrix
 
 ### K167 · BlueStyle turns the platform `GROUPS` line of both forms of `runtests.jl` into an `if` block, and `test-layout.jl` then reports D5.
 
-- location: `scripts/test-layout.jl:402-411`
+- location: `scripts/test-layout.jl:459-468`
 - evidence: the checker compares `GROUPS` with the expression
   `isempty(sel) ? (Sys.isapple() && Sys.ARCH === :aarch64 ? [..., "metal"] : [...]) : sel`.
   JuliaFormatter with `style = "blue"` rewrites the inner ternary into an `if` block, so a
@@ -1049,8 +1050,8 @@
 
 ### K168 · Three comments of `test-layout.jl` say "the groups that an empty `ARGS` runs", which is incomplete for the parallel form.
 
-- location: `scripts/test-layout.jl:168`
-- evidence: the lines 168, 301 and 364 say "an empty `ARGS`". In the parallel form an `ARGS` of
+- location: `scripts/test-layout.jl:173`
+- evidence: the lines 173, 305 and 421 say "an empty `ARGS`". In the parallel form an `ARGS` of
   only `--` arguments, such as `["--jobs=3"]`, gives an empty `SELECTED` and runs the same
   default groups. The rest of the file says "an empty selection".
 - kind: docs
@@ -1074,6 +1075,18 @@
   list does not hold, so a home in which only that file of the layer exists gives no WARN.
 - kind: defect
 - found: 2026-11-15, the spec of part G4b of the sandbox plan
+
+### K171 · `ci_groups`, `ci_workflows`, `ci_once` and `ci_options` of `test-layout.jl` infer `Any` for a list that is a `Vector{String}` at run time.
+
+- location: `scripts/test-layout.jl:327`
+- evidence: `Vector{String}(x)` on a value read from the parsed TOML, which is `Any`, does not
+  narrow for inference (lines 327, 373 and 399). `Base.return_types` gives
+  `Tuple{Any, Vector{String}}` for `ci_groups`, `ci_workflows` and `ci_once`, and
+  `Tuple{Bool, Any}` for `ci_options`. At run time the lists are `Vector{String}`: `ci_options` on
+  a file with `once = []` returns a `Tuple{Bool, Vector{String}}`. A `::Vector{String}` assertion
+  on each conversion fixes the inferred types.
+- kind: defect
+- found: 2026-11-17, the branch verifier of part E2a of the test-speed plan
 
 ### K172 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte or is no string.
 
@@ -1163,4 +1176,14 @@
   `agentbox` starts before srt, or, without `AGENTBOX`, the hook that the frontend starts, so a
   program in srt sets none of them.
 - kind: found late
+- found: 2026-11-18, the verification of part G3a of the sandbox plan
+
+### K179 · No case of the worktree hook's tests sets a `GIT_DIR` in the caller's environment, so a change that lets the caller's value override the pin passes.
+
+- location: `hooks/worktree.py:191`
+- evidence: `run_git` builds `env={**env, "GIT_DIR": …, …}`, so its own `GIT_DIR` wins today. A
+  mutant `env={"GIT_DIR": …, **env, …}` survives `probe.py payloads`, because the case of the
+  caller's `GIT_COMMON_DIR` and `GIT_WORK_TREE` sets no `GIT_DIR`. A `GIT_DIR` in that case's
+  caller environment makes its assertion that every git holds the pinned `GIT_DIR` kill the mutant.
+- kind: missing test
 - found: 2026-11-18, the verification of part G3a of the sandbox plan

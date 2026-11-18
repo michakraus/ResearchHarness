@@ -1178,3 +1178,13 @@ end
     # a path that is not normalised counts the same
     @test C.census(joinpath(dir, ".")).reached == 7
 end
+
+@testset "the census counts the files of TESTS in the parallel form" begin
+    pairs = count(r"^\s*\"[^\"]+\"\s*=>\s*\"[^\"]+\.jl\""m, PARALLEL_TABLE)
+    @test pairs == 7
+    row = C.census(PDIR)
+    @test row.parallel == pairs
+    @test (row.safe, row.testset, row.bare) == (0, 0, 0)
+    @test row.reached == pairs
+    @test C.census(DIR).parallel == 0
+end

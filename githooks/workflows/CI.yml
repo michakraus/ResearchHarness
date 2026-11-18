@@ -26,9 +26,10 @@
 # `test` runs Ubuntu on `min` and `1` on every event. `test-other` runs macOS and Windows only
 # after every entry of `test` has passed, so a red Ubuntu job starts no macOS or Windows runner.
 # On a pull request and a push to a branch it runs `1` alone; on the weekly schedule, a tag, a
-# run by hand and any other event it runs `min` and `1`. The `groups` job writes those versions
-# from the event. The two jobs share one name, so their checks keep the names of a matrix over
-# all three systems.
+# run by hand and any other event it runs `min` and `1`. The `groups` job writes the matrix rows
+# of both jobs from the event, each with its `version`, `os`, `arch`, `group` and test arguments
+# `args`, and both jobs read them as the `include` of their matrix. The two jobs share one name,
+# so their checks keep the names of a matrix over all three systems.
 #
 # `prerelease` runs `pre` and `nightly` on Ubuntu on every event, and is advisory
 # (`continue-on-error`): a failure in an unreleased Julia is information, not a broken build. No job
@@ -42,10 +43,18 @@
 # A suite too long for one job lists its groups in test/ci-groups.toml, `groups = ["core", ...]`,
 # the groups of `runtests.jl` that an empty ARGS runs. The `groups` job reads that list, and the
 # `test` and `test-other` jobs then run one job per group, with the group as the test argument and
-# ` - <group>` at the end of the job name. Without the file the list is one empty group: the jobs
-# run the whole suite, and their names are those of a repository without groups. harness
-# ci-protection reads the same file for the required checks, and verify-workflows.jl checks it
-# against `runtests.jl`. `prerelease` runs the whole suite in one job either way.
+# ` - <group>` at the end of the job name. Without the file each entry has one row with an empty
+# group: the jobs run the whole suite, and their names are those of a repository without groups.
+#
+# Two optional keys of the file plan these jobs. `split = false` runs all groups of an entry in
+# one job, with an empty group, so the names are those of a repository without groups; the job
+# names its groups, joined by a space, as its test arguments, so an empty ARGS never adds a device
+# group of `runtests.jl`. `once = [...]` names groups other than `core` that a pull request and a
+# push to a branch run on Ubuntu with `1` alone; the other entries of such an event run the
+# remaining groups. Every other event runs every group on every entry. harness ci-protection reads
+# the same file for the required checks of a pull request, and verify-workflows.jl checks it
+# against `runtests.jl`. The downgrade job runs every group, and `prerelease` runs the whole suite
+# in one job either way.
 
 name: CI
 
@@ -71,16 +80,18 @@ concurrency:
 
 jobs:
     groups:
-        # The test groups of test/ci-groups.toml as a JSON list, or `[""]` where the file is absent;
-        # and the Julia versions of `test-other` for this event as a JSON list.
+        # The matrix rows of `test` and of `test-other` for this event, each a JSON list of tables
+        # with the keys `version`, `os`, `arch`, `group` and `args`; and the test groups of the
+        # downgrade job as a JSON list, `[""]` for one job of the whole suite.
         name: Test groups
         runs-on: ubuntu-latest
         timeout-minutes: 10
         permissions:
             contents: read
         outputs:
+            test: ${{ steps.read.outputs.test }}
+            other: ${{ steps.read.outputs.other }}
             list: ${{ steps.read.outputs.list }}
-            versions: ${{ steps.read.outputs.versions }}
         steps:
             - uses: actions/checkout@v7
               with:
@@ -92,22 +103,59 @@ jobs:
               run: |
                   import json, os, pathlib, re, tomllib
                   path = pathlib.Path("test/ci-groups.toml")
-                  groups = tomllib.loads(path.read_text()).get("groups") if path.is_file() else [""]
+                  data = tomllib.loads(path.read_text()) if path.is_file() else {}
+                  groups = data.get("groups") if path.is_file() else [""]
                   if path.is_file() and not (
                       isinstance(groups, list) and groups
                       and all(isinstance(g, str) and re.fullmatch("[a-z][a-z0-9]*", g) for g in groups)
                       and len(set(groups)) == len(groups)
                   ):
                       raise SystemExit(f"{path}: `groups` is not a list of distinct group names: {groups!r}")
-                  # `1` alone for a pull request and a push to a branch; `min` and `1` for a tag, the
-                  # schedule, a run by hand and every other event, so a new trigger never runs less.
+                  # `split = false` runs all groups of an entry in one job; `once` names the groups
+                  # that a pull request and a push to a branch run on Ubuntu with `1` alone.
+                  split, once = data.get("split", True), data.get("once", [])
+                  if not isinstance(split, bool):
+                      raise SystemExit(f"{path}: `split` is not true or false")
+                  if not (
+                      isinstance(once, list)
+                      and all(isinstance(g, str) and g in groups and g != "core" for g in once)
+                      and len(set(once)) == len(once)
+                  ):
+                      raise SystemExit(f"{path}: `once` is not a list of distinct groups of `groups` other than core")
+                  # macOS and Windows would run no group, or with `split = false` every group.
+                  if len(once) == len(groups):
+                      raise SystemExit(f"{path}: `once` holds every group of `groups`")
+                  # A pull request and a push to a branch are short: macOS and Windows on `1` alone,
+                  # and the groups of `once` on Ubuntu with `1` alone. A tag, the schedule, a run by
+                  # hand and every other event run every group on `min` and `1`, so a new trigger
+                  # never runs less.
                   event, ref = os.environ["GITHUB_EVENT_NAME"], os.environ["GITHUB_REF"]
                   short = event == "pull_request" or (event == "push" and ref.startswith("refs/heads/"))
+
+                  def rows(entries):
+                      found = []
+                      for version, system in entries:
+                          runs = groups
+                          if short and (version, system) != ("1", "ubuntu-latest"):
+                              runs = [g for g in groups if g not in once]
+                          row = {"version": version, "os": system, "arch": "default"}
+                          if split:
+                              found += [row | {"group": g, "args": g} for g in runs]
+                          else:
+                              # One job that names its groups, every group too: an empty ARGS adds
+                              # the device groups of the platform line of `runtests.jl`.
+                              found.append(row | {"group": "", "args": " ".join(runs)})
+                      return found
+
+                  test = rows([("min", "ubuntu-latest"), ("1", "ubuntu-latest")])
                   versions = ["1"] if short else ["min", "1"]
-                  print("groups:", groups, "versions:", versions)
+                  other = rows([(v, s) for v in versions for s in ("macOS-latest", "windows-latest")])
+                  listed = groups if split else [""]
+                  print("test:", test, "other:", other, "list:", listed, sep="\n")
                   with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-                      out.write(f"list={json.dumps(groups)}\n")
-                      out.write(f"versions={json.dumps(versions)}\n")
+                      out.write(f"test={json.dumps(test)}\n")
+                      out.write(f"other={json.dumps(other)}\n")
+                      out.write(f"list={json.dumps(listed)}\n")
 
     test:
         # ` - <group>` only for a non-empty group, so a repository without test/ci-groups.toml
@@ -125,8 +173,9 @@ jobs:
             # entry makes Codecov merge several reports of the same scope per run, and the merged
             # percentage then moves for reasons that are not code changes. The entry is `1`, not
             # `min`: instrumentation makes the job that carries the coverage the slowest of the
-            # matrix, and `min` is already the slowest Julia. With test groups, the entry of each
-            # group uploads its own part of the suite, and Codecov merges the parts into one report.
+            # matrix, and `min` is already the slowest Julia. With one job per test group, the job of
+            # each group uploads its own part of the suite, and Codecov merges the parts into one
+            # report; with `split = false`, the one job of the entry uploads it all.
             COVERAGE: ${{ matrix.version == '1' && matrix.os == 'ubuntu-latest' }}
             # Two threads, everywhere: a runner has more than one core, and a suite with a threading
             # test is otherwise silently single-threaded.
@@ -134,14 +183,8 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                version:
-                    - "min"
-                    - "1"
-                os:
-                    - ubuntu-latest
-                arch:
-                    - default
-                group: ${{ fromJSON(needs.groups.outputs.list) }}
+                # Ubuntu on `min` and `1`: the rows of the `groups` job.
+                include: ${{ fromJSON(needs.groups.outputs.test) }}
         steps:
             - uses: actions/checkout@v7
               with:
@@ -166,7 +209,7 @@ jobs:
                   # pre-commit probes run with `auto` too.
                   check_bounds: auto
                   coverage: ${{ env.COVERAGE }}
-                  test_args: ${{ matrix.group }}
+                  test_args: ${{ matrix.args }}
             - uses: julia-actions/julia-processcoverage@v1
               if: env.COVERAGE == 'true'
             - uses: codecov/codecov-action@v7
@@ -193,17 +236,11 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                # `1` on a pull request and a push to a branch, `min` and `1` on every other event:
-                # see the `groups` job.
-                version: ${{ fromJSON(needs.groups.outputs.versions) }}
-                os:
-                    - macOS-latest
-                    - windows-latest
-                arch:
-                    # 'default' is the runner's native architecture, which is aarch64 on
-                    # macOS-latest; a hardcoded 'x64' would test Julia under Rosetta there.
-                    - default
-                group: ${{ fromJSON(needs.groups.outputs.list) }}
+                # macOS and Windows on `1` on a pull request and a push to a branch, on `min` and
+                # `1` on every other event: the rows of the `groups` job. Their `arch` is
+                # 'default', the runner's native architecture, which is aarch64 on macOS-latest; a
+                # hardcoded 'x64' would test Julia under Rosetta there.
+                include: ${{ fromJSON(needs.groups.outputs.other) }}
         steps:
             - uses: actions/checkout@v7
               with:
@@ -223,7 +260,7 @@ jobs:
                   check_bounds: auto
                   # The coverage comes from `test` alone.
                   coverage: false
-                  test_args: ${{ matrix.group }}
+                  test_args: ${{ matrix.args }}
 
     prerelease:
         # `pre` and `nightly` on Ubuntu, the whole suite in one job, on every event. A failure in

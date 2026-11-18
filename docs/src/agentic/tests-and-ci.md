@@ -90,18 +90,21 @@ matches its template:
 
 | job or file | what it runs | required |
 |:--|:--|:--|
-| `groups` | reads the test groups of `test/ci-groups.toml`, where the file exists, and the Julia versions of `test-other` for the event | no |
-| `test` | the tests on Julia `min` and `1` on Ubuntu, once per test group | yes |
-| `test-other` | the tests on macOS and Windows once every `test` job passes, once per test group: on Julia `1` for a pull request and a push to a branch, on `min` and `1` for the weekly run, a tag and a run by hand | yes, on `1` |
+| `groups` | reads `test/ci-groups.toml`, where the file exists, and writes the matrix rows of `test` and `test-other` for the event | no |
+| `test` | the tests on Julia `min` and `1` on Ubuntu, once per test group, or once with `split = false`: on `min`, without the groups of `once` for a pull request and a push to a branch | yes |
+| `test-other` | the tests on macOS and Windows once every `test` job passes, once per test group, or once with `split = false`: on Julia `1` for a pull request and a push to a branch, without the groups of `once`; on `min` and `1`, with every group, for the weekly run, a tag and a run by hand | yes, on `1` |
 | `prerelease` | the tests on Julia `pre` and `nightly` on Ubuntu, on every event | no: information only |
 | `doctest` | the doctests of the docstrings and of the manual, where `docs/Project.toml` exists | yes |
-| `Downgrade.yml` | the tests with each direct dependency at the lower bound of its `[compat]` entry, once per test group, on a change of `Project.toml` or `test/Project.toml`, on a tag and weekly | no: information only |
+| `Downgrade.yml` | the tests with each direct dependency at the lower bound of its `[compat]` entry, once per test group, or once with `split = false`, on a change of `Project.toml` or `test/Project.toml`, on a tag and weekly | no: information only |
 | `Documenter.yml` | the documentation build and its deploy | no |
 | `TagBot.yml`, `codecov.yml`, `dependabot.yml` | the tag of a registered release, the coverage threshold, the weekly `[compat]` proposals | no |
 
 The matrix names Julia by the aliases `min` and `1`, so the names of the checks are the same in
 every repository without test groups. A suite too long for one job lists its groups in
-`test/ci-groups.toml`, and each `test` check then ends with ` - <group>`; see
+`test/ci-groups.toml`, and each `test` check then ends with ` - <group>`. With `split = false` in
+that file, all groups of an entry run in one job, and the checks keep the names of a repository
+without groups; `once` runs its groups on Julia `1` on Ubuntu alone on a pull request and a push
+to a branch; see
 [test groups](../components/githooks.md#test-groups). [`harness ci-protection`](../harness-command.md#ci-protection) sets a ruleset on
 the default branch with those names as required checks, and refuses to run while
 `verify-workflows.jl` fails. A red required check stops the merge; the

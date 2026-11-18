@@ -688,12 +688,15 @@ Protects the default branch of each repository that has a `CI.yml` with a GitHub
 request: Julia `min` and `1` on Ubuntu, Julia `1` on macOS and Windows, and the doctests. A
 repository with a `test/ci-groups.toml` requires each of these Julia checks once per test group,
 as `CI.yml` names its jobs there, and the jobs of each workflow that the file names in
-`workflows`, such as `Metal.yml`. Then it protects the Harness
-itself, the checkout that runs the command, with the same ruleset; there the required checks are
-the jobs of `.github/workflows/test.yml` that report on every pull request and are not warnings.
-It also turns on auto-merge and the deletion of merged branches. It reads the current state first
-and writes only what differs. It refuses to run unless `verify-workflows.jl` passes: a required
-check that never reports leaves every pull request pending.
+`workflows`, such as `Metal.yml`. With `split = false` in the file, it requires each Julia check
+once, with no group; with `once`, it requires a group of `once` on Julia `1` on Ubuntu alone, as
+a pull request runs it. It refuses a file whose `split` or `once` the `groups` job of `CI.yml`
+refuses, with the same text. Then it protects the Harness itself, the checkout that runs the
+command, with the same ruleset; there the required checks are the jobs of
+`.github/workflows/test.yml` that report on every pull request and are not warnings. It also turns
+on auto-merge and the deletion of merged branches. It reads the current state first and writes
+only what differs. It refuses to run unless `verify-workflows.jl` passes: a required check that
+never reports leaves every pull request pending.
 
 | option | meaning |
 |:--|:--|
@@ -1512,13 +1515,15 @@ an empty fixture directory.
 The subcommand `harness ci-protection [--remove-classic] [--apply]`. It protects the default
 branch of each repository with a `CI.yml` with a GitHub ruleset named `main`: no deletion, no
 force push, and the required status checks of the canonical `CI.yml`: `REQUIRED_CHECKS`, or with a
-`test/ci-groups.toml` the list of `required_checks`, each `Julia` check once per test group. Last it
-protects the Harness itself, the checkout that runs the command, with the same ruleset and its own
-list, `HARNESS_CHECKS`: the jobs of `.github/workflows/test.yml` that report on every pull request
-and are not warnings. `julia.yml` and `docs.yml` have path filters, so a check of theirs would
-not report on every pull request, and they are not in the list. It also turns on auto-merge and
-the deletion of merged branches. `--remove-classic` deletes the classic branch protection, but
-only where the ruleset passes every check.
+`test/ci-groups.toml` the list of `required_checks`: the checks of the jobs that the `groups` job
+of `CI.yml` writes for a pull request, each `Julia` check once per test group that its entry
+runs, or once with `split = false`. Last it protects the Harness itself, the checkout that runs
+the command, with the same ruleset and its own list, `HARNESS_CHECKS`: the jobs of
+`.github/workflows/test.yml` that report on every pull request and are not warnings. `julia.yml`
+and `docs.yml` have path filters, so a check of theirs would not report on every pull request,
+and they are not in the list. It also turns on auto-merge and the deletion of merged branches.
+`--remove-classic` deletes the classic branch protection, but only where the ruleset passes every
+check.
 
 The subcommand first runs `githooks/verify-workflows.jl`, and refuses when the workflows are not
 canonical, because the list of required checks depends on them. It calls `gh api` for each
@@ -1532,17 +1537,19 @@ empty `GH_CONFIG_DIR`, removed after the block.
 
 Its cases check `ruleset_problem` against the ruleset as GitHub returns it, against one break
 of each check, and with the ruleset of each list judged against the other list. They list the
-repositories with a scratch research root, with and without a group file, check that
-`required_checks` refuses each malformed group file, and run the subcommand there with `gh`
-replaced. Cases of `github_token`, in a scratch home with `decrypt` and `program` replaced and a
-stub of `gh` that prints its environment, check that no sealed secret leaves `gh` as it is, that
-a sealed secret is decrypted once for every call of the block, with the token, a new empty
-`GH_CONFIG_DIR` gone after the block and no `GITHUB_TOKEN` or `GH_HOST`, and that a secret of
-another host and a refusal of `sealed.py` stop the subcommand. Cases of `protect`, with
-`targets`, `resolve`, `ruleset_id`, `plan_ruleset` and `apply_ruleset` replaced, check that writes
-refused with `Resource not accessible by personal access token` are counted and named with the
-permission and the token, `gh` from the `PATH` or the sealed secret, and that another failure
-keeps the plain message. A case reads `test.yml` with
+repositories with a scratch research root, with and without a group file, check
+`required_checks` with `split` and `once`, that it parses the group file once and that it
+refuses each malformed group file, fill the rows that the script of the `groups` job writes for a
+pull request into `CI.yml` and compare its contexts with `required_checks`, and run the
+subcommand there with `gh` replaced. Cases of `github_token`, in a scratch home with `decrypt`
+and `program` replaced and a stub of `gh` that prints its environment, check that no sealed
+secret leaves `gh` as it is, that a sealed secret is decrypted once for every call of the block,
+with the token, a new empty `GH_CONFIG_DIR` gone after the block and no `GITHUB_TOKEN` or
+`GH_HOST`, and that a secret of another host and a refusal of `sealed.py` stop the subcommand.
+Cases of `protect`, with `targets`, `resolve`, `ruleset_id`, `plan_ruleset` and `apply_ruleset`
+replaced, check that writes refused with `Resource not accessible by personal access token` are
+counted and named with the permission and the token, `gh` from the `PATH` or the sealed secret,
+and that another failure keeps the plain message. A case reads `test.yml` with
 `workflow_checks` and fails when `HARNESS_CHECKS` differs
 from it, so a renamed or an added job fails `harness test`. The sweep does not run this subcommand, because it
 needs `gh` with a login.
