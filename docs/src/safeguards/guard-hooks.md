@@ -519,8 +519,65 @@ standard error, because Julia does not check `[compat]` at `using`, and a stale 
 old dependencies. On `WorktreeRemove` it runs `git worktree remove` without `--force`, so git
 refuses a worktree with changes, and the branch stays.
 
+**The hook finds the repository by reading files, before any `git` runs.** The directory, `cwd`
+or the worktree to remove, must lie below `~/Research`. The first `.git` above it must be a
+directory, or the `.git` file of a linked worktree, `gitdir: <repository>/.git/worktrees/<name>`,
+whose admin directory holds `commondir` `../..` and `gitdir` that names the worktree, as git
+writes them. A `.git` that is a symbolic link is refused, and so is a worktree path that is a
+symbolic link. A worktree made with `--relative-paths`, or in a repository or git config with
+`worktree.useRelativePaths=true`, is refused, even one the hook made itself; leave the setting
+off. A repository whose `.git` holds a `commondir` is refused too, because git would read the
+config of the directory that it names. `git` then runs only in the main checkout, and every `git`
+gets `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, so that no hook of the repository and
+no fsmonitor daemon runs, and `GIT_ALLOW_PROTOCOL=https:ssh`, in place of any value of the caller.
+Every `git` also gets `GIT_DIR=<repository>/.git`, and none of the caller's `GIT_WORK_TREE` and
+`GIT_COMMON_DIR`: this pins `git` to the repository that the hook checked. Without the pin, `git`
+looks for the repository itself. A `.git` that `git` does not take as a repository then makes it
+walk up to a parent's, and a directory with a `HEAD`, `objects` and `refs` makes it take that
+directory as a bare repository, whose config the hook does not check.
+
+**The hook checks the repository's git config before any other `git`.** A program inside a
+sandbox can rename a directory of its own into place as `.git`, with a `config` that it chose,
+and the `git` of this hook, which runs outside it, reads that file, where a key can run a
+command. So the hook reads it with
+`git config --file <repository>/.git/config --no-includes --null --list` and refuses the
+repository when git cannot read it or when it holds a key outside this list; keys compare
+lowercased, and a key splits at its first and last dot:
+
+- `core.repositoryformatversion`, `core.filemode`, `core.bare`, `core.logallrefupdates`,
+  `core.ignorecase`, `core.precomposeunicode`, `core.hookspath`, `pull.rebase`,
+  `lfs.repositoryformatversion`, `user.name` and `user.email`, with any value;
+- `branch.<name>.remote`, `merge`, `pushremote`, `vscode-merge-base`, `github-pr-owner-number`
+  and `github-pr-base-branch`, and `remote.<name>.fetch` and `glab-resolved-head`, with any value;
+- `remote.<name>.url` and `pushurl`, with an `https://` or `ssh://` URL or a scp-like
+  `<host>:<path>`: no `/` before the first `:`, no `::`, no `://` and no leading `-`.
+
+Every other key is refused, among them `include.*`, `includeIf.*`, `url.*`, `filter.*`,
+`credential.*`, `core.sshCommand`, `core.worktree` and every `extensions.*`. The refusal is one
+line that names the key. Remove such a key with `git config --unset <key>`: for example
+`extensions.worktreeConfig`, with `git config --unset extensions.worktreeConfig`. A remote whose
+URL is a local path is refused too: remove it with `git remote remove <name>`, or give it an
+`https://` or `ssh://` URL. A `create` runs the check after the test of the worktree path, and a
+`remove` before it asks git for the worktrees.
+
+**Under `agentbox`, a broker outside the sandbox runs the `git` work.** `srt` denies writes to
+every `.githooks`, so a `git worktree add` inside it fails. `agentbox` starts the broker
+`worktree.py --serve <socket> --parent <pid>` outside `srt`, with its socket in
+`~/.local/state/research-harness/broker/`, and exports the socket's path as `AGENTBOX_BROKER`.
+With `AGENTBOX` set, the hook runs no `git`: it sends its payload to that socket as one JSON line,
+and the broker runs the create or the remove above in a process of its own, with
+`GIT_TERMINAL_PROMPT=0`, and replies with the path or the error. The broker answers a request
+larger than 64 KiB, one that is no JSON object, one of another event, and one whose process
+cannot start with an error. An idle broker exits and removes its socket within 5 seconds after
+its parent ends. When the parent ends during a request, the broker does not stop the request: it
+reads the request (at most `LOCAL`, 60 s), runs the create or remove to its end or to `WORK`
+(400 s), then looks at its parent and exits without taking another connection. `SIGTERM` and
+`SIGHUP` still end it at once. The broker covers the worktrees of the hook only: a `git pull`,
+`git switch` or `git rebase` inside `agentbox` that changes `.githooks/` still fails.
+
 It fails closed: on each error it exits with status 1 and gives the reason, and it creates no
-worktree. Test it:
+worktree. Under `AGENTBOX`, a missing or empty `AGENTBOX_BROKER`, a broker that does not answer
+and a reply with an error each count as an error. Test it:
 
 ```bash
 echo '{"hook_event_name":"WorktreeCreate","cwd":"/","name":"x"}' | ./worktree.py ; echo "exit $?"

@@ -30,6 +30,21 @@
 # fail on their configuration files, which srt denies. The directory stays after the run, since
 # the script ends in exec; the system's cleaning of temporary directories removes it.
 #
+# The worktree broker: srt denies writes to every .githooks, so Claude Code's worktree hook cannot
+# run git worktree add inside it, and sends its payload to a broker outside srt. The script makes
+# ~/.local/state/research-harness/broker with mode 700, removes a stale socket <PID>.sock there,
+# starts
+#
+#   ~/.local/share/research-harness/python/bin/python ~/.claude/hooks/worktree.py \
+#       --serve ~/.local/state/research-harness/broker/<PID>.sock --parent <PID>
+#
+# in the background, with its stdout and stderr in broker.log of the run directory, and exports
+# AGENTBOX_BROKER as the socket's path once the socket exists. <PID> is the script's own process
+# ID, which exec hands on to srt, so the broker ends with srt. Where the interpreter is not an
+# executable file, the hook is not a readable file, the directory cannot be made, or no socket
+# appears within 5 seconds, it exports no AGENTBOX_BROKER, not even the caller's, writes one line
+# on stderr that names the cause, and starts the program all the same; the hook then fails closed.
+#
 # The forges: the script exports GIT_TERMINAL_PROMPT=0, so that git fails at once where no
 # credential helper answers, and removes the caller's GITLAB_ACCESS_TOKEN and OAUTH_TOKEN, which
 # glab would read as a token. When the token store ~/.config/research-harness/forge holds exactly
@@ -41,16 +56,16 @@
 # and starts the program all the same.
 #
 # Outside a subshell, the script assigns no shell variable other than AGENTBOX, the three cache
-# variables, GLAB_CONFIG_DIR, GH_CONFIG_DIR, GIT_TERMINAL_PROMPT, GITLAB_HOST and GITLAB_TOKEN, so
-# that every other variable of the caller but GITLAB_ACCESS_TOKEN and OAUTH_TOKEN, which it
-# removes, reaches the program unchanged; each value is a positional parameter. It exits 2 with
-# one line on stderr, and starts nothing, when no frontend or an unknown one is named, when
+# variables, GLAB_CONFIG_DIR, GH_CONFIG_DIR, AGENTBOX_BROKER, GIT_TERMINAL_PROMPT, GITLAB_HOST and
+# GITLAB_TOKEN, so that every other variable of the caller but GITLAB_ACCESS_TOKEN and OAUTH_TOKEN,
+# which it removes, reaches the program unchanged; each value is a positional parameter. It exits 2
+# with one line on stderr, and starts nothing, when no frontend or an unknown one is named, when
 # AGENTBOX is set, when srt or a settings file is missing, when the program is not on the PATH
 # without the cmux shims, when what `command -v` gives does not start with / (a function that
 # /bin/sh imports, or, where /bin/sh is dash, a program in a relative PATH entry), when mktemp
 # cannot make the run directory, and when claude gets a --settings of the caller's: Claude Code
-# keeps only the last --settings, so the caller's would turn its own sandbox on again. A refused
-# run makes no directory. Otherwise srt's exit status is the script's.
+# keeps only the last --settings, so the caller's would turn its own sandbox on again. A refused run
+# makes no directory. Otherwise srt's exit status is the script's.
 
 usage() {
     cat <<'EOF'
@@ -149,6 +164,44 @@ caches() {
     fi
 }
 
+# broker: start the worktree broker and export AGENTBOX_BROKER as its socket, as the header says;
+# the run directory is the parent of GLAB_CONFIG_DIR, which caches sets. Its values are positional
+# parameters.
+broker() {
+    unset AGENTBOX_BROKER
+    set -- "$HOME/.local/share/research-harness/python/bin/python" "$HOME/.claude/hooks/worktree.py" \
+        "$HOME/.local/state/research-harness/broker"
+    if ! [ -f "$1" ] || ! [ -x "$1" ]; then
+        printf 'agentbox: no worktree broker: %s is not an executable file; run harness setup\n' "$1" >&2
+        return 0
+    fi
+    if ! [ -f "$2" ] || ! [ -r "$2" ]; then
+        printf 'agentbox: no worktree broker: %s is not a readable file; run harness install --apply\n' "$2" >&2
+        return 0
+    fi
+    if ! mkdir -p "$3" 2>/dev/null || ! chmod 700 "$3" 2>/dev/null; then
+        printf 'agentbox: no worktree broker: %s cannot be made with mode 700\n' "$3" >&2
+        return 0
+    fi
+    set -- "$1" "$2" "$3/$$.sock"
+    if [ -S "$3" ]; then
+        rm -f "$3"
+    fi
+    "$1" "$2" --serve "$3" --parent "$$" >"${GLAB_CONFIG_DIR%/glab}/broker.log" 2>&1 </dev/null &
+    set -- "$3" 50
+    while ! [ -S "$1" ]; do
+        if [ "$2" -eq 0 ]; then
+            printf 'agentbox: no worktree broker: %s did not appear within 5 seconds; see %s\n' \
+                "$1" "${GLAB_CONFIG_DIR%/glab}/broker.log" >&2
+            return 0
+        fi
+        sleep 0.1
+        set -- "$1" "$(($2 - 1))"
+    done
+    AGENTBOX_BROKER=$1
+    export AGENTBOX_BROKER
+}
+
 # gitlab: print "<host> <token>" of the one store file in the token store's one host directory
 # other than github.com, or nothing where there is no such directory, more than one, such a
 # directory holds no store file or more than one, or the file's first line is not
@@ -213,6 +266,7 @@ claude)
     shift
     check claude claude "$@"
     caches
+    broker
     forge
     AGENTBOX=1
     export AGENTBOX
@@ -223,6 +277,7 @@ opencode)
     shift
     check opencode opencode "$@"
     caches
+    broker
     forge
     AGENTBOX=1
     export AGENTBOX
@@ -233,6 +288,7 @@ omp)
     shift
     check omp omp "$@"
     caches
+    broker
     forge
     AGENTBOX=1
     export AGENTBOX
@@ -243,6 +299,7 @@ agy)
     shift
     check antigravity agy "$@"
     caches
+    broker
     forge
     AGENTBOX=1
     export AGENTBOX

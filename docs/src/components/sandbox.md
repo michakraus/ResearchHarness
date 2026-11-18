@@ -121,6 +121,7 @@ and no other:
 | `network.deniedDomains` | the template's, or `[]` where it has none; `srt` refuses a file without the key |
 | `network.allowLocalBinding` | the template's |
 | `network.allowMachLookup` | the frontend's `mach_lookup`, in order, each name once; no such key where it is empty |
+| `network.allowUnixSockets` | the one directory `~/.local/state/research-harness/broker`, for every frontend: a process in the sandbox can connect to the worktree broker's socket there ([The launcher agentbox](#the-launcher-agentbox)) |
 | `filesystem.allowWrite` | the template's, without each entry at or below another frontend's `state` path; then the frontend's `state`; then the real path of `$TMPDIR`, where it is set and not empty |
 | `filesystem.denyWrite` | the template's, without the frontend's `own` and without each literal entry other than the home directory that lies strictly above a path of the frontend's `state`; then its `deny_write` |
 | `filesystem.denyRead` | the home directory; then the template's; then each path of `credentials.files`; without the frontend's `own`; each literal entry other than the home directory that lies strictly above a path of the frontend's `read_files` written as the entry followed by `/*`, in its place |
@@ -231,11 +232,11 @@ otherwise reads a `--settings` of the frontend as its own.
 | `omp` | `--approval-mode yolo` | oh-my-pi runs its tools without a prompt; the sandbox of `srt` is the boundary |
 | `agy` | nothing | |
 
-The frontend gets `AGENTBOX=1`, the three cache variables below and the variables of the forges
-([The forge tokens](#the-forge-tokens)) in its environment; every other variable stays the
-caller's, but `GITLAB_ACCESS_TOKEN` and `OAUTH_TOKEN`, which `agentbox` removes. `agentbox` runs
-only the `srt` in `~/.local/bin`, never one found on the `PATH`. So it starts nothing before
-`harness setup` has installed `srt` in `~/.local/bin`.
+The frontend gets `AGENTBOX=1`, the three cache variables below, `AGENTBOX_BROKER` and the
+variables of the forges ([The forge tokens](#the-forge-tokens)) in its environment; every other
+variable stays the caller's, but `GITLAB_ACCESS_TOKEN` and `OAUTH_TOKEN`, which `agentbox`
+removes. `agentbox` runs only the `srt` in `~/.local/bin`, never one found on the `PATH`. So it
+starts nothing before `harness setup` has installed `srt` in `~/.local/bin`.
 
 Each run makes one new directory with `mktemp -d "${TMPDIR:-/tmp}/agentbox.XXXXXX"`, below
 `$TMPDIR`, or below `/tmp` where `TMPDIR` is unset or empty, with the subdirectories `npm`, `uv`,
@@ -255,6 +256,27 @@ lets it write `/tmp` and the `$TMPDIR` of the install. Each run starts with empt
 and uv download again and `lualatex` builds its font cache again. The run directory stays after
 the run, because `agentbox` ends in `exec`; the system's cleaning of temporary directories removes
 it.
+
+**The worktree broker.** `srt` denies writes to every `.githooks`, so the worktree hook of Claude
+Code sends its `git` work to a broker outside the sandbox
+([`worktree.py`](../safeguards/guard-hooks.md#worktree-py)). After the run directory, `agentbox`
+makes `~/.local/state/research-harness/broker` with mode 700, removes a stale socket
+`<pid>.sock` there, and starts in the background
+
+```sh
+~/.local/share/research-harness/python/bin/python ~/.claude/hooks/worktree.py \
+    --serve ~/.local/state/research-harness/broker/<pid>.sock --parent <pid>
+```
+
+with its standard output and standard error in `<run directory>/broker.log`. `<pid>` is the
+process ID of `agentbox`, which `exec` hands on to `srt`, so the broker exits when `srt` ends. Once
+the socket exists, within 5 seconds, `agentbox` exports its path as `AGENTBOX_BROKER`. Where the
+interpreter is not an executable file, the hook is not a readable file, the directory cannot be
+made, or no socket appears, it exports no `AGENTBOX_BROKER`, not even the caller's, prints one
+line on stderr that names the cause, and starts the frontend all the same; the worktree hook then
+fails closed. Every frontend's settings file names the directory in `network.allowUnixSockets` and
+allows no write to it, so a process in the sandbox can connect to the broker and cannot bind or
+plant a socket there.
 
 `agentbox` exits with status 2, starts nothing and prints one line on stderr when:
 

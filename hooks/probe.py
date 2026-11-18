@@ -26,6 +26,7 @@ so that its launcher check passes there; only the cases of the launcher check ad
 
 import ast
 import contextlib
+import errno
 import getpass
 import importlib.util
 import io
@@ -37,6 +38,9 @@ import re
 import runpy
 import shlex
 import shutil
+import signal
+import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -260,6 +264,10 @@ MIB_LIMIT = 10  # seconds: the bound within which the guard decides a command of
 WALK_READS = 400
 
 WORKTREE = HOOKS + "worktree.py"
+# The variables that send `worktree.py` to its broker. Every case of the hook runs without them,
+# also where the caller runs under `agentbox`, unless the case sets them itself.
+AGENTBOX_VARS = ("AGENTBOX", "AGENTBOX_BROKER")
+WORKTREE_ENV = {k: v for k, v in ENV.items() if k not in AGENTBOX_VARS}
 
 # The guard package, run as the settings template runs it, on the differential corpus that holds
 # the cases of the hook scripts whose checks it holds. Each record is one JSON object per line:
@@ -285,8 +293,8 @@ OUTSIDE = str(pathlib.PurePosixPath(FIXTURE.name, "outside", *(f"o{i}" for i in 
 # A directory whose `.git` is a link to a name that does not exist.
 DANGLING = HOME + "/dangling"
 
-# `worktree.py` is not a `PreToolUse` hook: it fails closed, so every case here expects 1.
-# Creation needs an unsandboxed git and is probed by `EnterWorktree`, not here.
+# `worktree.py` is not a `PreToolUse` hook: it fails closed, so every case here expects 1. Its git
+# work runs in `worktree_git_cases`, on a fixture of its own below the fixture directory.
 WORKTREE_CASES = [
     "not json at all",
     "[1]",
@@ -406,6 +414,9 @@ def manifest_cases():
     with (
         mock.patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired(["git", "rev-parse"], 60)),
         mock.patch.object(sys, "stdin", io.StringIO(payload)),
+        mock.patch.dict(os.environ, WORKTREE_ENV, clear=True),
+        mock.patch.object(hook, "RESEARCH", pathlib.Path(R)),
+        mock.patch.object(hook, "ROOT", pathlib.Path(R, ".worktrees")),
         contextlib.redirect_stderr(err),
     ):
         code = hook.main()
@@ -416,7 +427,11 @@ def manifest_cases():
     # A payload that is no JSON object fails closed with one line that names the hook input.
     for payload in ("not json at all", "[1]"):
         err = io.StringIO()
-        with mock.patch.object(sys, "stdin", io.StringIO(payload)), contextlib.redirect_stderr(err):
+        with (
+            mock.patch.object(sys, "stdin", io.StringIO(payload)),
+            mock.patch.dict(os.environ, WORKTREE_ENV, clear=True),
+            contextlib.redirect_stderr(err),
+        ):
             try:
                 code = hook.main()
             except hook.HarnessError as e:
@@ -425,6 +440,1020 @@ def manifest_cases():
         ok = code == 1 and said.startswith("worktree hook: hook input: ") and "\n" not in said
         total, wrong = total + 1, wrong + (not ok)
         print(f"{'ok ' if ok else 'BAD'} exp 1 got {code}  [worktree ]  {payload!r} is one line: {said!r}")
+    return total, wrong
+
+
+# The fixture of `worktree.py`'s git work, made by `worktree_fixture` in a home of its own below the
+# fixture directory, WT_HOME. Its `Research` holds `Repo`, a clone of the bare `wt-origin.git` with
+# the origin WT_ORIGIN's `ssh://` URL and the keys of WT_KEYS, whose `core.hooksPath` is its tracked
+# `.githooks`, whose `post-checkout` writes WT_MARKER; `Linked`, whose `.git` is a link to
+# `Repo/.git`; the worktrees `.worktrees/Repo-common` and `.worktrees/Repo-gitdir` of `Repo`, whose
+# admin directories hold another `commondir` and another `gitdir`, and `.worktrees/Repo-via`, whose
+# `.git` file names its admin directory through `Linked/.git`; `.worktrees/Repo-linked`, a link to
+# an empty directory; `Common`, whose `.git` holds a `commondir`, with its worktree
+# `.worktrees/Common-x`; and the repositories of WT_REFUSED and WT_RAW, whose `.git/config` the hook
+# refuses. WT_OUTSIDE is a repository outside it with one commit, whose worktree
+# `.worktrees/Outside-x` lies inside it. The `git` first on the PATH of WT_ENV appends its
+# arguments to WT_LOG and runs git.
+WT_HOME = "/" + FIXTURE.name + "/wt"
+WT_R = WT_HOME + "/Research"
+WT_REPO = WT_R + "/Repo"
+WT_ROOT = WT_R + "/.worktrees"
+WT_OUTSIDE = FIXTURE.name + "/wt-outside"
+WT_MARKER = FIXTURE.name + "/wt-marker"
+WT_LOG = FIXTURE.name + "/wt-git.log"
+WT_BIN = FIXTURE.name + "/wt-bin"
+# The directory of the brokers' sockets, near the top of the fixture: a socket path holds at most
+# 103 bytes on macOS.
+WT_SOCKETS = FIXTURE.name + "/s"
+# The origin of `Repo`, an `ssh://` URL that the fake ssh WT_BIN/fake-ssh serves from the bare
+# repository at the URL's path, so that the hook's fetch passes its protocol and URL tests.
+WT_ORIGIN = FIXTURE.name + "/wt-origin.git"
+WT_SSH = FIXTURE.name + "/wt-ssh.log"
+WT_ENV = {
+    **WORKTREE_ENV,
+    "HOME": WT_HOME,
+    "PATH": WT_BIN + ":" + WORKTREE_ENV.get("PATH", "/usr/bin:/bin"),
+    "GIT_SSH_COMMAND": WT_BIN + "/fake-ssh",
+    "GIT_SSH_VARIANT": "simple",
+}
+# The keys of `Repo`'s `.git/config` beyond those of a clone: every key that the hook allows by
+# name, a scp-like push URL and a second remote.
+WT_KEYS = [
+    ("remote.origin.pushurl", "fixture:" + WT_ORIGIN),
+    ("remote.origin.glab-resolved-head", "main"),
+    ("remote.private.url", "https://example.org/private.git"),
+    ("pull.rebase", "true"),
+    ("lfs.repositoryformatversion", "0"),
+    ("user.name", "probe"),
+    ("user.email", "probe@example.org"),
+    ("branch.main.pushremote", "origin"),
+    ("branch.main.vscode-merge-base", "origin/main"),
+    ("branch.main.github-pr-owner-number", "owner#repo#1"),
+    ("branch.main.github-pr-base-branch", "owner#repo#main"),
+]
+# The repositories of the fixture's Research whose `.git/config` holds one key that the hook
+# refuses, each with a worktree `.worktrees/<directory>-x` made before the key was set:
+# (directory, key, value).
+WT_REFUSED = [
+    ("Ssh", "core.sshCommand", "false"),
+    ("Include", "include.path", "elsewhere"),
+    ("Extensions", "extensions.worktreeConfig", "true"),
+    ("Data", "remote.datashare.url", "/x"),
+]
+# The repositories whose `.git/config` is these bytes, and the word of the hook's line on each:
+# (directory, bytes, word).
+WT_RAW = [
+    ("Broken", b"[core\n", "exited"),
+    ("Latin", b"[core]\n\tsshCommand = \xff\n", "core.sshcommand"),
+]
+# The options before the subcommand of every git that `worktree.py` starts.
+WT_OPTIONS = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+# The `.git` line of a worktree that `git worktree add --relative-paths` makes in the fixture.
+WT_RELATIVE = "gitdir: ../../Repo/.git/worktrees/Repo-rel"
+# The fixture of git's own search for a repository: `Evil`, a repository whose `.git/config` holds a
+# `core.sshCommand` that writes WT_EVIL_MARKER and an `ssh://` origin; `Evil/sub`, whose `.git` is
+# a directory that holds only a config of allowed keys, so that git does not take it as a
+# repository; `Evil/bare`, the same plus a HEAD, `objects` and `refs` of its own and a config with
+# that `core.sshCommand`, so that git takes `Evil/bare` itself as a bare repository; and
+# WT_COMMON, a bare repository with that `core.sshCommand` and origin, for a caller's
+# GIT_COMMON_DIR. WT_EVIL_ENV reaches the fake ssh through GIT_SSH, which a `core.sshCommand`
+# overrides, where WT_ENV's GIT_SSH_COMMAND overrides the key.
+WT_EVIL_MARKER = WT_HOME + "/evil-marker"
+WT_EVIL = WT_R + "/Evil"
+WT_COMMON = WT_HOME + "/common.git"
+WT_EVIL_SSH = f"touch '{WT_EVIL_MARKER}'; false"
+WT_EVIL_ENV = {
+    **{k: v for k, v in WT_ENV.items() if k != "GIT_SSH_COMMAND"},
+    "GIT_SSH": WT_BIN + "/fake-ssh",
+}
+# The script of a broker's parent: a shell that starts `worktree.py --serve` as its child, with its
+# output in a log file, prints the broker's process ID, and runs until its own stdin ends.
+BROKER_PARENT = '"$0" "$1" --serve "$2" --parent $$ > "$3" 2>&1 < /dev/null & echo "$!"; read -r line'
+
+
+def worktree_fixture() -> None:
+    """Make the repositories, the links and the logging `git` of WT_HOME's fixture."""
+    git = shutil.which("git") or "git"
+    env = {
+        **WORKTREE_ENV,
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_AUTHOR_NAME": "probe",
+        "GIT_AUTHOR_EMAIL": "probe@example.org",
+        "GIT_COMMITTER_NAME": "probe",
+        "GIT_COMMITTER_EMAIL": "probe@example.org",
+    }
+
+    def run(*args: str) -> None:
+        subprocess.run(
+            [git, "-c", "core.hooksPath=/dev/null", *args],
+            env=env,
+            check=True,
+            capture_output=True,
+            timeout=60,
+        )
+
+    source = pathlib.Path(FIXTURE.name, "wt-source")
+    hook = source / ".githooks" / "post-checkout"
+    hook.parent.mkdir(parents=True)
+    hook.write_text(f"#!/bin/sh\n: > '{WT_MARKER}'\n", encoding="utf-8")
+    hook.chmod(0o755)
+    run("init", "-q", "-b", "main", str(source))
+    run("-C", str(source), "add", ".githooks")
+    run("-C", str(source), "commit", "-q", "-m", "fixture")
+    run("clone", "-q", "--bare", str(source), WT_ORIGIN)
+    pathlib.Path(WT_ROOT).mkdir(parents=True)
+    run("clone", "-q", WT_ORIGIN, WT_REPO)
+    run("-C", WT_REPO, "remote", "set-url", "origin", "ssh://fixture" + WT_ORIGIN)
+    for key, value in WT_KEYS:
+        run("-C", WT_REPO, "config", key, value)
+    for name in ("common", "gitdir", "via", "rel"):
+        run("-C", WT_REPO, "worktree", "add", "-q", "--detach", f"{WT_ROOT}/Repo-{name}")
+    admin = pathlib.Path(WT_REPO, ".git", "worktrees")
+    common = pathlib.Path(WT_REPO, ".git").resolve()
+    (admin / "Repo-common" / "commondir").write_text(f"{common}\n", encoding="utf-8")
+    (admin / "Repo-gitdir" / "gitdir").write_text(f"{FIXTURE.name}/elsewhere/.git\n", encoding="utf-8")
+    # A `.git` file as `git worktree add --relative-paths` writes it, and a relative admin `gitdir`;
+    # git writes `../../../../.worktrees/Repo-rel/.git` there, but the case refuses at the `.git` line.
+    pathlib.Path(WT_ROOT, "Repo-rel", ".git").write_text(WT_RELATIVE + "\n", encoding="utf-8")
+    (admin / "Repo-rel" / "gitdir").write_text("../../../.worktrees/Repo-rel/.git\n", encoding="utf-8")
+    run("-C", WT_REPO, "config", "core.hooksPath", ".githooks")
+    pathlib.Path(WT_R, "Linked").mkdir()
+    pathlib.Path(WT_R, "Linked", ".git").symlink_to(pathlib.Path(WT_REPO, ".git"))
+    linked = pathlib.Path(WT_R, "Linked").resolve()
+    pathlib.Path(WT_ROOT, "Repo-via", ".git").write_text(
+        f"gitdir: {linked}/.git/worktrees/Repo-via\n", encoding="utf-8"
+    )
+    pathlib.Path(FIXTURE.name, "wt-empty").mkdir()
+    pathlib.Path(WT_ROOT, "Repo-linked").symlink_to(pathlib.Path(FIXTURE.name, "wt-empty"))
+    run("init", "-q", "-b", "main", WT_OUTSIDE)
+    run("-C", WT_OUTSIDE, "commit", "-q", "--allow-empty", "-m", "fixture")
+    run("-C", WT_OUTSIDE, "worktree", "add", "-q", "--detach", f"{WT_ROOT}/Outside-x")
+    # `Common`, whose `.git` holds a `commondir` that names `Repo/.git`, and its worktree
+    # `.worktrees/Common-x`, made before the `commondir` was written.
+    common = WT_R + "/Common"
+    run("init", "-q", "-b", "main", common)
+    run("-C", common, "commit", "-q", "--allow-empty", "-m", "fixture")
+    run("-C", common, "worktree", "add", "-q", "--detach", f"{WT_ROOT}/Common-x")
+    pathlib.Path(common, ".git", "commondir").write_text(
+        f"{pathlib.Path(WT_REPO, '.git').resolve()}\n", encoding="utf-8"
+    )
+    for name, key, value in WT_REFUSED:
+        run("init", "-q", "-b", "main", f"{WT_R}/{name}")
+        run("-C", f"{WT_R}/{name}", "commit", "-q", "--allow-empty", "-m", "fixture")
+        run("-C", f"{WT_R}/{name}", "worktree", "add", "-q", "--detach", f"{WT_ROOT}/{name}-x")
+        run("-C", f"{WT_R}/{name}", "config", key, value)
+    for name, data, _ in WT_RAW:
+        run("init", "-q", "-b", "main", f"{WT_R}/{name}")
+        pathlib.Path(WT_R, name, ".git", "config").write_bytes(data)
+    run("init", "-q", "-b", "main", WT_EVIL)
+    run("-C", WT_EVIL, "commit", "-q", "--allow-empty", "-m", "fixture")
+    run("-C", WT_EVIL, "remote", "add", "origin", "ssh://fixture" + WT_ORIGIN)
+    run("-C", WT_EVIL, "config", "core.sshCommand", WT_EVIL_SSH)
+    allowed = "[core]\n\trepositoryformatversion = 0\n"
+    for sub in ("sub", "bare"):
+        dot = pathlib.Path(WT_EVIL, sub, ".git")
+        dot.mkdir(parents=True)
+        (dot / "config").write_text(allowed, encoding="utf-8")
+    bare = pathlib.Path(WT_EVIL, "bare")
+    (bare / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (bare / "objects").mkdir()
+    (bare / "refs").mkdir()
+    (bare / "config").write_text(
+        f'{allowed}\tbare = true\n\tsshCommand = "{WT_EVIL_SSH}"\n[remote "origin"]\n'
+        f"\turl = ssh://fixture{WT_ORIGIN}\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n",
+        encoding="utf-8",
+    )
+    run("init", "-q", "--bare", WT_COMMON)
+    run("-C", WT_COMMON, "remote", "add", "origin", "ssh://fixture" + WT_ORIGIN)
+    run("-C", WT_COMMON, "config", "core.sshCommand", WT_EVIL_SSH)
+    wrapper = pathlib.Path(WT_BIN, "git")
+    wrapper.parent.mkdir()
+    wrapper.write_text(
+        f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{WT_LOG}'\nexec '{git}' \"$@\"\n", encoding="utf-8"
+    )
+    wrapper.chmod(0o755)
+    # The ssh of GIT_SSH_VARIANT=simple: git gives it the host and the remote command
+    # `git-upload-pack '<path>'`, which it logs and runs with the real git, not the logging one.
+    ssh = pathlib.Path(WT_BIN, "fake-ssh")
+    ssh.write_text(
+        "#!/bin/sh\n"
+        f"printf '%s\\n' \"$*\" >> '{WT_SSH}'\n"
+        'for last; do :; done\neval "set -- $last"\n'
+        f'exec \'{git}\' "${{1#git-}}" "$2"\n',
+        encoding="utf-8",
+    )
+    ssh.chmod(0o755)
+    pathlib.Path(WT_SOCKETS).mkdir()
+
+
+def worktree_run(
+    payload: dict[str, str], env: dict[str, str]
+) -> tuple[subprocess.CompletedProcess[str] | None, list[str]]:
+    """`worktree.py` on the JSON text of `payload` in `env`, and the arguments of each git that the
+    logging `git` started meanwhile, one string each."""
+    log = pathlib.Path(WT_LOG)
+    log.unlink(missing_ok=True)
+    proc = call(WORKTREE, json.dumps(payload), env)
+    return proc, log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+
+
+class Broker(NamedTuple):
+    """A broker that `start_broker` started: its parent shell, its process ID and its socket."""
+
+    parent: subprocess.Popen[str]
+    pid: int
+    socket: pathlib.Path
+
+
+def start_broker(name: str) -> Broker:
+    """`worktree.py --serve` at WT_SOCKETS/<name>.sock in WT_ENV, as the child of a shell that runs
+    BROKER_PARENT; its output goes to WT_SOCKETS/<name>.log."""
+    path = pathlib.Path(WT_SOCKETS, f"{name}.sock")
+    parent = subprocess.Popen(  # no timeout: stop_broker ends it by closing its stdin
+        ["/bin/sh", "-c", BROKER_PARENT, sys.executable, WORKTREE, str(path), str(path.with_suffix(".log"))],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+        env=WT_ENV,
+    )
+    line = parent.stdout.readline() if parent.stdout is not None else ""
+    return Broker(parent, int(line), path)
+
+
+def ended(pid: int) -> bool:
+    """Whether no process `pid` runs."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    return False
+
+
+def stop_broker(broker: Broker) -> None:
+    """End the broker's parent, and the broker where it still runs."""
+    if broker.parent.stdin is not None and not broker.parent.stdin.closed:
+        broker.parent.stdin.close()
+    broker.parent.wait(timeout=TIMEOUT)
+    if broker.parent.stdout is not None:
+        broker.parent.stdout.close()
+    if not ended(broker.pid):
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(broker.pid, signal.SIGTERM)
+
+
+def until(condition: Callable[[], bool], seconds: float) -> bool:
+    """Whether `condition` holds within `seconds`, looked at every 50 ms."""
+    deadline = time.monotonic() + seconds
+    while not condition():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.05)
+    return True
+
+
+def is_socket(path: pathlib.Path) -> bool:
+    try:
+        return stat.S_ISSOCK(path.lstat().st_mode)
+    except FileNotFoundError:
+        return False
+
+
+def answers(path: pathlib.Path) -> bool:
+    """Whether a process accepts a connection at the socket `path`."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        try:
+            s.connect(str(path))
+        except OSError:
+            return False
+    return True
+
+
+def unix_bind(path: str) -> None:
+    """Bind an AF_UNIX socket at `path`, and close it."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.bind(path)
+
+
+def bind_verdict(bind: Callable[[str], None], *, ci: bool) -> tuple[str, str]:
+    """Whether the cases that bind an AF_UNIX socket run here, from one `bind` at a short path in a
+    fresh private temporary directory: ("run", ""), or ("skip", <errno text>) where it raises
+    PermissionError, as in a session's sandbox; with `ci`, which says that CI runs the cases, a
+    refusal is ("wrong", <errno text>)."""
+    with tempfile.TemporaryDirectory() as directory:
+        try:
+            bind(str(pathlib.Path(directory, "s")))
+        except PermissionError as err:
+            return ("wrong" if ci else "skip"), err.strerror or str(err)
+    return "run", ""
+
+
+def request(path: pathlib.Path, data: bytes) -> dict[str, Any] | None:
+    """The JSON object of the first line that the broker at `path` replies to the line `data`, or
+    None where it gives none. A broker may close the connection before it has read the whole of a
+    large request, and Linux then resets it: the bytes read before the reset stay, and the reading
+    stops at the reply's newline."""
+    received = b""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(TIMEOUT)
+            s.connect(str(path))
+            with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+                s.sendall(data + b"\n")
+                s.shutdown(socket.SHUT_WR)
+            with contextlib.suppress(ConnectionResetError):
+                while b"\n" not in received and (chunk := s.recv(65536)):
+                    received += chunk
+    except OSError:
+        return None
+    try:
+        value = json_value(received.split(b"\n", 1)[0].decode("utf-8", "replace"), "the reply")
+    except ValueError:
+        return None
+    return cast("dict[str, Any]", value) if isinstance(value, dict) else None
+
+
+def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """The broker's answers and the client's reading of a reply, in this process and with no socket
+    bound: a create whose process cannot start gets an `error` reply, also through `answer` on a
+    socket pair; the create runs with GIT_TERMINAL_PROMPT=0 and without AGENTBOX; a request of more
+    than LIMIT bytes, also a valid object followed by white space, gets an error that names the
+    limit and starts nothing; and a reply whose `path`, `error` or `stderr` is no string is
+    refused."""
+    payload = json.dumps({"hook_event_name": "WorktreeCreate", "cwd": WT_REPO, "name": "unit"}).encode()
+    absent = str(pathlib.Path(WT_SOCKETS, "no-python"))
+    try:
+        with mock.patch.object(sys, "executable", absent):
+            reply: object = hook.respond(payload)
+    except OSError as err:
+        reply = err
+    error = getattr(reply, "error", None)
+    report(
+        isinstance(error, str) and absent in error and getattr(reply, "path", None) == "",
+        f"a create whose process cannot start gets an error that names the interpreter: {reply!r}",
+    )
+    ours, theirs = socket.socketpair()
+    with ours, theirs:
+        theirs.settimeout(TIMEOUT)
+        theirs.sendall(payload + b"\n")
+        theirs.shutdown(socket.SHUT_WR)
+        try:
+            with mock.patch.object(sys, "executable", absent):
+                hook.answer(ours)
+            outcome = "answered"
+        except OSError as err:
+            outcome = repr(err)
+        sending = ours.gettimeout()
+        ours.shutdown(socket.SHUT_WR)
+        sent = theirs.recv(65536)
+    line = json_object(sent.decode("utf-8", "replace"))
+    report(
+        line is not None
+        and isinstance(line.get("error"), str)
+        and absent in str(line["error"])
+        and "path" not in line
+        and sending == getattr(hook, "LOCAL", None),
+        f"answer sends that error as one JSON line, with a timeout of LOCAL seconds: {outcome}, {sent!r}, "
+        f"timeout {sending}",
+    )
+
+    runs: list[dict[str, str]] = []
+
+    def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        runs.append(dict(kwargs.get("env") or {}))
+        return subprocess.CompletedProcess(args, 0, f"{WT_ROOT}/Repo-unit\n", "said\n")
+
+    with (
+        mock.patch.dict(os.environ, {**WT_ENV, "AGENTBOX": "1", "AGENTBOX_BROKER": "/x.sock"}, clear=True),
+        mock.patch.object(subprocess, "run", side_effect=run),
+    ):
+        reply = hook.respond(payload)
+        valid = len(runs)
+        big = [
+            hook.respond(json.dumps({"hook_event_name": "WorktreeCreate", "pad": "x" * 70 * 1024}).encode()),
+            hook.respond(payload + b" " * 70 * 1024),
+        ]
+        after_big = len(runs)
+        other = hook.respond(b'{"hook_event_name": "Other", "cwd": "/"}')
+        after_other = len(runs)
+    env = runs[0] if valid == 1 else {}
+    report(
+        "Other" in str(getattr(other, "error", None)) and after_other == after_big,
+        f"a request of hook_event_name Other gets an error that names it and starts nothing: {other!r}, "
+        f"{after_other - after_big} runs",
+    )
+    report(
+        getattr(reply, "path", None) == f"{WT_ROOT}/Repo-unit"
+        and getattr(reply, "stderr", None) == "said\n"
+        and getattr(reply, "error", "") is None
+        and env.get("GIT_TERMINAL_PROMPT") == "0"
+        and "AGENTBOX" not in env
+        and "AGENTBOX_BROKER" not in env,
+        f"the broker runs a create with GIT_TERMINAL_PROMPT=0 and without AGENTBOX and AGENTBOX_BROKER, "
+        f"and replies its path and stderr: {reply!r}, {len(runs)} runs, "
+        f"{ {k: env.get(k) for k in ('GIT_TERMINAL_PROMPT', 'AGENTBOX', 'AGENTBOX_BROKER')} }",
+    )
+    report(
+        all(f"larger than {64 * 1024} bytes" in str(getattr(r, "error", None)) for r in big)
+        and after_big == valid,
+        f"a request of more than 64 KiB, inside the object or after it, gets an error that names the "
+        f"limit and starts nothing: {[getattr(r, 'error', r) for r in big]}, {after_big - valid} runs",
+    )
+    receive_deadline_cases(hook, report)
+
+    read = getattr(hook, "read_reply", None)
+    for text, want in [
+        (b'{"path": "/p", "stderr": "s\\n"}', ("/p", None, "s\n")),
+        (b'{"error": "no", "stderr": ""}', ("", "no", "")),
+        (b'{"path": 1, "stderr": ""}', None),
+        (b'{"error": null, "stderr": ""}', None),
+        (b'{"error": ["no"], "stderr": ""}', None),
+        (b'{"path": "/p", "stderr": 2}', None),
+        (b"[1]", None),
+    ]:
+        try:
+            value = read(text, "the reply") if read is not None else "no read_reply"
+            got: object = (value.path, value.error, value.stderr) if not isinstance(value, str) else value
+        except (hook.Refusal, hook.HarnessError) as err:
+            got = f"refused: {err}"
+        report(
+            got == want if want is not None else str(got).startswith("refused: "),
+            f"the client reads the reply {text!r} as {want or 'a refusal'}: {got!r}",
+        )
+    reply_type = getattr(hook, "Reply", None)
+    for fields, want_line in [
+        ({"path": "/p", "stderr": "s"}, {"path": "/p", "stderr": "s"}),
+        ({"error": "no", "stderr": "s"}, {"error": "no", "stderr": "s"}),
+    ]:
+        sent = reply_type(**fields).line() if reply_type is not None else b""
+        report(
+            sent.endswith(b"\n") and sent.count(b"\n") == 1 and json_object(sent.decode()) == want_line,
+            f"the broker sends {fields} as the one JSON line {want_line}: {sent!r}",
+        )
+
+
+class DripClock:
+    """A clock that advances by `step` seconds at each reading, from 0."""
+
+    def __init__(self, step: float) -> None:
+        self.step = step
+        self.now = -step
+
+    def __call__(self) -> float:
+        self.now += self.step
+        return self.now
+
+
+class DripConnection:
+    """A connection whose `recv` returns one byte at each call, for at most 20 calls, and which
+    records each timeout that it is given with the time of `clock` at that moment."""
+
+    def __init__(self, clock: DripClock) -> None:
+        self.clock = clock
+        self.timeouts: list[tuple[float, float]] = []
+        self.reads = 0
+
+    def settimeout(self, value: float) -> None:
+        self.timeouts.append((value, self.clock.now))
+
+    def recv(self, size: int) -> bytes:
+        del size
+        self.reads += 1
+        return b"x" if self.reads <= 20 else b""
+
+
+def receive_deadline_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`receive` bounds the whole read by its deadline: a client that sends one byte per read, while
+    the clock advances by a quarter of LOCAL per reading, gets TimeoutError within 5 reads, and
+    each timeout that a read gets is at most the time left."""
+    local = float(getattr(hook, "LOCAL", 60))
+    clock = DripClock(local / 4)
+    connection = DripConnection(clock)
+    try:
+        hook.receive(connection, getattr(hook, "LIMIT", 65536), local, clock)
+        outcome = "returned"
+    except TimeoutError:
+        outcome = "TimeoutError"
+    except TypeError as err:
+        outcome = f"TypeError: {err}"
+    report(
+        outcome == "TimeoutError"
+        and connection.reads <= 5
+        and connection.timeouts
+        and all(0 < value <= local - now for value, now in connection.timeouts),
+        f"a client that sends one byte per read gets TimeoutError within 5 reads, each read with a "
+        f"timeout of at most the time left before the deadline {local}: {outcome}, {connection.reads} "
+        f"reads, timeouts {connection.timeouts}",
+    )
+
+
+def config_check_cases(report: Callable[[object, str], None]) -> None:
+    """The refusals of `worktree.py` for the git config that its git would read, on the fixture of
+    `worktree_fixture`: a create and a remove in `Common`, whose `.git` holds `commondir`, start no
+    git; a create and a remove in each repository of WT_REFUSED, and a create in each of WT_RAW,
+    start only the config read; each exits 1 with one line that names the cause; then
+    `config_key_cases`."""
+
+    def said(proc: subprocess.CompletedProcess[str] | None) -> str:
+        return "timeout" if proc is None else f"exit {proc.returncode}, {proc.stdout!r}, {proc.stderr!r}"
+
+    def create(cwd: str) -> dict[str, str]:
+        return {"hook_event_name": "WorktreeCreate", "cwd": cwd, "name": "config"}
+
+    def remove(name: str) -> dict[str, str]:
+        return {"hook_event_name": "WorktreeRemove", "worktree_path": f"{WT_ROOT}/{name}-x"}
+
+    for label, payload in [
+        ("a create in a repository whose .git holds commondir", create(WT_R + "/Common")),
+        ("a remove of a worktree of a repository whose .git holds commondir", remove("Common")),
+    ]:
+        proc, started = worktree_run(payload, WT_ENV)
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and proc.stderr.count("\n") == 1
+            and "commondir" in proc.stderr
+            and not started,
+            f"{label}: exits 1 with one line that names commondir, and starts no git: {said(proc)}, {started}",
+        )
+
+    def refused(label: str, payload: dict[str, str], word: str, worktree: str, *, stays: bool) -> None:
+        proc, started = worktree_run(payload, WT_ENV)
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and proc.stderr.count("\n") == 1
+            and proc.stderr.startswith("worktree hook: ")
+            and word in proc.stderr
+            and len(started) == 1
+            and " config --file " in started[0]
+            and pathlib.Path(WT_ROOT, worktree).is_dir() == stays,
+            f"{label}: exits 1 with one line that names {word}, and starts only the config read: "
+            f"{said(proc)}, {started}",
+        )
+
+    for name, key, _ in WT_REFUSED:
+        word = key.lower()
+        where = f"a repository whose .git/config holds {key}"
+        refused(f"a create in {where}", create(f"{WT_R}/{name}"), word, f"{name}-config", stays=False)
+        refused(f"a remove of a worktree of {where}", remove(name), word, f"{name}-x", stays=True)
+    for name, _, word in WT_RAW:
+        label = f"a create in {name}, whose .git/config git cannot read or is no UTF-8"
+        refused(label, create(f"{WT_R}/{name}"), word, f"{name}-config", stays=False)
+    config_key_cases(load_module("worktree_keys", WORKTREE), report)
+
+
+def config_key_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`allowed` on the keys and values of `.git/config` that the fixture's repositories do not
+    hold: a key that splits at its first and last dot, an empty subsection, a key of an allowed
+    name in another section or below a subsection of `core`, a URL key with no value, and the
+    URLs that `remote_url` refuses or accepts."""
+    allowed = getattr(hook, "allowed", None)
+    for key, value, want in [
+        ("remote.a.b.url", "https://example.org/x.git", True),
+        ("branch.feature/x.y.merge", "refs/heads/x", True),
+        ("branch..remote", "origin", False),
+        ("core.x.hookspath", ".githooks", False),
+        ("user.x.name", "probe", False),
+        ("other.a.remote", "origin", False),
+        ("remote.a.url", None, False),
+        ("remote.a.url", "host:path/x.git", True),
+        ("remote.a.url", "git@host.org:x.git", True),
+        ("remote.a.url", "ssh://host.org/x.git", True),
+        ("remote.a.url", "file:///x.git", False),
+        ("remote.a.url", "ext::sh -c x", False),
+        ("remote.a.url", "a/b:c", False),
+        ("remote.a.url", "-oProxyCommand=x:y", False),
+        ("remote.a.url", "/x.git", False),
+        ("remote.a.pushurl", "fd::3", False),
+    ]:
+        try:
+            got: object = allowed(key, value) if allowed is not None else "no allowed"
+        except (AttributeError, TypeError) as err:
+            got = repr(err)
+        report(got is want, f"the config check gives {want} for {key} = {value!r}: {got}")
+
+
+def discovery_cases(report: Callable[[object, str], None]) -> None:
+    """git pinned to the repository that `worktree.py` checked, on the fixture of WT_EVIL: a create
+    from `Evil/sub`, whose `.git` git does not take as a repository, and from `Evil/bare`, which git
+    takes as a bare repository, each exit 1 with git's `not a git repository` and run no
+    `core.sshCommand`; and a create and remove of `Repo` recorded in this process, where the caller
+    sets GIT_COMMON_DIR to WT_COMMON and GIT_WORK_TREE, give every git GIT_DIR `Repo/.git` and
+    neither variable, and run no `core.sshCommand` of WT_COMMON."""
+    marker = pathlib.Path(WT_EVIL_MARKER)
+
+    def said(proc: subprocess.CompletedProcess[str] | None) -> str:
+        return "timeout" if proc is None else f"exit {proc.returncode}, {proc.stdout!r}, {proc.stderr!r}"
+
+    for sub, label in [
+        ("sub", "whose .git git does not take as a repository, below a repository"),
+        ("bare", "which git takes as a bare repository, below a repository"),
+    ]:
+        marker.unlink(missing_ok=True)
+        payload = {"hook_event_name": "WorktreeCreate", "cwd": f"{WT_EVIL}/{sub}", "name": "evil"}
+        proc, _ = worktree_run(payload, WT_EVIL_ENV)
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and "not a git repository" in proc.stderr
+            and not marker.exists()
+            and not pathlib.Path(WT_ROOT, f"{sub}-evil").exists(),
+            f"a create in Evil/{sub}, {label}: exits 1 with git's `not a git repository`, and runs no "
+            f"core.sshCommand: {said(proc)}, marker {marker.exists()}",
+        )
+
+    hook = load_module("worktree_pinned", WORKTREE)
+    envs: list[dict[str, str]] = []
+    real = subprocess.run
+
+    def record(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        envs.append(dict(kwargs.get("env") or os.environ))
+        return cast("subprocess.CompletedProcess[str]", real(args, **kwargs))
+
+    marker.unlink(missing_ok=True)
+    tree = pathlib.Path(WT_HOME, "other-tree")
+    tree.mkdir()
+    caller = {**WT_EVIL_ENV, "GIT_COMMON_DIR": WT_COMMON, "GIT_WORK_TREE": str(tree)}
+    err = io.StringIO()
+    with (
+        mock.patch.dict(os.environ, caller, clear=True),
+        mock.patch.object(subprocess, "run", side_effect=record),
+        mock.patch.object(hook, "RESEARCH", pathlib.Path(WT_R)),
+        mock.patch.object(hook, "ROOT", pathlib.Path(WT_ROOT)),
+        contextlib.redirect_stderr(err),
+    ):
+        try:
+            path = hook.create({"hook_event_name": "WorktreeCreate", "cwd": WT_REPO, "name": "pinned"})
+            hook.remove({"worktree_path": str(path)})
+            outcome = "made and removed"
+        except hook.Refusal as e:
+            outcome = str(e)
+    pinned = str(pathlib.Path(WT_REPO, ".git").resolve())
+    report(
+        outcome == "made and removed"
+        and envs
+        and all(
+            e.get("GIT_DIR") == pinned and "GIT_COMMON_DIR" not in e and "GIT_WORK_TREE" not in e
+            for e in envs
+        )
+        and not marker.exists()
+        and not any(tree.iterdir()),
+        f"where the caller sets GIT_COMMON_DIR and GIT_WORK_TREE, every git that the hook starts gets "
+        f"GIT_DIR {pinned} and neither variable, and runs no core.sshCommand of that common directory: "
+        f"{outcome}, {[(e.get('GIT_DIR'), e.get('GIT_COMMON_DIR'), e.get('GIT_WORK_TREE')) for e in envs]}, "
+        f"marker {marker.exists()}",
+    )
+
+
+def worktree_git_cases() -> tuple[int, int]:
+    """`worktree.py`'s git work on the fixture of `worktree_fixture`: a create and a remove without
+    `AGENTBOX` and through a broker, with no hook of the repository run; the refusals of the
+    repository check and of a worktree path that is a link, which start no git; the refusals of
+    the git config (`config_check_cases`); git pinned to the checked repository
+    (`discovery_cases`); the GIT_ALLOW_PROTOCOL of every git; the client's
+    refusals under `AGENTBOX`; the life of a broker; and the options of every git that the hook
+    starts, recorded in this process: (number of cases, number wrong)."""
+    verdict, why = bind_verdict(unix_bind, ci="CI" in os.environ)
+    worktree_fixture()
+    total = wrong = 0
+
+    def report(ok: object, label: str) -> None:
+        nonlocal total, wrong
+        total += 1
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  [worktree ]  {label}")
+
+    report(
+        verdict != "wrong",
+        f"the probe bind of an AF_UNIX socket succeeds, or is refused where CI is not set: {verdict} {why}",
+    )
+
+    def refused(path: str) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted", path)
+
+    got = [
+        bind_verdict(refused, ci=False),
+        bind_verdict(lambda _: None, ci=False),
+        bind_verdict(refused, ci=True),
+    ]
+    report(
+        got == [("skip", "Operation not permitted"), ("run", ""), ("wrong", "Operation not permitted")],
+        f"a refused bind gives skip, and wrong where CI is set; a bind that succeeds gives run: {got}",
+    )
+
+    marker = pathlib.Path(WT_MARKER)
+
+    def create(name: str, cwd: str = WT_REPO) -> dict[str, str]:
+        return {"hook_event_name": "WorktreeCreate", "cwd": cwd, "name": name}
+
+    def remove(name: str) -> dict[str, str]:
+        return {"hook_event_name": "WorktreeRemove", "worktree_path": f"{WT_ROOT}/Repo-{name}"}
+
+    def made(stdout: str, name: str) -> bool:
+        """Whether `stdout` names the worktree `Repo-<name>`, which exists, with its HEAD on the
+        branch `name`, read from the HEAD of its admin directory."""
+        want = pathlib.Path(WT_ROOT, f"Repo-{name}").resolve()
+        dot = want / ".git"
+        if pathlib.Path(stdout.strip()).resolve() != want or not dot.is_file():
+            return False
+        admin = pathlib.Path(dot.read_text(encoding="utf-8").strip().removeprefix("gitdir: "))
+        head = admin / "HEAD"
+        return head.is_file() and head.read_text(encoding="utf-8") == f"ref: refs/heads/{name}\n"
+
+    def said(proc: subprocess.CompletedProcess[str] | None) -> str:
+        return "timeout" if proc is None else f"exit {proc.returncode}, {proc.stdout!r}, {proc.stderr!r}"
+
+    proc, started = worktree_run(create("direct"), WT_ENV)
+    report(
+        proc is not None and proc.returncode == 0 and made(proc.stdout, "direct") and not marker.exists(),
+        f"a create without AGENTBOX prints the path, makes the worktree with its HEAD on the branch and "
+        f"runs no post-checkout of core.hooksPath: {said(proc)}, marker {marker.exists()}",
+    )
+    report(
+        started and all(line.split()[:4] == WT_OPTIONS for line in started),
+        f"every git of that create gets {' '.join(WT_OPTIONS)} first: {started}",
+    )
+    proc, started = worktree_run(remove("direct"), WT_ENV)
+    report(
+        proc is not None and proc.returncode == 0 and not pathlib.Path(WT_ROOT, "Repo-direct").exists(),
+        f"a remove without AGENTBOX removes the worktree: {said(proc)}",
+    )
+
+    for label, payload in [
+        ("a cwd outside the fixture's Research", create("outside", WT_OUTSIDE)),
+        ("a cwd whose .git is a symbolic link", create("link", WT_R + "/Linked")),
+        ("a worktree whose admin directory holds another commondir", remove("common")),
+        ("a worktree whose admin directory holds another gitdir", remove("gitdir")),
+        (
+            "a worktree whose .git file names its admin directory through a .git link",
+            remove("via"),
+        ),
+        (
+            "a worktree below the fixture's Research of a repository outside it",
+            {"hook_event_name": "WorktreeRemove", "worktree_path": f"{WT_ROOT}/Outside-x"},
+        ),
+        ("a worktree path that is a symbolic link", create("linked")),
+    ]:
+        proc, started = worktree_run(payload, WT_ENV)
+        report(
+            proc is not None and proc.returncode == 1 and not started,
+            f"{label}: exits 1 and starts no git: {said(proc)}, {started}",
+        )
+    report(
+        pathlib.Path(WT_ROOT, "Repo-linked").is_symlink()
+        and not any(pathlib.Path(FIXTURE.name, "wt-empty").iterdir()),
+        "the worktree path that is a link stays a link to an empty directory",
+    )
+    proc, started = worktree_run(remove("rel"), WT_ENV)
+    report(
+        proc is not None
+        and proc.returncode == 1
+        and proc.stderr.count("\n") == 1
+        and WT_RELATIVE in proc.stderr
+        and not started
+        and pathlib.Path(WT_ROOT, "Repo-rel").is_dir(),
+        f"a worktree made with --relative-paths: exits 1 with a line that names its gitdir line, "
+        f"and starts no git: {said(proc)}, {started}",
+    )
+    config_check_cases(report)
+    discovery_cases(report)
+
+    hook = load_module("worktree_recorded", WORKTREE)
+    seen: list[list[str]] = []
+    protocols: list[str | None] = []
+    real = subprocess.run
+
+    def record(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen.append([str(a) for a in args])
+        protocols.append((kwargs.get("env") or os.environ).get("GIT_ALLOW_PROTOCOL"))
+        return cast("subprocess.CompletedProcess[str]", real(args, **kwargs))
+
+    err = io.StringIO()
+    with (
+        mock.patch.dict(os.environ, {**WT_ENV, "GIT_ALLOW_PROTOCOL": "file:https:ssh"}, clear=True),
+        mock.patch.object(subprocess, "run", side_effect=record),
+        mock.patch.object(hook, "RESEARCH", pathlib.Path(WT_R)),
+        mock.patch.object(hook, "ROOT", pathlib.Path(WT_ROOT)),
+        contextlib.redirect_stderr(err),
+    ):
+        try:
+            path = hook.create(create("recorded"))
+            hook.remove({"worktree_path": str(path)})
+            outcome = "made and removed"
+        except hook.Refusal as e:
+            outcome = str(e)
+    report(
+        outcome == "made and removed"
+        and seen
+        and all(pathlib.Path(a[0]).name == "git" and a[1:5] == WT_OPTIONS for a in seen),
+        f"every process that the hook starts is git with {' '.join(WT_OPTIONS)} first: {outcome}, {seen}",
+    )
+    report(
+        protocols and all(p == "https:ssh" for p in protocols),
+        f"every git that the hook starts gets GIT_ALLOW_PROTOCOL=https:ssh, also where the caller sets "
+        f"file:https:ssh: {protocols}",
+    )
+    ssh = pathlib.Path(WT_SSH).read_text(encoding="utf-8") if pathlib.Path(WT_SSH).exists() else ""
+    report(
+        f"fixture git-upload-pack '{WT_ORIGIN}'" in ssh.splitlines(),
+        f"git calls the fixture's ssh with the host and the remote command alone: {ssh.splitlines()[:2]}",
+    )
+
+    proc, started = worktree_run(create("nul", "/a\0b"), WT_ENV)
+    report(
+        proc is not None
+        and proc.returncode == 1
+        and proc.stderr.startswith("worktree hook: ")
+        and proc.stderr.count("\n") == 1
+        and not started,
+        f"a cwd that holds a NUL byte: exits 1 with one line of the hook and starts no git: {said(proc)}",
+    )
+    broker_unit_cases(hook, report)
+
+    def client_refused(label: str, extra: dict[str, str], word: str) -> None:
+        proc, started = worktree_run(create("agentbox"), {**WT_ENV, **extra})
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and proc.stdout == ""
+            and proc.stderr.count("\n") == 1
+            and word in proc.stderr
+            and not started
+            and not pathlib.Path(WT_ROOT, "Repo-agentbox").exists(),
+            f"{label}: exits 1 with one line that names {word} and starts no git: {said(proc)}, {started}",
+        )
+
+    client_refused("AGENTBOX=1 and no AGENTBOX_BROKER", {"AGENTBOX": "1"}, "AGENTBOX_BROKER")
+    client_refused(
+        "AGENTBOX=1 and an empty AGENTBOX_BROKER", {"AGENTBOX": "1", "AGENTBOX_BROKER": ""}, "AGENTBOX_BROKER"
+    )
+    none = f"{WT_SOCKETS}/none.sock"
+    client_refused(
+        "AGENTBOX=1 and a socket path that does not exist", {"AGENTBOX": "1", "AGENTBOX_BROKER": none}, none
+    )
+    regular = pathlib.Path(WT_SOCKETS, "b3.sock")
+    regular.write_text("keep\n", encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, WORKTREE, "--serve", str(regular), "--parent", str(os.getpid())],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env=WT_ENV,
+        timeout=TIMEOUT,
+        check=False,
+    )
+    report(
+        proc.returncode != 0
+        and regular.read_text(encoding="utf-8") == "keep\n"
+        and str(regular) in proc.stderr,
+        f"a broker at the path of a regular file exits non-zero, names it and leaves it: "
+        f"{proc.returncode}, {proc.stderr!r}",
+    )
+    orphan = pathlib.Path(WT_SOCKETS, "b4.sock")
+    proc = subprocess.run(
+        [sys.executable, WORKTREE, "--serve", str(orphan), "--parent", str(ended_pid())],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env=WT_ENV,
+        timeout=TIMEOUT,
+        check=False,
+    )
+    report(
+        proc.returncode != 0 and "parent" in proc.stderr and not orphan.exists(follow_symlinks=False),
+        f"a broker whose --parent is not its parent exits non-zero, names the parent and binds nothing: "
+        f"{proc.returncode}, {proc.stderr!r}",
+    )
+
+    if verdict == "skip":
+        report(
+            verdict == "skip",
+            f"the bind cases skip only where the probe bind is refused: {verdict} {why}",
+        )
+        print(
+            f"skip  payloads: AF_UNIX bind refused in this environment ({why}); the worktree cases of a "
+            "socket where nothing listens, of a broker's create, remove, refusals, bad requests, mode, "
+            "parent, stale socket, SIGHUP and SIGTERM do not run"
+        )
+        return total, wrong
+    dead = pathlib.Path(WT_SOCKETS, "dead.sock")
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.bind(str(dead))
+    client_refused(
+        "AGENTBOX=1 and a socket where nothing listens",
+        {"AGENTBOX": "1", "AGENTBOX_BROKER": str(dead)},
+        str(dead),
+    )
+
+    broker = start_broker("b1")
+    try:
+        up = until(lambda: is_socket(broker.socket), 10)
+        mode = stat.S_IMODE(broker.socket.lstat().st_mode) if up else None
+        report(up and mode == 0o600, f"the broker binds its socket with mode 600: {mode and oct(mode)}")
+        env = {**WT_ENV, "AGENTBOX": "1", "AGENTBOX_BROKER": str(broker.socket)}
+        proc, _ = worktree_run(create("brokered"), env)
+        report(
+            proc is not None
+            and proc.returncode == 0
+            and made(proc.stdout, "brokered")
+            and not marker.exists(),
+            f"a create through the broker prints the path, makes the worktree with its HEAD on the "
+            f"branch and runs no post-checkout: {said(proc)}",
+        )
+        proc, _ = worktree_run(remove("brokered"), env)
+        report(
+            proc is not None
+            and proc.returncode == 0
+            and proc.stdout == ""
+            and not pathlib.Path(WT_ROOT, "Repo-brokered").exists(),
+            f"a remove through the broker removes the worktree and prints nothing: {said(proc)}",
+        )
+        proc, _ = worktree_run(remove("brokered"), env)
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and proc.stdout == ""
+            and str(broker.socket) in (proc.stderr.splitlines() or [""])[-1],
+            f"a remove that the broker refuses, of a worktree that no longer exists: exits 1 with a last "
+            f"line that names the socket: {said(proc)}",
+        )
+        proc, started = worktree_run(create("refused", WT_OUTSIDE), env)
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and proc.stdout == ""
+            and WT_OUTSIDE in proc.stderr
+            and str(broker.socket) in (proc.stderr.splitlines() or [""])[-1]
+            and not started,
+            f"a create that the broker refuses: exits 1, writes the broker's lines and one that names "
+            f"the socket, and starts no git: {said(proc)}, {started}",
+        )
+        limit = f"larger than {64 * 1024} bytes"
+        for label, data, word in [
+            ("a create of 70 KiB", json.dumps({**create("big"), "pad": "x" * 70 * 1024}).encode(), limit),
+            (
+                "a create followed by 70 KiB of spaces",
+                json.dumps(create("big")).encode() + b" " * 70 * 1024,
+                limit,
+            ),
+            ("a request that is no JSON", b"not json", ""),
+            ("a request that is no JSON object", b"[1]", ""),
+            ("a request of hook_event_name Other", b'{"hook_event_name": "Other"}', "Other"),
+        ]:
+            reply = request(broker.socket, data)
+            report(
+                reply is not None
+                and isinstance(reply.get("error"), str)
+                and word in reply["error"]
+                and "path" not in reply
+                and not pathlib.Path(WT_ROOT, "Repo-big").exists(),
+                f"the broker answers {label} with an error{f' that names {word!r}' if word else ''}: {reply}",
+            )
+        reply = request(broker.socket, json.dumps(create("after")).encode())
+        report(
+            reply is not None and isinstance(reply.get("path"), str) and made(reply["path"], "after"),
+            f"the broker makes the worktree of a create after those requests, with its HEAD on the "
+            f"branch: {reply}",
+        )
+        if broker.parent.stdin is not None:
+            broker.parent.stdin.close()
+        broker.parent.wait(timeout=TIMEOUT)
+        gone = until(lambda: ended(broker.pid) and not broker.socket.exists(follow_symlinks=False), 10)
+        report(gone, "the broker exits and removes its socket within 10 s after its parent ends")
+    finally:
+        stop_broker(broker)
+
+    stale = pathlib.Path(WT_SOCKETS, "b2.sock")
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.bind(str(stale))
+    broker = start_broker("b2")
+    try:
+        up = until(lambda: answers(stale), 10)
+        reply = request(stale, b'{"hook_event_name": "Other"}') if up else None
+        report(
+            reply is not None and "error" in reply,
+            f"a broker at the path of a stale socket replaces it and serves: {reply}",
+        )
+    finally:
+        stop_broker(broker)
+
+    for name, signum in [("b5", signal.SIGHUP), ("b6", signal.SIGTERM)]:
+        broker = start_broker(name)
+        try:
+            up = until(lambda: is_socket(broker.socket), 10)
+            if up:
+                os.kill(broker.pid, signum)
+            removed = up and until(lambda: not broker.socket.exists(follow_symlinks=False), 10)
+        finally:
+            stop_broker(broker)
+        # The broker stays a zombie of its parent shell until that shell ends, so `ended` is looked at
+        # after stop_broker.
+        report(
+            removed and until(lambda: ended(broker.pid), 10),
+            f"a broker that gets {signum.name} removes its socket and exits within 10 s",
+        )
     return total, wrong
 
 
@@ -2032,11 +3061,6 @@ def call(script, payload, env=None, args: tuple[str, ...] = ()):
         return None
 
 
-def run(script, payload):
-    proc = call(script, payload)
-    return "timeout" if proc is None else proc.returncode
-
-
 def decision(script, payload, args: tuple[str, ...] = ()):
     """Return 'deny', 'ask' or 'pass' for a hook that may answer with a JSON decision."""
     proc = call(script, payload, args=args)
@@ -3423,12 +4447,14 @@ def payload_cases():
         mark = "ok " if got == "pass" else "BAD"
         print(f"{mark} exp pass got {got}  [context  ]  payload {payload!r}")
     for payload in WORKTREE_CASES:
-        got = run(WORKTREE, payload)
+        proc = call(WORKTREE, payload, WORKTREE_ENV)
+        got = "timeout" if proc is None else proc.returncode
         total += 1
         wrong += got != 1
         mark = "ok " if got == 1 else "BAD"
         print(f"{mark} exp 1 got {got}  [worktree ]  fail-closed: {payload!r}")
-    return total, wrong
+    n, bad = worktree_git_cases()
+    return total + n, wrong + bad
 
 
 # `kaimon-note.py` adds a note to a Bash call that runs a Julia probe and lets every call run. A

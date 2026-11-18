@@ -21,6 +21,8 @@ profile adds the user's hosts to a frontend's `network` in a `[frontend.<name>]`
   network.deniedDomains      the template's, or [] where it has none: srt refuses a file without it
   network.allowLocalBinding  the template's
   network.allowMachLookup    the frontend's `mach_lookup`; no such key where it is empty
+  network.allowUnixSockets   the worktree broker's directory BROKER_DIR in the home directory,
+                             for every frontend: the box connects to the broker's socket there
   filesystem.allowWrite     the template's, without each entry at or below another frontend's
                              `state` path; then the frontend's `state`; then `tmpdir`, when given
   filesystem.denyWrite       the template's, without the frontend's `own` and without each
@@ -62,12 +64,14 @@ The module has no subcommand; its cases run in `harness test`.
 """
 
 import copy
+import errno
 import json
 import os
 import pathlib
 import re
 import secrets
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -114,6 +118,12 @@ SEALED_PATHS = tuple(
 # srt's, so it is off.
 INNER_OFF_NAME = "claude-inner-off.json"
 INNER_OFF = b'{"sandbox": {"enabled": false}}\n'
+# The directory of the worktree broker's sockets, relative to the home directory: sandbox/agentbox
+# starts the broker outside srt with its socket there, and every frontend's file lets the box
+# connect to a socket there.
+BROKER_DIR = pathlib.PurePosixPath(".local", "state", "research-harness", "broker")
+# The mode that sandbox/agentbox gives that directory.
+BROKER_MODE = 0o700
 
 
 @dataclass(frozen=True)
@@ -322,6 +332,7 @@ def srt_settings(
             "deniedDomains": unique(denied),
             "allowLocalBinding": binding,
             **({"allowMachLookup": unique(list(mine.mach_lookup))} if mine.mach_lookup else {}),
+            "allowUnixSockets": [f"{home}/{BROKER_DIR}"],
         },
         "filesystem": {
             "allowWrite": unique([*allow_write, *state, *([tmpdir] if tmpdir is not None else [])]),
@@ -614,6 +625,7 @@ def selftest() -> tuple[int, int]:
         root = pathlib.Path(tmp)
         policy_cases(check, root)
         settings_cases(check, root)
+        broker_socket_cases(check)
         template_cases(check)
         forge_guard_cases(check)
         dotfiles_guard_cases(check)
@@ -876,6 +888,7 @@ def mach_lookup_cases(check: Check, root: pathlib.Path) -> None:
             "deniedDomains": ["x.org"],
             "allowLocalBinding": True,
             "allowMachLookup": ["s (A)_B", "t"],
+            "allowUnixSockets": ["/h/.local/state/research-harness/broker"],
         }
         and all(
             "allowMachLookup" not in cast("dict[str, object]", s["network"])
@@ -911,6 +924,34 @@ def mach_lookup_cases(check: Check, root: pathlib.Path) -> None:
         )
 
 
+def broker_socket_cases(check: Check) -> None:
+    """`network.allowUnixSockets` of each frontend's file, rendered from the settings template with
+    the shipped policy in a fixture home: exactly the worktree broker's directory of that home, and
+    no entry of the file's allowWrite at, above or below that directory; and no entry of the
+    template's allowWrite at, above or below `~/.local/state`. So a process in the box can connect
+    to the broker and cannot bind or plant a socket there."""
+    template = cast("dict[str, Any]", jsonio.load(REPO / "settings" / "settings.proposal.json"))["sandbox"]
+    shipped = load_policy(POLICY)
+    home = pathlib.Path("/box-home")
+
+    def reaching(writes: list[str], path: str) -> list[str]:
+        return [p for p in writes if below(p, [path]) or below(path, [p])]
+
+    for name in frontends.FRONTENDS:
+        got = srt_settings(name, template, shipped, home, "/t")
+        sockets = cast("dict[str, object]", got["network"]).get("allowUnixSockets")
+        writes = reaching(
+            cast("dict[str, list[str]]", got["filesystem"])["allowWrite"], f"{home}/{BROKER_DIR}"
+        )
+        check(
+            sockets == [f"{home}/{BROKER_DIR}"] and not writes,
+            f"{name}: allowUnixSockets is the broker's directory {home}/{BROKER_DIR} alone, and no entry "
+            f"of allowWrite is at, above or below it: {sockets}, {writes}",
+        )
+    writes = reaching(cast("list[str]", template["filesystem"]["allowWrite"]), "~/.local/state")
+    check(not writes, f"no entry of the template's allowWrite is at, above or below ~/.local/state: {writes}")
+
+
 def settings_cases(check: Check, root: pathlib.Path) -> None:
     """Each rule of `srt_settings` on the fixture, with the expected lists written out."""
     path = root / "fixture-policy.toml"
@@ -931,9 +972,14 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
         )
     check(
         claude["network"]
-        == {"allowedDomains": ["b.org", "a.org"], "deniedDomains": ["x.org"], "allowLocalBinding": True},
-        f"network is the template's domains in order, each once, and its allowLocalBinding: "
-        f"{claude['network']}",
+        == {
+            "allowedDomains": ["b.org", "a.org"],
+            "deniedDomains": ["x.org"],
+            "allowLocalBinding": True,
+            "allowUnixSockets": ["/h/.local/state/research-harness/broker"],
+        },
+        f"network is the template's domains in order, each once, its allowLocalBinding, and the "
+        f"worktree broker's directory as allowUnixSockets: {claude['network']}",
     )
     fs = cast("dict[str, list[str]]", claude["filesystem"])
     check(
@@ -1079,6 +1125,7 @@ def settings_cases(check: Check, root: pathlib.Path) -> None:
             "deniedDomains": [],
             "allowLocalBinding": False,
             "allowMachLookup": ["s (A)_B", "t"],
+            "allowUnixSockets": ["/h/.local/state/research-harness/broker"],
         },
         f"a template with no deniedDomains gives [], and allowLocalBinding false stays false: "
         f"{no_denied['network']}",
@@ -1730,16 +1777,36 @@ def template_cases(check: Check) -> None:
 
 
 # The script of the cases' srt: it writes its arguments, each ended by a NUL, to srt-args, its
-# environment to srt-env and its parent's process ID to srt-parent, in the home directory that
-# holds it at .local/bin/srt, then exits with $STUB_STATUS.
+# environment to srt-env, its parent's process ID to srt-parent and its own to srt-pid, in the
+# home directory that holds it at .local/bin/srt, then exits with $STUB_STATUS.
 STUB_SRT = """\
 #!/bin/sh
 home=${0%/.local/bin/srt}
 for a in "$@"; do printf '%s\\0' "$a"; done > "$home/srt-args"
 /usr/bin/env > "$home/srt-env"
 echo "$PPID" > "$home/srt-parent"
+echo "$$" > "$home/srt-pid"
 exit "${STUB_STATUS:-0}"
 """
+# The interpreter and the worktree hook with which sandbox/agentbox starts the worktree broker, and
+# the broker's directory, relative to the home directory.
+BOX_PYTHON = pathlib.PurePosixPath(".local", "share", "research-harness", "python", "bin", "python")
+BOX_HOOK = pathlib.PurePosixPath(".claude", "hooks", "worktree.py")
+# The script of the cases' interpreter: it writes its arguments, each ended by a NUL, to
+# broker-args in the home directory that holds it at BOX_PYTHON, binds the socket that its third
+# argument names, as the broker's `--serve <socket>` does, and exits; the socket file stays. It
+# binds from the socket's directory, since the path of a scratch home can exceed the 103 bytes of a
+# socket path on macOS. STUB_IDLE writes the arguments and binds nothing.
+STUB_IDLE = """\
+#!/bin/sh
+home=${0%/.local/share/research-harness/python/bin/python}
+for a in "$@"; do printf '%s\\0' "$a"; done > "$home/broker-args"
+"""
+STUB_PYTHON = (
+    STUB_IDLE
+    + 'cd "${3%/*}" && exec "@PYTHON@" -I -c '
+    + "'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' \"${3##*/}\"\n"
+).replace("@PYTHON@", sys.executable)
 # The exit status of the stub srt in the case of the status.
 STUB_EXIT = 7
 # The variables that the shell itself sets in the environment of a program it starts.
@@ -1780,10 +1847,11 @@ def stub(path: pathlib.Path) -> None:
 
 @dataclass(frozen=True)
 class Box:
-    """A scratch home for sandbox/agentbox: the stub srt (STUB_SRT) in ~/.local/bin, the srt
-    settings file of each frontend and Claude Code's override in the sandbox directory, a stub
-    of each frontend's program in path/, the empty directory tmpdir/ for $TMPDIR, and a forge
-    token store with the GitLab file of BOX_GITLAB and BOX_TOKEN and a `github.com` default."""
+    """A scratch home for sandbox/agentbox: the stub srt (STUB_SRT) in ~/.local/bin, the stub
+    interpreter STUB_PYTHON at BOX_PYTHON and a stub hook file at BOX_HOOK, the srt settings file
+    of each frontend and Claude Code's override in the sandbox directory, a stub of each
+    frontend's program in path/, the empty directory tmpdir/ for $TMPDIR, and a forge token store
+    with the GitLab file of BOX_GITLAB and BOX_TOKEN and a `github.com` default."""
 
     home: pathlib.Path
 
@@ -1796,6 +1864,11 @@ class Box:
         srt = home / ".local" / "bin" / "srt"
         srt.write_text(STUB_SRT)
         srt.chmod(0o755)
+        (home / BOX_PYTHON).parent.mkdir(parents=True)
+        (home / BOX_PYTHON).write_text(STUB_PYTHON)
+        (home / BOX_PYTHON).chmod(0o755)
+        (home / BOX_HOOK).parent.mkdir(parents=True)
+        (home / BOX_HOOK).write_text("# the stub of the worktree hook\n")
         for name in (*frontends.FRONTENDS, "claude-inner-off"):
             (home / DIRECTORY / f"{name}.json").write_text("{}\n")
         for program in ("claude", "opencode", "omp", "agy"):
@@ -1824,6 +1897,23 @@ class Box:
             "GITLAB_HOST": BOX_GITLAB,
             "GITLAB_TOKEN": BOX_TOKEN,
         }
+
+    def socket(self) -> str | None:
+        """The path of the broker's socket of the last run, `<pid>.sock` in BROKER_DIR with the
+        process ID that the stub srt ran as, or None where it did not run."""
+        pid = self.home / "srt-pid"
+        return f"{self.home}/{BROKER_DIR}/{pid.read_text().strip()}.sock" if pid.exists() else None
+
+    def broker(self) -> dict[str, str]:
+        """The variable of the worktree broker that a run with the stubs of `fresh` exports, or {}
+        where srt did not run."""
+        path = self.socket()
+        return {"AGENTBOX_BROKER": path} if path is not None else {}
+
+    def broker_args(self) -> list[str] | None:
+        """The arguments that the stub interpreter saw, or None where it did not run."""
+        path = self.home / "broker-args"
+        return path.read_text().split("\0")[:-1] if path.exists() else None
 
     def configs_empty(self) -> bool:
         """Whether the run directory's glab and gh subdirectories are empty directories."""
@@ -1889,14 +1979,71 @@ class Box:
         return {k: v for k, v in pairs if k not in SHELL_SET}
 
 
+def unix_bind(path: str) -> None:
+    """Bind an AF_UNIX socket at `path`, and close it."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.bind(path)
+
+
+def bind_verdict(bind: Callable[[str], None], *, ci: bool) -> tuple[str, str]:
+    """Whether the cases that bind an AF_UNIX socket run here, from one `bind` at a short path in a
+    fresh private temporary directory: ("run", ""), or ("skip", <errno text>) where it raises
+    PermissionError, as in a session's sandbox; with `ci`, which says that CI runs the cases, a
+    refusal is ("wrong", <errno text>)."""
+    with tempfile.TemporaryDirectory() as directory:
+        try:
+            bind(str(pathlib.Path(directory, "s")))
+        except PermissionError as err:
+            return ("wrong" if ci else "skip"), err.strerror or str(err)
+    return "run", ""
+
+
+def bind_verdict_cases(check: Check) -> None:
+    """`bind_verdict` with an injected bind: a refused bind gives skip, and wrong where CI is set; a
+    bind that succeeds gives run."""
+
+    def refused(path: str) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted", path)
+
+    got = [
+        bind_verdict(refused, ci=False),
+        bind_verdict(lambda _: None, ci=False),
+        bind_verdict(refused, ci=True),
+    ]
+    check(
+        got == [("skip", "Operation not permitted"), ("run", ""), ("wrong", "Operation not permitted")],
+        f"a refused bind gives skip, and wrong where CI is set; a bind that succeeds gives run: {got}",
+    )
+
+
 def agentbox_cases(check: Check, root: pathlib.Path) -> None:
     """sandbox/agentbox, run as a program on a fresh `Box` below `root` per case: its mode; for each
     frontend, the arguments that srt sees, with the caller's `a b`, `--`, the empty string, `--model`
     and `x` each as one argument, and the environment, the caller's with AGENTBOX=1, the three
-    cache variables of CACHES and the variables of the forges (`Box.forge`) added;
-    `resolution_cases`; `cache_cases`; `forge_cases`; srt's exit status; each
+    cache variables of CACHES, the variables of the forges (`Box.forge`) and AGENTBOX_BROKER
+    (`Box.broker`) added; `resolution_cases`; `cache_cases`; `forge_cases`; `broker_cases`; srt's
+    exit status; each
     refusal, which exits 2, starts no srt, makes nothing in TMPDIR and prints one line on stderr
-    that names its cause; and the usage."""
+    that names its cause; and the usage. A run whose broker starts binds an AF_UNIX socket: where
+    `bind_verdict` gives skip, the cases of such runs print one skip line and do not run, and where
+    it gives wrong, one wrong case says so and they run."""
+    bind_verdict_cases(check)
+    verdict, why = bind_verdict(unix_bind, ci="CI" in os.environ)
+    bound = verdict != "skip"
+    check(
+        verdict != "wrong",
+        f"the probe bind of an AF_UNIX socket succeeds, or is refused where CI is not set: {verdict} {why}",
+    )
+    if not bound:
+        check(
+            verdict == "skip",
+            f"the bind cases skip only where the probe bind is refused: {verdict} {why}",
+        )
+        print(
+            f"skip  sandbox: AF_UNIX bind refused in this environment ({why}); the agentbox cases of "
+            "srt's arguments and environment for each frontend, forge_cases and the started cases "
+            "of broker_cases do not run"
+        )
     script = REPO / "sandbox" / "agentbox"
     mode = stat.S_IMODE(script.stat().st_mode) if script.is_file() else None
     # Git stores only the execute bit, so the checkout's write bits follow its umask; the install
@@ -1928,32 +2075,37 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
             *tail,
         ]
         got = box.argv()
-        check(
-            p.returncode == 0 and got == want and p.stderr == "",
-            f"agentbox {name}: srt gets its settings file, --, the program, {extra or 'nothing'} and each "
-            f"argument as one: {p.returncode}, {got}, {p.stderr.strip()!r}",
-        )
+        if bound:
+            check(
+                p.returncode == 0 and got == want and p.stderr == "",
+                f"agentbox {name}: srt gets its settings file, --, the program, {extra or 'nothing'} and "
+                f"each argument as one: {p.returncode}, {got}, {p.stderr.strip()!r}",
+            )
         parent = (box.home / "srt-parent").read_text().strip() if got is not None else None
         check(
             parent == str(os.getpid()),
             f"agentbox {name} execs srt, whose parent is then the caller: {parent}, caller {os.getpid()}",
         )
+        if not bound:
+            continue
         seen = box.environment() if got is not None else {}
         caches = box.caches()
         check(
             caches
-            and seen == {**box.env(), "AGENTBOX": "1", **caches, **box.forge()}
+            and seen == {**box.env(), "AGENTBOX": "1", **caches, **box.forge(), **box.broker()}
             and box.configs_empty(),
             f"agentbox {name}: the environment is the caller's with AGENTBOX=1, npm_config_cache, "
             f"UV_CACHE_DIR and TEXMFVAR each naming its subdirectory of one new directory below TMPDIR, "
-            f"GIT_TERMINAL_PROMPT=0, the store's GITLAB_HOST and GITLAB_TOKEN, and GLAB_CONFIG_DIR and "
-            f"GH_CONFIG_DIR its empty subdirectories glab and gh: "
+            f"GIT_TERMINAL_PROMPT=0, the store's GITLAB_HOST and GITLAB_TOKEN, GLAB_CONFIG_DIR and "
+            f"GH_CONFIG_DIR its empty subdirectories glab and gh, and AGENTBOX_BROKER: "
             f"{box.made()}, { {k: v for k, v in seen.items() if box.env().get(k) != v} }",
         )
 
     resolution_cases(check, root / "resolution")
     cache_cases(check, root / "caches")
-    forge_cases(check, root / "forge")
+    if bound:
+        forge_cases(check, root / "forge")
+    broker_cases(check, root / "broker", bound=bound)
 
     box = Box.fresh(root, "status")
     p = box.run("opencode", STUB_STATUS=str(STUB_EXIT))
@@ -2523,7 +2675,7 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
         p = box.run(name, variables=caller)
         seen = box.environment() if box.argv() is not None else {}
         kept = {k: v for k, v in box.env(**caller).items() if k not in GITLAB_REMOVED}
-        want = {**kept, "AGENTBOX": "1", **box.caches(), **box.forge()}
+        want = {**kept, "AGENTBOX": "1", **box.caches(), **box.forge(), **box.broker()}
         check(
             p.returncode == 0 and p.stderr == "" and box.forge() and seen == want and box.configs_empty(),
             f"agentbox {name} with the caller's GLAB_CONFIG_DIR, GH_CONFIG_DIR, GITLAB_TOKEN, "
@@ -2598,7 +2750,7 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
         p = box.run("omp", variables={"GITLAB_TOKEN": "caller"})
         seen = box.environment() if box.argv() is not None else {}
         forge = {k: v for k, v in box.forge().items() if k not in ("GITLAB_HOST", "GITLAB_TOKEN")}
-        want = {**box.env(), "AGENTBOX": "1", **box.caches(), **forge}
+        want = {**box.env(), "AGENTBOX": "1", **box.caches(), **forge, **box.broker()}
         check(
             p.returncode == 0
             and forge
@@ -2610,6 +2762,92 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
             f"the store: {p.returncode}, {p.stderr!r}, "
             f"{ {k: seen.get(k) for k in ('GITLAB_HOST', 'GITLAB_TOKEN', 'GLAB_CONFIG_DIR')} }",
         )
+
+
+def broker_cases(check: Check, root: pathlib.Path, *, bound: bool) -> None:
+    """The worktree broker of a run. For each frontend: the stub interpreter gets `<hook> --serve
+    <home>/BROKER_DIR/<pid>.sock --parent <pid>`, `<pid>` being the process ID that srt runs as;
+    srt's environment holds AGENTBOX_BROKER as that path, which is a socket; the directory has mode
+    700, also where it had another; broker.log is in the run directory; stderr is empty. With no
+    interpreter, an interpreter that is not executable, no hook file, a file where the directory
+    belongs, or an interpreter that binds nothing: srt runs, with no AGENTBOX_BROKER, also where the
+    caller set one, and stderr holds one line that names the cause. The started cases bind a
+    socket, and run only where `bound` says that this environment allows it."""
+    for name in ("claude", "opencode", "omp", "agy") if bound else ():
+        box = Box.fresh(root / "started", name)
+        directory = box.home / BROKER_DIR
+        if name == "omp":
+            directory.mkdir(parents=True, mode=0o755)
+            directory.chmod(0o755)
+        p = box.run(name)
+        path = box.socket()
+        pid = path and pathlib.PurePosixPath(path).stem
+        made = box.made()
+        mode = stat.S_IMODE(directory.stat().st_mode) if directory.is_dir() else None
+        seen = box.environment() if box.argv() is not None else {}
+        args = box.broker_args()
+        check(
+            p.returncode == 0
+            and p.stderr == ""
+            and path is not None
+            and args == [str(box.home / BOX_HOOK), "--serve", path, "--parent", pid]
+            and seen.get("AGENTBOX_BROKER") == path
+            and pathlib.Path(path).is_socket()
+            and mode == BROKER_MODE
+            and len(made) == 1
+            and (made[0] / "broker.log").is_file(),
+            f"agentbox {name}{' with a broker directory of mode 755' if name == 'omp' else ''}: the "
+            f"interpreter gets the hook, --serve <home>/{BROKER_DIR}/<pid>.sock and --parent <pid> of srt, "
+            f"srt gets AGENTBOX_BROKER as that socket, the directory has mode 700, and broker.log is in the "
+            f"run directory: {p.returncode}, {p.stderr!r}, {args}, {seen.get('AGENTBOX_BROKER')}, "
+            f"{mode and oct(mode)}, {made}",
+        )
+
+    def write(relative: pathlib.PurePosixPath, text: str) -> Callable[[pathlib.Path], None]:
+        def change(h: pathlib.Path) -> None:
+            (h / relative).parent.mkdir(parents=True, exist_ok=True)
+            (h / relative).write_text(text)
+
+        return change
+
+    changes: list[tuple[str, Callable[[pathlib.Path], object], list[str]]] = [
+        ("no interpreter", lambda h: (h / BOX_PYTHON).unlink(), [f"<home>/{BOX_PYTHON}"]),
+        (
+            "an interpreter that is not executable",
+            lambda h: (h / BOX_PYTHON).chmod(0o644),
+            [f"<home>/{BOX_PYTHON}"],
+        ),
+        ("no hook file", lambda h: (h / BOX_HOOK).unlink(), [f"<home>/{BOX_HOOK}"]),
+        (
+            "a file where the broker's directory belongs",
+            write(BROKER_DIR, ""),
+            [f"<home>/{BROKER_DIR}", "cannot be made"],
+        ),
+        (
+            "an interpreter that binds nothing",
+            write(BOX_PYTHON, STUB_IDLE),
+            [f"<home>/{BROKER_DIR}/", "5 seconds"],
+        ),
+    ]
+    for label, change, words in changes:
+        for caller in ({}, {"AGENTBOX_BROKER": "/caller/stale.sock"}):
+            box = Box.fresh(
+                root / "failed" / ("caller" if caller else "plain"), label.replace(" ", "-").replace("'", "")
+            )
+            change(box.home)
+            p = box.run("omp", variables=caller)
+            seen = box.environment() if box.argv() is not None else {}
+            check(
+                p.returncode == 0
+                and box.argv() is not None
+                and "AGENTBOX_BROKER" not in seen
+                and p.stderr.count("\n") == 1
+                and p.stderr.endswith("\n")
+                and all(w.replace("<home>", str(box.home)) in p.stderr for w in words),
+                f"agentbox omp with {label}{', and AGENTBOX_BROKER set by the caller' if caller else ''}: "
+                f"srt runs with no AGENTBOX_BROKER, and one line on stderr names {words}: {p.returncode}, "
+                f"{box.argv() is not None}, {seen.get('AGENTBOX_BROKER')}, {p.stderr!r}",
+            )
 
 
 def cache_cases(check: Check, root: pathlib.Path) -> None:

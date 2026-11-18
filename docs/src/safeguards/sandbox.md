@@ -86,6 +86,21 @@ The launcher sets `AGENTBOX=1` and refuses to start inside a launcher. It gives 
 directories for npm, uv and LaTeX, because the sandbox denies their caches in the home directory.
 `harness setup` installs the pinned `srt` with `npm ci --ignore-scripts`.
 
+**A worktree broker runs outside the sandbox.** `srt` denies writes to every `.githooks`, so a
+`git worktree add` of Claude Code's worktree hook fails inside it. Before it starts `srt`, the
+launcher starts the hook as a broker, `worktree.py --serve <socket> --parent <pid>`, with the
+harness's Python, outside the sandbox. The socket is `<pid>.sock` in
+`~/.local/state/research-harness/broker/`, a directory of mode 700, and the launcher exports its
+path as `AGENTBOX_BROKER`. The hook inside the sandbox sends its payload there, and the broker
+runs the `git` work ([`worktree.py`](guard-hooks.md#worktree-py)). Each settings file allows a
+connection to that directory in `allowUnixSockets`, and no write to it, so a command in the
+sandbox can reach the broker and cannot replace its socket. The broker ends with `srt`, which
+keeps the launcher's process ID, and its output goes to `broker.log` in the run's directory.
+Where the broker cannot start, the launcher writes one line on standard error and starts the
+frontend all the same; the worktree hook then fails. The broker serves the worktree hook only: a
+`git pull`, `git switch` or `git rebase` that changes `.githooks/` still fails inside the
+sandbox.
+
 **`agentbox` is opt-in.** A frontend that you start without it does not read its `srt` file, and
 runs as it would without the harness: Claude Code with its session sandbox, OpenCode and oh-my-pi
 with none. The probe battery `scripts/probe-agentbox.py` checks the boundary on macOS; run it from
