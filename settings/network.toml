@@ -124,6 +124,9 @@ infrastructure = [
     "objects.githubusercontent.com",
     "codeload.github.com",
     "uploads.github.com",
+    # the GitHub Actions run and job logs, which `gh run view --log` and the jobs API redirect to
+    "results-receiver.actions.githubusercontent.com",
+    "*.blob.core.windows.net",
     # GitHub Pages, for the InterLinks inventories of a Documenter build
     "github.io",
     "*.github.io",
