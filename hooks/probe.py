@@ -1936,8 +1936,9 @@ def worktree_git_cases() -> tuple[int, int]:
     repository check and of a worktree path that is a link, which start no git; the refusals of
     the git config (`config_check_cases`); git pinned to the checked repository
     (`discovery_cases`); the GIT_ALLOW_PROTOCOL of every git; the client's
-    refusals under `AGENTBOX`; the life of a broker; and the options of every git that the hook
-    starts, recorded in this process: (number of cases, number wrong)."""
+    refusals under `AGENTBOX`; the boxed child (`boxed_cases`); the broker's settings file, staging
+    directory and profile (`broker_start_cases`); the life of a broker; and the options of every git
+    that the hook starts, recorded in this process: (number of cases, number wrong)."""
     verdict, why = bind_verdict(unix_bind, ci="CI" in os.environ)
     worktree_fixture()
     total = wrong = 0
