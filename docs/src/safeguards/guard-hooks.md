@@ -72,7 +72,8 @@ reason, in the form of the frontend: for Claude Code exit 2 with the reason on s
 [the launcher check](#the-launcher-check) first refuses every call of a Claude Code, OpenCode or
 oh-my-pi session outside `agentbox`, before the table reads the payload, except a Claude Code
 session in the Code tab of the desktop app or in `claudex` with its own sandbox on, which passes;
-in any other session, no check reads a tool that the table does not name, and the call goes on.
+in any other session, no check reads a tool that the table does not name, and the call goes on
+when the table can read the payload.
 oh-my-pi and OpenCode cannot ask the user from a plugin, so their tables answer an `ask` as a
 block whose reason tells the model to ask the user in chat; `plugin.py` holds what the two tables
 share: the reading of the message, the size check of the command and the answer.
