@@ -527,11 +527,14 @@ def staged_add(repo: Path, name: str, final: Path, profile: Path) -> None:
 
 
 def undo(repo: Path, made: Path | None, profile: Path) -> None:
-    """Remove `made`, where it is given, and run `git worktree prune` under srt, whose failure only
-    writes to stderr: the step that failed before gives the refusal."""
+    """Remove `made`, where it is given, and then run `git worktree prune` under srt. A failure of
+    either writes one line to stderr, which names `made` or the repository, and raises nothing: the
+    step that failed before gives the refusal."""
     if made is not None:
-        with contextlib.suppress(OSError):
+        try:
             discard(made)
+        except OSError as err:
+            sys.stderr.write(f"worktree hook: {made} cannot be removed: {err}\n")
     try:
         proc = run_git("worktree", "prune", repo=repo, profile=profile)
     except (OSError, subprocess.TimeoutExpired) as err:

@@ -1306,7 +1306,7 @@ def inprocess(
 def boxed_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
     """`worktree.py --boxed <profile>` with the stub srt: a create and a remove of `Repo` through
     the staging directory, every git under srt; then `boxed_recorded_cases`, `boxed_device_cases`,
-    `boxed_step_cases` and `boxed_dirty_case`."""
+    `boxed_step_cases`, `boxed_dirty_case` and `boxed_undo_case`."""
     marker = pathlib.Path(WT_MARKER)
     final = pathlib.Path(WT_ROOT, "Repo-boxed")
     proc, started, boxed = boxed_run(create("boxed"))
@@ -1357,6 +1357,56 @@ def boxed_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -
     boxed_device_cases(hook, report)
     boxed_step_cases(report)
     boxed_dirty_case(report)
+    boxed_undo_case(hook, report)
+
+
+def boxed_undo_case(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`undo` where the directory that the child made cannot be removed, as a process that a config
+    started can leave a directory of mode 500 with a file in it: one stderr line names the directory
+    and the error, `git worktree prune` still runs after the failed removal, and no exception leaves
+    `undo`."""
+    made = pathlib.Path(FIXTURE.name, "wt-undo", "Repo-locked")
+    locked = made / "locked"
+    locked.mkdir(parents=True)
+    (locked / "file").write_text("locked\n", encoding="utf-8")
+    calls: list[str] = []
+    real_discard = hook.discard
+
+    def discard(path: pathlib.Path) -> None:
+        calls.append(f"discard {path}")
+        real_discard(path)
+
+    def record(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        calls.append(" ".join(args))
+        return subprocess.CompletedProcess(list(args), 0, "", "")
+
+    err = io.StringIO()
+    locked.chmod(0o500)
+    try:
+        with (
+            mock.patch.object(hook, "discard", discard),
+            mock.patch.object(hook, "run_git", record),
+            contextlib.redirect_stderr(err),
+        ):
+            hook.undo(pathlib.Path(WT_REPO), made, pathlib.Path(WT_PROFILE))
+    except OSError as raised:
+        outcome = f"raised: {raised!r}"
+    else:
+        outcome = "returned"
+    finally:
+        locked.chmod(0o700)
+    lines = [line for line in err.getvalue().splitlines() if str(made) in line.replace(str(locked), "")]
+    report(
+        outcome == "returned"
+        and len(lines) == 1
+        and "Permission denied" in lines[0]
+        and calls == [f"discard {made}", "worktree prune"],
+        f"undo where the directory it made cannot be removed writes one line that names it and the "
+        f"error, runs `git worktree prune` after it, and raises nothing: {outcome}, {err.getvalue()!r}, "
+        f"{calls}",
+    )
+    shutil.rmtree(made.parent)
 
 
 def boxed_recorded_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
@@ -1762,13 +1812,20 @@ class Listener:
 
 
 def broker_start_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
-    """The broker's settings file, staging directory and profile: `serve_arguments` takes
-    `--serve <socket> --parent <pid> --settings <file>` alone; a broker whose settings file is no
-    JSON, or whose `filesystem.allowWrite` is a string, or whose staging directory is a link, exits
-    non-zero, binds no socket, and leaves the link's target; and in this process, with a bind that
-    the probe refuses, the broker makes the staging directory with mode 700 in place of a stale one
-    and the profile with mode 600 before it binds, reads a settings file that is no JSON before it
-    binds, and removes both when it ends."""
+    """The broker's settings file, staging directory and profile: `serve_arguments` and
+    `allowed_writes` (`broker_argument_cases`); the starts that refuse (`broker_bad_start_cases`);
+    and the starts in this process with a bind that the probe refuses (`broker_listener_cases`)."""
+    broker_argument_cases(hook, report)
+    bad_json = pathlib.Path(FIXTURE.name, "wt-bad.json")
+    bad_json.write_text("not json\n", encoding="utf-8")
+    broker_bad_start_cases(report, bad_json)
+    broker_listener_cases(hook, report, bad_json)
+
+
+def broker_argument_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`serve_arguments` takes `--serve <socket> --parent <pid> --settings <file>` alone, and
+    `allowed_writes` reads `filesystem.allowWrite` as a list of strings or refuses with a line that
+    names the file."""
     arguments = getattr(hook, "serve_arguments", None)
     got: list[object] = []
     for args in (
@@ -1805,8 +1862,11 @@ def broker_start_cases(hook: types.ModuleType, report: Callable[[object, str], N
             f"the broker reads {value} as {want or 'a refusal that names the file'}: {result}",
         )
 
-    bad_json = pathlib.Path(FIXTURE.name, "wt-bad.json")
-    bad_json.write_text("not json\n", encoding="utf-8")
+
+def broker_bad_start_cases(report: Callable[[object, str], None], bad_json: pathlib.Path) -> None:
+    """A broker whose settings file is `bad_json`, no JSON, or whose `filesystem.allowWrite` is a
+    string, or whose staging directory is a link, exits non-zero, binds no socket, writes no
+    profile, and leaves the link's target."""
     bad_list = pathlib.Path(FIXTURE.name, "wt-string.json")
     bad_list.write_text(json.dumps({"filesystem": {"allowWrite": "/x"}}), encoding="utf-8")
     stage = pathlib.Path(WT_STAGES, str(os.getpid()))
@@ -1864,6 +1924,14 @@ def broker_start_cases(hook: types.ModuleType, report: Callable[[object, str], N
         if linked_stage:
             stage.unlink()
 
+
+def broker_listener_cases(
+    hook: types.ModuleType, report: Callable[[object, str], None], bad_json: pathlib.Path
+) -> None:
+    """In this process, with a bind that the probe refuses, the broker makes the staging directory
+    with mode 700 in place of a stale one and the profile with mode 600 before it binds, reads the
+    settings file `bad_json`, no JSON, before it binds, removes both when it ends, and leaves a
+    staging directory that holds a worktree."""
     parent = os.getppid()
     stage = pathlib.Path(WT_STAGES, str(parent))
     own = stage.parent / f"{stage.name}.json"
@@ -1917,7 +1985,7 @@ def broker_start_cases(hook: types.ModuleType, report: Callable[[object, str], N
 
     def stuck(family: int, kind: int) -> Listener:
         del family, kind
-        return Listener(lambda: (stage / "Repo-stuck").mkdir())
+        return Listener((stage / "Repo-stuck").mkdir)
 
     with mock.patch.object(fake, "socket", stuck):
         outcome = start(pathlib.Path(WT_SETTINGS))
