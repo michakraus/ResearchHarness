@@ -4,7 +4,8 @@
   `Edit`, `Write`, `Grep`, `Task` and every other tool unchecked in a session outside `agentbox`.
   The `Bash` group keeps `rtk hook claude` and `kaimon-note.py`; the guard's own table still picks
   the checks of each tool, so no tool loses a check, and each call starts the guard once. The
-  safeguard pages and the OpenCode adapter page state the launcher check where they said that a
+  guard reads every tool's payload, so it refuses, for every tool, a payload that it cannot read,
+  such as one that nests deeper than 200. The safeguard pages and the OpenCode adapter page state the launcher check where they said that a
   frontend started without `agentbox` runs as without the harness, or that the guard lets every
   other tool pass; the planned row of a guard against a session with no sandbox is gone. Two probe
   cases of OpenCode and oh-my-pi no longer inherit `CLAUDE_CODE_ENTRYPOINT` and

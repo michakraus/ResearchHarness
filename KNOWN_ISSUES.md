@@ -1213,18 +1213,3 @@
   commit.
 - kind: not verified
 - found: 2026-11-21, CodeRabbit on a pull request of the learning package
-
-### K182 · Claude Code's guard refuses a payload that `guard.jsonio` refuses also for a tool that no check reads.
-
-- location: `hooks/guard/frontends/claude.py:164`
-- evidence: the settings template runs the guard for every tool, in the `PreToolUse` group of the
-  matcher `*`, and `decide` calls `read`, which parses the whole payload, before `checks_of`
-  finds that no entry of `TABLE` names the tool. So a call of a tool that no check reads, such as
-  a third-party MCP tool, is refused when its `tool_input` nests deeper than `MAX_DEPTH`, 200, or
-  holds an integer of more digits than `int` reads, 4300. A `bigpayload.py` that reads an
-  `mcp__other__x` payload with a nesting of 250 lists through `claude.read` prints `deep:
-  HarnessError the payload: line 1: nested deeper than 200`. On macOS outside `agentbox` the
-  launcher check refuses the call first, so the refusal shows on Linux or inside `agentbox`. The
-  refusal fails closed.
-- kind: found late
-- found: 2026-11-21, the verification of part G2 of the sandbox plan

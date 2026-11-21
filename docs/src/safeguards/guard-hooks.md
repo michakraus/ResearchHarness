@@ -91,7 +91,9 @@ only with `action: "keep"` and no `discard_changes`. Every other such call gets 
 
 The guard fails closed. It refuses a payload that is not UTF-8 or not a JSON object, or that has
 no `tool_name`; for a tool that it checks, a `tool_input` that is no object, a `Bash` call without
-a command, and a command of more than 1 MiB. A check that must resolve a path against the working
+a command, and a command of more than 1 MiB. Claude Code's guard reads the whole payload before
+its table, so it also refuses, for every tool, including one that no check reads, a payload that
+nests deeper than 200 or holds an integer of more than 4300 digits. A check that must resolve a path against the working
 directory refuses the command when the payload names none. A guard that raises refuses the call
 with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline and a quoted operator are read as the shell
