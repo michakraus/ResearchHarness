@@ -1112,10 +1112,10 @@
 ### K174 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
 
 - location: `hooks/probe.py:806`
-- evidence: `hooks/probe.py:806-822` defines `unix_bind` and `bind_verdict`, and `:2025-2036`
+- evidence: `hooks/probe.py:806-822` defines `unix_bind` and `bind_verdict`, and `:2108-2119`
   repeats the body of `bind_verdict_cases`, the same code as `lib/harness/sandbox.py:1982-2016`,
   about 30 lines. `hooks/probe.py` already puts `REPO/lib` on `sys.path` and imports `harness` in
-  other groups (`from harness import install_cases`, `:4251`), so it can import them. Each copy
+  other groups (`from harness import install_cases`, `:4334`), so it can import them. Each copy
   has its own mutants: the three mutants of the three-way decision run twice.
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
@@ -1200,9 +1200,32 @@
 - kind: not verified
 - found: 2026-11-21, CodeRabbit on a pull request of the learning package
 
-### K182 · The worktree broker's `--parent` test accepts a digit that is not ASCII.
+### K182 · The `ci-groups` rule of `test-layout.jl` accepts a group name of `test/ci-groups.toml` that ends in a newline.
 
-- location: `hooks/worktree.py:938`
+- location: `scripts/test-layout.jl:178`
+- evidence: `CI_GROUP_NAME = r"^[a-z][a-z0-9]*$"`, and PCRE's `$` also matches before a final
+  newline: `julia --startup-file=no -e 'println(occursin(r"^[a-z][a-z0-9]*$", "training\n"))'`
+  prints `true`; with `\z` in place of `$` it prints `false`, and `"training"` still matches. A
+  TOML string `"training\n"` therefore passes the rule at line 338, and the `groups` jobs of the
+  workflows refuse it with `re.fullmatch`, so the failure shows in CI and not in the hook.
+- kind: defect
+- found: 2026-11-21, CodeRabbit on a pull request of the learning package
+
+### K183 · `tests_lines` of `test-layout.jl` takes the first child of a pair as its label, which is the operator for a pair in prefix form.
+
+- location: `scripts/test-layout.jl:166`
+- evidence: `tests_lines` returns `JS.source_line(first(kids(f)))` for each pair `f` of `TESTS`.
+  `tests_table` accepts `(=>)(label, path)` as well as `label => path`. For the prefix form, the
+  first child is the operator, so a call that starts on the line before its label makes the rule
+  D10 read the wrong line. `tests_lines` of a file that holds
+  `const TESTS = ["broken" => ["a" => "a.jl", (=>)(` and, on the next line, `"b", "b.jl")]]`
+  returns `[1, 1]`; the label `"b"` is on line 2. No repository writes a pair in prefix form.
+- kind: defect
+- found: 2026-11-21, CodeRabbit on a pull request of the learning package
+
+### K184 · The worktree broker's `--parent` test accepts a digit that is not ASCII.
+
+- location: `hooks/worktree.py:955`
 - evidence: `serve_arguments` admits `parent` where `parent.isdigit()` holds, and then calls
   `int(parent)`. `"²".isdigit()` is `True`, and `int("²")` raises `ValueError: invalid literal for
   int() with base 10: '²'`, so `worktree.py --serve <socket> --parent ² --settings <file>` ends in

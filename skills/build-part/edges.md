@@ -279,6 +279,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   cannot (M1b verify 3, *Simplify the optimiser package and the learning package for 0.9*)
 - a first trial step of `Inf`, or above the caller's ceiling; an invalid ceiling
 - an empty, a one-element or a zero-width case; the edge of a grid
+- **a reversed interval or domain (`lo > hi`) that the base type already accepts:** its steps are
+  negative, so a weight such as `√h` throws a `DomainError` and a moment changes sign. Decide in
+  the spec whether the part guards it or records it as a known issue of the base type. When
+  several parts read the same type, say so plan-wide (L1 round 1a, *a dynamical low-rank plan*)
 - a value read out of a live cache and stored beside the solution: it aliases the cache, so every
   stored entry ends up equal to the last one. Copy it, and give the test's fixture a
   step-dependent value so the test can see the difference (C, a package revival)
@@ -1165,6 +1169,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   A build that merely warns on the base fails here, because one unresolved link is an error. Write
   the name in plain backticks, or give `docs/make.jl` the plugin (P39 round 1,
   *Rewrite the reduced basis packages*)
+- **a Markdown file under `docs/src/` that a page reads in and that no `pages` entry names:**
+  Documenter builds every `.md` below `docs/src/` as a page of its own unless `makedocs` sets
+  `pagesonly = true`, so a table that a page includes with `Markdown.parse` from `docs/src/assets/`
+  also appears as `assets/<name>.html`, or as `assets/<name>/index.html` with `prettyurls`,
+  reachable by its URL and from no menu, and the build passes. Write such a fragment outside
+  `docs/src/`, or give it another extension, and list `docs/build/` after a local build for an
+  `.html` that no `pages` entry names (I3b round 1, the plan that revives the multisymplectic
+  package)
 - **a text fix that generalises from the one instance it verified to its neighbours:** the sentence
   said `--seed` names the run "like every other option here", and of the four neighbours it named
   only the seed did. Read the source of every claim a generalising phrase covers — `run_id(o)` named
