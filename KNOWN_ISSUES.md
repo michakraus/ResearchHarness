@@ -1187,3 +1187,29 @@
   caller environment makes its assertion that every git holds the pinned `GIT_DIR` kill the mutant.
 - kind: missing test
 - found: 2026-11-18, the verification of part G3a of the sandbox plan
+
+### K180 · The pre-commit hook counts the end line of an ast-grep hit as covered even when the hit ends at column 0 of that line.
+
+- location: `githooks/pre-commit.jl:376`
+- evidence: `hit` sets `last = range["end"]["line"]::Int + 1`. ast-grep 0.51.3 reports the end
+  column as exclusive: `printf 'x = 1\ny = 2\n' | ast-grep run -p 'x = 1' -l python
+  --json=stream --stdin` gives `"end":{"line":0,"column":5}` for the 5-character match. So a hit
+  that ends at column 0 does not cover its end line, yet `ast_grep` intersects `h.first:h.last`
+  with the added lines, and a commit that adds only that line is blocked by a hit that it does not
+  touch. The fix that CodeRabbit proposes is
+  `last = range["end"]["line"]::Int + (range["end"]["column"]::Int > 0)`. Not reproduced: it needs
+  an error rule whose match ends after a newline.
+- kind: not verified
+- found: 2026-11-21, CodeRabbit on a pull request of the learning package
+
+### K181 · A staged `.jl` file that is edited on disk while the pre-commit stages run is judged on the new content.
+
+- location: `githooks/pre-commit.jl:570`
+- evidence: `main` refuses a staged `.jl` file with unstaged changes once, before any stage runs.
+  The stages then read the files on disk. An editor save during `lint` or `ast_grep` makes the
+  disk differ from the index, so the hook can pass on content that the commit does not hold, or
+  fail on content that it does not hold. A second `unstaged(jl)` check after the last stage, or
+  stages that read an index snapshot, would close it. Not reproduced: it needs a save during a
+  commit.
+- kind: not verified
+- found: 2026-11-21, CodeRabbit on a pull request of the learning package
