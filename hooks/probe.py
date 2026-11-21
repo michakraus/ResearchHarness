@@ -529,7 +529,60 @@ WT_EVIL_ENV = {
 }
 # The script of a broker's parent: a shell that starts `worktree.py --serve` as its child, with its
 # output in a log file, prints the broker's process ID, and runs until its own stdin ends.
-BROKER_PARENT = '"$0" "$1" --serve "$2" --parent $$ > "$3" 2>&1 < /dev/null & echo "$!"; read -r line'
+BROKER_PARENT = (
+    '"$0" "$1" --serve "$2" --parent $$ --settings "$4" > "$3" 2>&1 < /dev/null & echo "$!"; read -r line'
+)
+# The boxed git of `worktree.py`: the stub srt WT_SRT in the fixture home's `.local/bin` (STUB_SRT),
+# which appends its arguments to WT_SRT_LOG; the brokers' staging directories below WT_STAGES; the
+# staging directory WT_STAGE and its profile WT_PROFILE of the cases that run `--boxed` directly;
+# and the settings file WT_SETTINGS of a broker, whose value is WT_SETTINGS_VALUE.
+WT_SRT = WT_HOME + "/.local/bin/srt"
+WT_SRT_LOG = FIXTURE.name + "/wt-srt.log"
+WT_STAGES = WT_HOME + "/.local/state/research-harness/worktree-stage"
+WT_STAGE = WT_STAGES + "/1"
+WT_PROFILE = WT_STAGE + ".json"
+WT_SETTINGS = FIXTURE.name + "/wt-settings.json"
+WT_SETTINGS_VALUE: dict[str, Any] = {
+    "filesystem": {"allowWrite": ["/x"], "denyWrite": ["/y"]},
+    "network": {"allowedDomains": ["example.org"]},
+}
+# The arguments with which a boxed child starts every git: srt with the profile, then git with
+# WT_OPTIONS.
+WT_BOXED = [WT_SRT, "--settings", WT_PROFILE, "--", "git", *WT_OPTIONS]
+# The stub srt: it appends its arguments as one line to WT_SRT_LOG, drops its options up to `--`,
+# and runs the rest with the environment that it got, as srt 0.0.81 does. STUB_SRT_MODE breaks one
+# step: `fail-add` runs a `worktree add` and exits 3; `link-after-add` replaces the staged
+# directory of a `worktree add` by a link to the empty `wt-empty`; `final-after-add` makes the
+# final path of a `worktree add`, with a file `found` in it; `wrong-git` writes a `.git` file that
+# names the worktree `Ssh-x` of another repository after a `worktree repair`, and points the admin
+# `gitdir` of `Ssh-x` back at it, so that the `.git` file is a valid one of `Ssh`.
+STUB_SRT = f"""#!/bin/sh
+printf '%s\\n' "$*" >> '{WT_SRT_LOG}'
+while [ "$#" -gt 0 ] && [ "$1" != -- ]; do shift; done
+shift
+case "${{STUB_SRT_MODE-}}:$*" in
+"fail-add:"*" worktree add "*) "$@"; exit 3 ;;
+esac
+"$@"
+status=$?
+case "${{STUB_SRT_MODE-}}:$*" in
+"link-after-add:"*" worktree add "*)
+    for a; do
+        case $a in */worktree-stage/*) rm -rf "$a"; ln -s '{FIXTURE.name}/wt-empty' "$a" ;; esac
+    done ;;
+"final-after-add:"*" worktree add "*)
+    for a; do
+        case $a in */worktree-stage/*) mkdir "{WT_ROOT}/${{a##*/}}"; : > "{WT_ROOT}/${{a##*/}}/found" ;; esac
+    done ;;
+"wrong-git:"*" worktree repair "*)
+    for a; do last=$a; done
+    printf 'gitdir: %s\\n' '{WT_R}/Ssh/.git/worktrees/Ssh-x' > "$last/.git"
+    real=$(cd "$last" && pwd -P)
+    case $real in //*) real=${{real#/}} ;; esac
+    printf '%s/.git\\n' "$real" > '{WT_R}/Ssh/.git/worktrees/Ssh-x/gitdir' ;;
+esac
+exit "$status"
+"""
 
 
 def worktree_fixture() -> None:
@@ -646,17 +699,36 @@ def worktree_fixture() -> None:
     )
     ssh.chmod(0o755)
     pathlib.Path(WT_SOCKETS).mkdir()
+    srt = pathlib.Path(WT_SRT)
+    srt.parent.mkdir(parents=True)
+    srt.write_text(STUB_SRT, encoding="utf-8")
+    srt.chmod(0o755)
+    pathlib.Path(WT_STAGE).mkdir(parents=True, mode=0o700)
+    pathlib.Path(WT_PROFILE).write_text(json.dumps(WT_SETTINGS_VALUE), encoding="utf-8")
+    pathlib.Path(WT_SETTINGS).write_text(json.dumps(WT_SETTINGS_VALUE), encoding="utf-8")
 
 
 def worktree_run(
-    payload: dict[str, str], env: dict[str, str]
+    payload: dict[str, str], env: dict[str, str], args: tuple[str, ...] = ()
 ) -> tuple[subprocess.CompletedProcess[str] | None, list[str]]:
-    """`worktree.py` on the JSON text of `payload` in `env`, and the arguments of each git that the
-    logging `git` started meanwhile, one string each."""
+    """`worktree.py` with `args` on the JSON text of `payload` in `env`, and the arguments of each
+    git that the logging `git` started meanwhile, one string each."""
     log = pathlib.Path(WT_LOG)
     log.unlink(missing_ok=True)
-    proc = call(WORKTREE, json.dumps(payload), env)
+    proc = call(WORKTREE, json.dumps(payload), env, args)
     return proc, log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+
+
+def boxed_run(
+    payload: dict[str, str], mode: str = ""
+) -> tuple[subprocess.CompletedProcess[str] | None, list[str], list[str]]:
+    """`worktree.py --boxed WT_PROFILE` on `payload` in WT_ENV, with the stub srt's STUB_SRT_MODE
+    `mode`: the process, the arguments of each git that the logging `git` started, and the
+    arguments of each call of the stub srt."""
+    log = pathlib.Path(WT_SRT_LOG)
+    log.unlink(missing_ok=True)
+    proc, started = worktree_run(payload, {**WT_ENV, "STUB_SRT_MODE": mode}, ("--boxed", WT_PROFILE))
+    return proc, started, log.read_text(encoding="utf-8").splitlines() if log.exists() else []
 
 
 class Broker(NamedTuple):
@@ -668,11 +740,12 @@ class Broker(NamedTuple):
 
 
 def start_broker(name: str) -> Broker:
-    """`worktree.py --serve` at WT_SOCKETS/<name>.sock in WT_ENV, as the child of a shell that runs
-    BROKER_PARENT; its output goes to WT_SOCKETS/<name>.log."""
+    """`worktree.py --serve` at WT_SOCKETS/<name>.sock with the settings file WT_SETTINGS in WT_ENV,
+    as the child of a shell that runs BROKER_PARENT; its output goes to WT_SOCKETS/<name>.log."""
     path = pathlib.Path(WT_SOCKETS, f"{name}.sock")
+    log = str(path.with_suffix(".log"))
     parent = subprocess.Popen(  # no timeout: stop_broker ends it by closing its stdin
-        ["/bin/sh", "-c", BROKER_PARENT, sys.executable, WORKTREE, str(path), str(path.with_suffix(".log"))],
+        ["/bin/sh", "-c", BROKER_PARENT, sys.executable, WORKTREE, str(path), log, WT_SETTINGS],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         text=True,
@@ -783,10 +856,11 @@ def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], No
     refused."""
     payload = json.dumps({"hook_event_name": "WorktreeCreate", "cwd": WT_REPO, "name": "unit"}).encode()
     absent = str(pathlib.Path(WT_SOCKETS, "no-python"))
+    profile = pathlib.Path(WT_PROFILE)
     try:
         with mock.patch.object(sys, "executable", absent):
-            reply: object = hook.respond(payload)
-    except OSError as err:
+            reply: object = hook.respond(payload, profile)
+    except (OSError, TypeError) as err:
         reply = err
     error = getattr(reply, "error", None)
     report(
@@ -800,9 +874,9 @@ def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], No
         theirs.shutdown(socket.SHUT_WR)
         try:
             with mock.patch.object(sys, "executable", absent):
-                hook.answer(ours)
+                hook.answer(ours, profile)
             outcome = "answered"
-        except OSError as err:
+        except (OSError, TypeError) as err:
             outcome = repr(err)
         sending = ours.gettimeout()
         ours.shutdown(socket.SHUT_WR)
@@ -819,25 +893,37 @@ def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], No
     )
 
     runs: list[dict[str, str]] = []
+    argv: list[list[str]] = []
 
     def run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         runs.append(dict(kwargs.get("env") or {}))
+        argv.append([str(a) for a in args])
         return subprocess.CompletedProcess(args, 0, f"{WT_ROOT}/Repo-unit\n", "said\n")
 
     with (
         mock.patch.dict(os.environ, {**WT_ENV, "AGENTBOX": "1", "AGENTBOX_BROKER": "/x.sock"}, clear=True),
         mock.patch.object(subprocess, "run", side_effect=run),
     ):
-        reply = hook.respond(payload)
-        valid = len(runs)
-        big = [
-            hook.respond(json.dumps({"hook_event_name": "WorktreeCreate", "pad": "x" * 70 * 1024}).encode()),
-            hook.respond(payload + b" " * 70 * 1024),
-        ]
-        after_big = len(runs)
-        other = hook.respond(b'{"hook_event_name": "Other", "cwd": "/"}')
+        try:
+            reply = hook.respond(payload, profile)
+            valid = len(runs)
+            big = [
+                hook.respond(
+                    json.dumps({"hook_event_name": "WorktreeCreate", "pad": "x" * 70 * 1024}).encode(),
+                    profile,
+                ),
+                hook.respond(payload + b" " * 70 * 1024, profile),
+            ]
+            after_big = len(runs)
+            other = hook.respond(b'{"hook_event_name": "Other", "cwd": "/"}', profile)
+        except TypeError as err:
+            reply, valid, big, after_big, other = err, len(runs), [err, err], len(runs), err
         after_other = len(runs)
     env = runs[0] if valid == 1 else {}
+    report(
+        valid == 1 and argv[0][1:] == [str(pathlib.Path(WORKTREE).absolute()), "--boxed", WT_PROFILE],
+        f"the broker starts a create as worktree.py --boxed <profile>: {argv[:1]}",
+    )
     report(
         "Other" in str(getattr(other, "error", None)) and after_other == after_big,
         f"a request of hook_event_name Other gets an error that names it and starts nothing: {other!r}, "
@@ -1107,6 +1193,684 @@ def discovery_cases(report: Callable[[object, str], None]) -> None:
     )
 
 
+def stage_state(stage: pathlib.Path) -> tuple[int, list[str]] | None:
+    """The mode and the sorted entries of the staging directory `stage`, or None where it is no
+    directory or a link."""
+    if stage.is_symlink() or not stage.is_dir():
+        return None
+    return stat.S_IMODE(stage.stat().st_mode), sorted(p.name for p in stage.iterdir())
+
+
+def profile_state(profile: pathlib.Path) -> tuple[int, object] | None:
+    """The mode and the JSON value of the profile file `profile`, or None where it is no file."""
+    if profile.is_symlink() or not profile.is_file():
+        return None
+    try:
+        value = json_value(profile.read_text(encoding="utf-8"), str(profile))
+    except ValueError as err:
+        value = repr(err)
+    return stat.S_IMODE(profile.stat().st_mode), value
+
+
+def profiled(stage: pathlib.Path) -> dict[str, Any]:
+    """WT_SETTINGS_VALUE with `stage` appended to its `filesystem.allowWrite`."""
+    filesystem = cast("dict[str, Any]", WT_SETTINGS_VALUE["filesystem"])
+    return {
+        **WT_SETTINGS_VALUE,
+        "filesystem": {**filesystem, "allowWrite": [*filesystem["allowWrite"], str(stage)]},
+    }
+
+
+def listed(path: pathlib.Path) -> bool:
+    """Whether `git worktree list` of `Repo` names `path`, resolved."""
+    proc = subprocess.run(
+        ["git", "-C", WT_REPO, "worktree", "list", "--porcelain"],  # noqa: S607 -- the `git` on PATH
+        capture_output=True,
+        text=True,
+        env=WORKTREE_ENV,
+        timeout=60,
+        check=False,
+    )
+    return f"worktree {path.resolve()}" in proc.stdout.splitlines()
+
+
+def linked(path: pathlib.Path) -> bool:
+    """Whether the `.git` file of the worktree `path` names an admin directory whose `gitdir` names
+    that `.git` file, resolved, as git writes them."""
+    dot = path.resolve() / ".git"
+    if not dot.is_file():
+        return False
+    admin = pathlib.Path(dot.read_text(encoding="utf-8").strip().removeprefix("gitdir: "))
+    gitdir = admin / "gitdir"
+    return gitdir.is_file() and gitdir.read_text(encoding="utf-8").strip() == str(dot)
+
+
+def via_srt(line: str) -> bool:
+    """Whether a line of the stub srt's log starts with `--settings WT_PROFILE -- git` and WT_OPTIONS."""
+    return line.split()[: len(WT_BOXED) - 1] == WT_BOXED[1:]
+
+
+def stage_empty() -> bool:
+    """Whether the staging directory WT_STAGE is an empty directory."""
+    return stage_state(pathlib.Path(WT_STAGE)) == (0o700, [])
+
+
+def said(proc: subprocess.CompletedProcess[str] | None) -> str:
+    """The exit status, stdout and stderr of `proc`, or `timeout`."""
+    return "timeout" if proc is None else f"exit {proc.returncode}, {proc.stdout!r}, {proc.stderr!r}"
+
+
+def last(proc: subprocess.CompletedProcess[str] | None) -> str:
+    """The last line of the stderr of `proc`."""
+    return (proc.stderr.splitlines() or [""])[-1] if proc is not None else ""
+
+
+def create(name: str) -> dict[str, str]:
+    """The payload of a create of the worktree `name` of `Repo`."""
+    return {"hook_event_name": "WorktreeCreate", "cwd": WT_REPO, "name": name}
+
+
+def remove(name: str) -> dict[str, str]:
+    """The payload of a remove of the worktree `Repo-<name>`."""
+    return {"hook_event_name": "WorktreeRemove", "worktree_path": f"{WT_ROOT}/Repo-{name}"}
+
+
+def inprocess(
+    hook: types.ModuleType, work: Callable[[], object], *patches: contextlib.AbstractContextManager[object]
+) -> tuple[str, list[list[str]]]:
+    """`work` in this process with the hook's ROOT, RESEARCH and SRT those of the fixture, and
+    `patches`: its outcome, and the arguments of each process that the hook started."""
+    seen: list[list[str]] = []
+    real = subprocess.run
+
+    def record(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen.append([str(a) for a in args])
+        return cast("subprocess.CompletedProcess[str]", real(args, **kwargs))
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.dict(os.environ, WT_ENV, clear=True))
+        stack.enter_context(mock.patch.object(subprocess, "run", side_effect=record))
+        stack.enter_context(mock.patch.object(hook, "RESEARCH", pathlib.Path(WT_R)))
+        stack.enter_context(mock.patch.object(hook, "ROOT", pathlib.Path(WT_ROOT)))
+        stack.enter_context(mock.patch.object(hook, "SRT", pathlib.Path(WT_SRT), create=True))
+        stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+        for patch in patches:
+            stack.enter_context(patch)
+        try:
+            outcome = f"done: {work()}"
+        except (hook.Refusal, hook.HarnessError, TypeError, AttributeError, OSError) as err:
+            outcome = f"refused: {err}"
+    return outcome, seen
+
+
+def boxed_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`worktree.py --boxed <profile>` with the stub srt: a create and a remove of `Repo` through
+    the staging directory, every git under srt; then `boxed_recorded_cases`, `boxed_device_cases`,
+    `boxed_step_cases` and `boxed_dirty_case`."""
+    marker = pathlib.Path(WT_MARKER)
+    final = pathlib.Path(WT_ROOT, "Repo-boxed")
+    proc, started, boxed = boxed_run(create("boxed"))
+    report(
+        proc is not None
+        and proc.returncode == 0
+        and pathlib.Path(proc.stdout.strip()) == final
+        and final.is_dir()
+        and listed(final)
+        and linked(final)
+        and stage_empty()
+        and not marker.exists(),
+        f"a boxed create prints the final path; the worktree is there, registered, its .git file and "
+        f"admin gitdir name each other, the staging directory is empty, and no post-checkout ran: "
+        f"{said(proc)}, listed {listed(final)}, linked {linked(final)}, "
+        f"stage {stage_state(pathlib.Path(WT_STAGE))}",
+    )
+    adds = [line for line in boxed if " worktree add " in line]
+    report(
+        boxed
+        and len(boxed) == len(started)
+        and all(via_srt(line) for line in boxed)
+        and any(" config --file " in line for line in boxed),
+        f"every git of a boxed create runs as {' '.join(WT_BOXED)}, the config read included: "
+        f"{len(started)} gits, {boxed}",
+    )
+    report(
+        len(adds) == 1 and f" {WT_STAGE}/Repo-boxed " in f"{adds[0]} ",
+        f"the boxed worktree add names its path below the staging directory {WT_STAGE}: {adds}",
+    )
+    proc, started, boxed = boxed_run(remove("boxed"))
+    removes = [line for line in boxed if " worktree remove " in line]
+    report(
+        proc is not None
+        and proc.returncode == 0
+        and not final.exists(follow_symlinks=False)
+        and not listed(final)
+        and stage_empty()
+        and boxed
+        and len(boxed) == len(started)
+        and all(via_srt(line) for line in boxed)
+        and len(removes) == 1
+        and removes[0].endswith(f" worktree remove {WT_STAGE}/Repo-boxed"),
+        f"a boxed remove runs every git under srt, removes the worktree below the staging directory, and "
+        f"the worktree is gone: {said(proc)}, {boxed}",
+    )
+    boxed_recorded_cases(hook, report)
+    boxed_device_cases(hook, report)
+    boxed_step_cases(report)
+    boxed_dirty_case(report)
+
+
+def boxed_recorded_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """A boxed create and remove of `Repo` in this process: every process that they start starts
+    with WT_BOXED, the config read included, and the add and the remove name the path below the
+    staging directory."""
+    profile = pathlib.Path(WT_PROFILE)
+
+    def recorded() -> object:
+        path = hook.create(create("boxrec"), profile=profile)
+        hook.remove({"worktree_path": str(path)}, profile=profile)
+        return path
+
+    outcome, seen = inprocess(hook, recorded)
+    report(
+        outcome.startswith("done: ")
+        and seen
+        and all(a[: len(WT_BOXED)] == WT_BOXED for a in seen)
+        and any(a[len(WT_BOXED) : len(WT_BOXED) + 2] == ["config", "--file"] for a in seen),
+        f"every process that a boxed create and remove start in this process starts with "
+        f"{' '.join(WT_BOXED)}, the config read included: {outcome}, {seen}",
+    )
+    verbs = {" ".join(a[len(WT_BOXED) : len(WT_BOXED) + 2]): a[len(WT_BOXED) + 2 :] for a in seen}
+    add = verbs.get("worktree add", [])
+    report(
+        any(x == f"{WT_STAGE}/Repo-boxrec" for x in add),
+        f"the boxed worktree add, recorded, names {WT_STAGE}/Repo-boxrec: {add}",
+    )
+    report(
+        verbs.get("worktree remove") == [f"{WT_STAGE}/Repo-boxrec"],
+        f"the boxed worktree remove, recorded, names {WT_STAGE}/Repo-boxrec: {verbs.get('worktree remove')}",
+    )
+
+
+def boxed_device_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`same_device` with an injected stat that gives two devices, and a boxed create in this
+    process with that stat and with a WORKTREES root that is a link: each refused with a line that
+    names its cause, with no `worktree add`, a `worktree prune` under srt, and no worktree."""
+    profile = pathlib.Path(WT_PROFILE)
+    real_same = getattr(hook, "same_device", None)
+
+    def devices(path: object) -> types.SimpleNamespace:
+        return types.SimpleNamespace(st_dev=1 if str(path).startswith(WT_STAGES) else 2)
+
+    def two_devices(a: pathlib.Path, b: pathlib.Path) -> bool:
+        """The hook's `same_device` with the injected `devices`; True where the hook has none."""
+        return True if real_same is None else bool(real_same(a, b, stat=devices))
+
+    try:
+        unit: object = (
+            two_devices(pathlib.Path(WT_STAGE), pathlib.Path(WT_ROOT)),
+            None if real_same is None else real_same(pathlib.Path(WT_STAGE), pathlib.Path(WT_ROOT)),
+        )
+    except TypeError as err:
+        unit = repr(err)
+    report(
+        unit == (False, True),
+        f"same_device gives False where the injected stat gives two devices, and True on the fixture: {unit}",
+    )
+
+    def refused_create(
+        name: str, words: tuple[str, ...], *patches: contextlib.AbstractContextManager[object]
+    ) -> None:
+        outcome, seen = inprocess(hook, lambda: hook.create(create(name), profile=profile), *patches)
+        verbs = [" ".join(a[len(WT_BOXED) : len(WT_BOXED) + 2]) for a in seen]
+        word = " and ".join(words)
+        report(
+            outcome.startswith("refused: ")
+            and all(w in outcome for w in words)
+            and "worktree add" not in verbs
+            and "worktree prune" in verbs
+            and all(a[: len(WT_BOXED)] == WT_BOXED for a in seen)
+            and not pathlib.Path(WT_ROOT, f"Repo-{name}").exists(follow_symlinks=False)
+            and stage_empty(),
+            f"a boxed create {name}: refused with a line that names {word}, no worktree add, a worktree "
+            f"prune under srt, no worktree, an empty staging directory: {outcome}, {verbs}",
+        )
+
+    two = mock.patch.object(hook, "same_device", two_devices, create=True)
+    refused_create("twodevices", (WT_STAGE, WT_ROOT), two)
+    root_link = pathlib.Path(WT_HOME, "root-link")
+    root_link.symlink_to(WT_ROOT)
+    refused_create("rootlink", (str(root_link),), mock.patch.object(hook, "ROOT", root_link))
+    boxed_edge_cases(hook, report)
+
+
+def boxed_edge_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """The decided edges of a boxed create and remove, in this process: a staging directory that is
+    a link, a WORKTREES root that is missing, which the child makes, below a `Research` that is
+    missing, which it does not make; a rename that fails, as across devices; a final path that
+    becomes a link after the rename; and a refused remove whose rename back fails."""
+    profile = pathlib.Path(WT_PROFILE)
+    target = pathlib.Path(FIXTURE.name, "wt-stage-target")
+    target.mkdir()
+    linked_stage = pathlib.Path(WT_STAGES, "linked")
+    linked_stage.symlink_to(target)
+    outcome, seen = inprocess(
+        hook, lambda: hook.create(create("stagelink"), profile=linked_stage.with_suffix(".json"))
+    )
+    report(
+        outcome.startswith("refused: ")
+        and str(linked_stage) in outcome
+        and not any(" ".join(a[len(WT_BOXED) : len(WT_BOXED) + 2]) == "worktree add" for a in seen)
+        and not any(target.iterdir())
+        and not pathlib.Path(WT_ROOT, "Repo-stagelink").exists(follow_symlinks=False),
+        f"a boxed create whose staging directory is a link: refused with a line that names it, and no "
+        f"worktree add: {outcome}",
+    )
+
+    fresh = pathlib.Path(WT_R, "fresh-root")
+
+    def made_and_removed() -> object:
+        path = hook.create(create("freshroot"), profile=profile)
+        listed_path = listed(path)
+        hook.remove({"worktree_path": str(path)}, profile=profile)
+        return f"{path} listed {listed_path}"
+
+    outcome, _ = inprocess(hook, made_and_removed, mock.patch.object(hook, "ROOT", fresh))
+    report(
+        outcome == f"done: {fresh}/Repo-freshroot listed True" and fresh.is_dir() and stage_empty(),
+        f"a boxed create where the worktrees' root is missing makes it and the worktree in it: {outcome}",
+    )
+    absent = pathlib.Path(WT_HOME, "absent", ".worktrees")
+    outcome, _ = inprocess(
+        hook,
+        lambda: hook.create(create("absentroot"), profile=profile),
+        mock.patch.object(hook, "ROOT", absent),
+    )
+    report(
+        outcome.startswith("refused: ")
+        and str(absent) in outcome
+        and not absent.parent.exists()
+        and stage_empty(),
+        f"a boxed create whose worktrees' root lies in a directory that is missing makes neither: {outcome}",
+    )
+
+    def exdev(self: pathlib.Path, target: pathlib.Path) -> None:
+        raise OSError(errno.EXDEV, "Invalid cross-device link", str(self), None, str(target))
+
+    outcome, seen = inprocess(
+        hook,
+        lambda: hook.create(create("exdev"), profile=profile),
+        mock.patch.object(pathlib.Path, "rename", exdev),
+    )
+    report(
+        outcome.startswith("refused: ")
+        and "cannot be renamed" in outcome
+        and "Invalid cross-device link" in outcome
+        and any(" ".join(a[len(WT_BOXED) : len(WT_BOXED) + 2]) == "worktree prune" for a in seen)
+        and not pathlib.Path(WT_ROOT, "Repo-exdev").exists(follow_symlinks=False)
+        and stage_empty(),
+        f"a boxed create whose rename fails across devices: refused with the error, nothing copied, the "
+        f"staged worktree removed and pruned: {outcome}",
+    )
+
+    real_move = hook.move
+    empty = pathlib.Path(FIXTURE.name, "wt-empty")
+
+    def raced(source: pathlib.Path, target: pathlib.Path) -> None:
+        real_move(source, target)
+        moved = target.with_name(f"{target.name}-moved")
+        target.rename(moved)
+        target.symlink_to(empty)
+        shutil.rmtree(moved)
+
+    outcome, _ = inprocess(
+        hook, lambda: hook.create(create("raced"), profile=profile), mock.patch.object(hook, "move", raced)
+    )
+    report(
+        outcome.startswith("refused: ")
+        and "Repo-raced is a symbolic link or no directory after the rename" in outcome
+        and not pathlib.Path(WT_ROOT, "Repo-raced").exists(follow_symlinks=False)
+        and not any(empty.iterdir())
+        and stage_empty(),
+        f"a boxed create whose final path is a link after the rename: refused, the link removed and not "
+        f"followed: {outcome}",
+    )
+
+    stuck = pathlib.Path(WT_ROOT, "Repo-stuck")
+    outcome, _ = inprocess(hook, lambda: hook.create(create("stuck"), profile=profile))
+    (stuck / "change.txt").write_text("a change\n", encoding="utf-8")
+
+    def back_fails(source: pathlib.Path, target: pathlib.Path) -> None:
+        if str(source).startswith(WT_STAGE):
+            raise hook.Refusal(f"{source} cannot be renamed to {target}: refused by the probe")
+        real_move(source, target)
+
+    outcome, _ = inprocess(
+        hook,
+        lambda: hook.remove({"worktree_path": str(stuck)}, profile=profile),
+        mock.patch.object(hook, "move", back_fails),
+    )
+    staged = pathlib.Path(WT_STAGE, "Repo-stuck")
+    report(
+        outcome.startswith("refused: ")
+        and f"the worktree stays at {staged}" in outcome
+        and (staged / "change.txt").is_file(),
+        f"a refused boxed remove whose rename back fails: refused with a line that names the staged "
+        f"path, where the worktree stays: {outcome}",
+    )
+    if staged.is_dir():
+        staged.rename(stuck)
+        (stuck / "change.txt").unlink()
+        subprocess.run(
+            ["git", "-C", WT_REPO, "worktree", "repair", str(stuck)],  # noqa: S607 -- the `git` on PATH
+            capture_output=True,
+            env=WORKTREE_ENV,
+            timeout=60,
+            check=False,
+        )
+        outcome, _ = inprocess(hook, lambda: hook.remove({"worktree_path": str(stuck)}, profile=profile))
+    report(
+        not stuck.exists(follow_symlinks=False) and stage_empty(),
+        f"that worktree, moved back by the probe, is removed: {outcome}",
+    )
+
+
+def boxed_step_cases(report: Callable[[object, str], None]) -> None:
+    """A boxed create where srt is no executable file, which starts no git; and one per step that the
+    stub srt breaks (STUB_SRT): each exits 1 with a line that names its cause, leaves no worktree
+    at the final path and nothing in the staging directory, and runs a `worktree prune` under
+    srt."""
+    srt = pathlib.Path(WT_SRT)
+    aside = srt.with_name("srt-aside")
+    for label in ("a file that is not executable", "a directory"):
+        if label == "a directory":
+            srt.rename(aside)
+            srt.mkdir(mode=0o755)
+        else:
+            srt.chmod(0o644)
+        try:
+            proc, started, boxed = boxed_run(create("nosrt"))
+        finally:
+            if label == "a directory":
+                srt.rmdir()
+                aside.rename(srt)
+            srt.chmod(0o755)
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and WT_SRT in last(proc)
+            and not started
+            and not boxed
+            and not pathlib.Path(WT_ROOT, "Repo-nosrt").exists(follow_symlinks=False)
+            and stage_empty(),
+            f"a boxed create where srt is {label}: exits 1 with a line that names {WT_SRT}, and starts "
+            f"no git: {said(proc)}, {started}",
+        )
+
+    found = pathlib.Path(WT_STAGE, "Repo-found")
+    found.mkdir()
+    (found / "keep").write_text("keep\n", encoding="utf-8")
+    proc, _, boxed = boxed_run(create("found"))
+    report(
+        proc is not None
+        and proc.returncode == 1
+        and f"{WT_STAGE}/Repo-found exists" in last(proc)
+        and (found / "keep").read_text(encoding="utf-8") == "keep\n"
+        and not any(" worktree add " in line for line in boxed)
+        and not pathlib.Path(WT_ROOT, "Repo-found").exists(follow_symlinks=False),
+        f"a boxed create whose staged path exists already: exits 1 with a line that names it, runs no "
+        f"worktree add, and leaves what it found: {said(proc)}",
+    )
+    shutil.rmtree(found)
+
+    empty = pathlib.Path(FIXTURE.name, "wt-empty")
+    for mode, name, word in [
+        ("fail-add", "failadd", "exited 3"),
+        ("link-after-add", "linkadd", f"{WT_STAGE}/Repo-linkadd is a symbolic link"),
+        ("final-after-add", "finaladd", f"{WT_ROOT}/Repo-finaladd exists;"),
+        ("wrong-git", "wronggit", "Repo-wronggit/.git names"),
+    ]:
+        proc, started, boxed = boxed_run(create(name), mode)
+        path = pathlib.Path(WT_ROOT, f"Repo-{name}")
+        if mode == "final-after-add":
+            left = path.is_dir() and not path.is_symlink() and [p.name for p in path.iterdir()] == ["found"]
+        else:
+            left = not path.exists(follow_symlinks=False)
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and word in last(proc)
+            and left
+            and not listed(path)
+            and stage_empty()
+            and not any(empty.iterdir())
+            and any(" worktree prune" in line and via_srt(line) for line in boxed),
+            f"a boxed create whose stub srt does {mode}: exits 1 with a line that names {word}, leaves no "
+            f"worktree at the final path and nothing in the staging directory, and runs a worktree prune "
+            f"under srt: {said(proc)}, stage {stage_state(pathlib.Path(WT_STAGE))}, {boxed[-2:]}",
+        )
+        if mode == "final-after-add" and path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+
+
+def boxed_dirty_case(report: Callable[[object, str], None]) -> None:
+    """A boxed remove of a worktree with a change: exits 1 with git's reason, and the worktree is
+    back at its path, registered; without the change, the remove succeeds."""
+    dirty = pathlib.Path(WT_ROOT, "Repo-dirty")
+    proc, _, _ = boxed_run(create("dirty"))
+    made = proc is not None and proc.returncode == 0 and dirty.is_dir()
+    if made:
+        (dirty / "change.txt").write_text("a change\n", encoding="utf-8")
+    proc, _, _ = boxed_run(remove("dirty"))
+    report(
+        made
+        and proc is not None
+        and proc.returncode == 1
+        and "untracked" in proc.stderr
+        and (dirty / "change.txt").is_file()
+        and listed(dirty)
+        and linked(dirty)
+        and stage_empty(),
+        f"a boxed remove of a worktree with a change exits 1 with git's reason, and the worktree is back "
+        f"at its path, registered: {said(proc)}, listed {listed(dirty)}, linked {linked(dirty)}, stage "
+        f"{stage_state(pathlib.Path(WT_STAGE))}",
+    )
+    if made:
+        (dirty / "change.txt").unlink()
+        proc, _, _ = boxed_run(remove("dirty"))
+        report(
+            proc is not None and proc.returncode == 0 and not dirty.exists(follow_symlinks=False),
+            f"the boxed remove of that worktree without its change removes it: {said(proc)}",
+        )
+
+
+class Listener:
+    """A listening socket whose `bind` calls `seen` and then raises PermissionError, as a session's
+    sandbox refuses an AF_UNIX bind."""
+
+    def __init__(self, seen: Callable[[], None]) -> None:
+        self.seen = seen
+
+    def __enter__(self) -> Listener:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        del args
+
+    def bind(self, address: str) -> None:
+        del address
+        self.seen()
+        raise PermissionError(errno.EPERM, "refused by the probe")
+
+
+def broker_start_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """The broker's settings file, staging directory and profile: `serve_arguments` takes
+    `--serve <socket> --parent <pid> --settings <file>` alone; a broker whose settings file is no
+    JSON, or whose `filesystem.allowWrite` is a string, or whose staging directory is a link, exits
+    non-zero, binds no socket, and leaves the link's target; and in this process, with a bind that
+    the probe refuses, the broker makes the staging directory with mode 700 in place of a stale one
+    and the profile with mode 600 before it binds, reads a settings file that is no JSON before it
+    binds, and removes both when it ends."""
+    arguments = getattr(hook, "serve_arguments", None)
+    got: list[object] = []
+    for args in (
+        ["--serve", "/s", "--parent", "1", "--settings", "/f"],
+        ["--serve", "/s", "--parent", "1"],
+        ["--serve", "/s", "--parent", "1", "--profile", "/f"],
+        ["--serve", "/s", "--parent", "x", "--settings", "/f"],
+    ):
+        try:
+            got.append(arguments(args) if arguments is not None else None)
+        except hook.Refusal as err:
+            got.append(f"refused: {err}")
+    report(
+        got[0] == (pathlib.Path("/s"), 1, pathlib.Path("/f"))
+        and all(str(g).startswith("refused: ") for g in got[1:]),
+        f"serve_arguments takes --serve <socket> --parent <pid> --settings <file> and refuses four "
+        f"arguments, another option and a parent that is no number: {got}",
+    )
+    writes = getattr(hook, "allowed_writes", None)
+    values: list[tuple[dict[str, object], list[str] | None]] = [
+        ({"filesystem": {"allowWrite": ["/a", "/b"]}}, ["/a", "/b"]),
+        ({"filesystem": {"allowWrite": ["/a", 1]}}, None),
+        ({"filesystem": ["/a"]}, None),
+        ({"filesystem": {}}, None),
+        ({}, None),
+    ]
+    for value, want in values:
+        try:
+            result: object = writes(value, pathlib.Path("/f")) if writes is not None else "no allowed_writes"
+        except hook.Refusal as err:
+            result = f"refused: {err}"
+        report(
+            result == want if want is not None else str(result).startswith("refused: /f "),
+            f"the broker reads {value} as {want or 'a refusal that names the file'}: {result}",
+        )
+
+    bad_json = pathlib.Path(FIXTURE.name, "wt-bad.json")
+    bad_json.write_text("not json\n", encoding="utf-8")
+    bad_list = pathlib.Path(FIXTURE.name, "wt-string.json")
+    bad_list.write_text(json.dumps({"filesystem": {"allowWrite": "/x"}}), encoding="utf-8")
+    stage = pathlib.Path(WT_STAGES, str(os.getpid()))
+    own = stage.parent / f"{stage.name}.json"
+    target = pathlib.Path(FIXTURE.name, "wt-target")
+    target.mkdir()
+    (target / "keep").write_text("keep\n", encoding="utf-8")
+    for index, (label, settings, word) in enumerate(
+        [
+            ("whose settings file is no JSON", bad_json, str(bad_json)),
+            ("whose settings file's filesystem.allowWrite is a string", bad_list, str(bad_list)),
+            ("whose staging directory is a link", pathlib.Path(WT_SETTINGS), str(stage)),
+        ]
+    ):
+        if settings == pathlib.Path(WT_SETTINGS):
+            stage.symlink_to(target)
+        path = pathlib.Path(WT_SOCKETS, f"st{index}.sock")
+        proc = subprocess.run(
+            [
+                sys.executable,
+                WORKTREE,
+                "--serve",
+                str(path),
+                "--parent",
+                str(os.getpid()),
+                "--settings",
+                str(settings),
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            env=WT_ENV,
+            timeout=TIMEOUT,
+            check=False,
+        )
+        kept = (
+            sorted(p.name for p in target.iterdir()) == ["keep"]
+            and (target / "keep").read_text(encoding="utf-8") == "keep\n"
+        )
+        linked_stage = stage.is_symlink()
+        report(
+            proc.returncode != 0
+            and word in proc.stderr
+            and not path.exists(follow_symlinks=False)
+            and kept
+            and (
+                linked_stage
+                if settings == pathlib.Path(WT_SETTINGS)
+                else not stage.exists(follow_symlinks=False)
+            )
+            and not own.exists(follow_symlinks=False),
+            f"a broker {label} exits non-zero with a line that names {word}, binds no socket, writes no "
+            f"profile and leaves the link's target: {proc.returncode}, {proc.stderr!r}",
+        )
+        if linked_stage:
+            stage.unlink()
+
+    parent = os.getppid()
+    stage = pathlib.Path(WT_STAGES, str(parent))
+    own = stage.parent / f"{stage.name}.json"
+    (stage / "stale").mkdir(parents=True)
+    (stage / "stale" / "file").write_text("stale\n", encoding="utf-8")
+    snapshots: list[tuple[object, object]] = []
+
+    def listener(family: int, kind: int) -> Listener:
+        del family, kind
+        return Listener(lambda: snapshots.append((stage_state(stage), profile_state(own))))
+
+    fake = types.SimpleNamespace(socket=listener, AF_UNIX=socket.AF_UNIX, SOCK_STREAM=socket.SOCK_STREAM)
+    handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGHUP)}
+
+    def start(settings: pathlib.Path) -> str:
+        with (
+            mock.patch.object(hook, "socket", fake),
+            mock.patch.object(hook, "STAGES", pathlib.Path(WT_STAGES), create=True),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            try:
+                hook.serve(pathlib.Path(WT_SOCKETS, "fake.sock"), parent, settings)
+            except (hook.Refusal, hook.HarnessError, TypeError) as err:
+                return f"refused: {err}"
+            else:
+                return "served"
+            finally:
+                for signum, handler in handlers.items():
+                    signal.signal(signum, handler)
+
+    outcome = start(pathlib.Path(WT_SETTINGS))
+    report(
+        snapshots == [((0o700, []), (0o600, profiled(stage)))],
+        f"before it binds, the broker replaces a stale staging directory by an empty one of mode 700 and "
+        f"writes its profile with mode 600, the settings file with that directory appended to "
+        f"filesystem.allowWrite: {outcome}, {snapshots}",
+    )
+    report(
+        "refused by the probe" in outcome
+        and not stage.exists(follow_symlinks=False)
+        and not own.exists(follow_symlinks=False),
+        f"a broker that ends removes its staging directory and its profile: {outcome}, "
+        f"stage {stage.exists(follow_symlinks=False)}, profile {own.exists(follow_symlinks=False)}",
+    )
+    outcome = start(bad_json)
+    report(
+        len(snapshots) == 1 and str(bad_json) in outcome and not stage.exists(follow_symlinks=False),
+        f"a broker whose settings file is no JSON refuses before it binds and makes no staging directory: "
+        f"{outcome}, {len(snapshots)} binds",
+    )
+
+    def stuck(family: int, kind: int) -> Listener:
+        del family, kind
+        return Listener(lambda: (stage / "Repo-stuck").mkdir())
+
+    with mock.patch.object(fake, "socket", stuck):
+        outcome = start(pathlib.Path(WT_SETTINGS))
+    report(
+        (stage / "Repo-stuck").is_dir() and not own.exists(follow_symlinks=False),
+        f"a broker that ends with a worktree in its staging directory removes its profile and leaves the "
+        f"directory: {outcome}, {stage_state(stage)}",
+    )
+    if (stage / "Repo-stuck").is_dir():
+        shutil.rmtree(stage)
+
+
 def worktree_git_cases() -> tuple[int, int]:
     """`worktree.py`'s git work on the fixture of `worktree_fixture`: a create and a remove without
     `AGENTBOX` and through a broker, with no hook of the repository run; the refusals of the
@@ -1270,6 +2034,13 @@ def worktree_git_cases() -> tuple[int, int]:
         and not started,
         f"a cwd that holds a NUL byte: exits 1 with one line of the hook and starts no git: {said(proc)}",
     )
+    proc = call(WORKTREE, '{"hook_event_name": "WorktreeRemove", "worktree_path": 1}', WT_ENV)
+    report(
+        proc is not None
+        and proc.returncode == 1
+        and proc.stderr == "worktree hook: the hook input's worktree_path 1 is not a string\n",
+        f"a remove whose worktree_path is no string: exits 1 with one line that says so: {said(proc)}",
+    )
     broker_unit_cases(hook, report)
 
     def client_refused(label: str, extra: dict[str, str], word: str) -> None:
@@ -1296,7 +2067,16 @@ def worktree_git_cases() -> tuple[int, int]:
     regular = pathlib.Path(WT_SOCKETS, "b3.sock")
     regular.write_text("keep\n", encoding="utf-8")
     proc = subprocess.run(
-        [sys.executable, WORKTREE, "--serve", str(regular), "--parent", str(os.getpid())],
+        [
+            sys.executable,
+            WORKTREE,
+            "--serve",
+            str(regular),
+            "--parent",
+            str(os.getpid()),
+            "--settings",
+            WT_SETTINGS,
+        ],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
@@ -1313,7 +2093,16 @@ def worktree_git_cases() -> tuple[int, int]:
     )
     orphan = pathlib.Path(WT_SOCKETS, "b4.sock")
     proc = subprocess.run(
-        [sys.executable, WORKTREE, "--serve", str(orphan), "--parent", str(ended_pid())],
+        [
+            sys.executable,
+            WORKTREE,
+            "--serve",
+            str(orphan),
+            "--parent",
+            str(ended_pid()),
+            "--settings",
+            WT_SETTINGS,
+        ],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
@@ -1326,6 +2115,8 @@ def worktree_git_cases() -> tuple[int, int]:
         f"a broker whose --parent is not its parent exits non-zero, names the parent and binds nothing: "
         f"{proc.returncode}, {proc.stderr!r}",
     )
+    boxed_cases(hook, report)
+    broker_start_cases(hook, report)
 
     if verdict == "skip":
         report(
@@ -1352,6 +2143,14 @@ def worktree_git_cases() -> tuple[int, int]:
         up = until(lambda: is_socket(broker.socket), 10)
         mode = stat.S_IMODE(broker.socket.lstat().st_mode) if up else None
         report(up and mode == 0o600, f"the broker binds its socket with mode 600: {mode and oct(mode)}")
+        stage = pathlib.Path(WT_STAGES, str(broker.parent.pid))
+        own = stage.parent / f"{stage.name}.json"
+        report(
+            up and stage_state(stage) == (0o700, []) and profile_state(own) == (0o600, profiled(stage)),
+            f"the broker makes its staging directory with mode 700, empty, and its profile with mode 600, "
+            f"the settings file with that directory appended to filesystem.allowWrite: "
+            f"{stage_state(stage)}, {profile_state(own)}",
+        )
         env = {**WT_ENV, "AGENTBOX": "1", "AGENTBOX_BROKER": str(broker.socket)}
         proc, _ = worktree_run(create("brokered"), env)
         report(
@@ -1422,6 +2221,13 @@ def worktree_git_cases() -> tuple[int, int]:
         broker.parent.wait(timeout=TIMEOUT)
         gone = until(lambda: ended(broker.pid) and not broker.socket.exists(follow_symlinks=False), 10)
         report(gone, "the broker exits and removes its socket within 10 s after its parent ends")
+        cleared = until(
+            lambda: not stage.exists(follow_symlinks=False) and not own.exists(follow_symlinks=False), 10
+        )
+        report(
+            cleared,
+            "the broker removes its staging directory and its profile within 10 s after its parent ends",
+        )
     finally:
         stop_broker(broker)
 

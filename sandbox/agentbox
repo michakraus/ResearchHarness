@@ -36,14 +36,19 @@
 # starts
 #
 #   ~/.local/share/research-harness/python/bin/python ~/.claude/hooks/worktree.py \
-#       --serve ~/.local/state/research-harness/broker/<PID>.sock --parent <PID>
+#       --serve ~/.local/state/research-harness/broker/<PID>.sock --parent <PID> \
+#       --settings ~/.config/research-harness/sandbox/<policy name>.json
 #
-# in the background, with its stdout and stderr in broker.log of the run directory, and exports
-# AGENTBOX_BROKER as the socket's path once the socket exists. <PID> is the script's own process
-# ID, which exec hands on to srt, so the broker ends with srt. Where the interpreter is not an
-# executable file, the hook is not a readable file, the directory cannot be made, or no socket
-# appears within 5 seconds, it exports no AGENTBOX_BROKER, not even the caller's, writes one line
-# on stderr that names the cause, and starts the program all the same; the hook then fails closed.
+# with the settings file of the frontend's own policy name, in the background, with its stdout and
+# stderr in broker.log of the run directory, and exports AGENTBOX_BROKER as the socket's path once
+# the socket exists. The broker runs every git of a request inside srt, with that settings file
+# and one staging directory of its own added to its writes (hooks/worktree.py). <PID> is the
+# script's own process ID, which exec hands on to srt, so the broker ends with srt. Where the
+# interpreter is not an executable file, the hook is not a readable file, the directory cannot be
+# made, or no socket appears within 5 seconds, it exports no AGENTBOX_BROKER, not even the
+# caller's, writes one line on stderr that names the cause, and starts the program all the same;
+# the hook then fails closed. A broker that refuses its settings file binds no socket, so it fails
+# the same way.
 #
 # The forges: the script exports GIT_TERMINAL_PROMPT=0, so that git fails at once where no
 # credential helper answers, and removes the caller's GITLAB_ACCESS_TOKEN and OAUTH_TOKEN, which
@@ -164,13 +169,13 @@ caches() {
     fi
 }
 
-# broker: start the worktree broker and export AGENTBOX_BROKER as its socket, as the header says;
-# the run directory is the parent of GLAB_CONFIG_DIR, which caches sets. Its values are positional
-# parameters.
+# broker <policy name>: start the worktree broker with the settings file of <policy name> and
+# export AGENTBOX_BROKER as its socket, as the header says; the run directory is the parent of
+# GLAB_CONFIG_DIR, which caches sets. Its values are positional parameters.
 broker() {
     unset AGENTBOX_BROKER
     set -- "$HOME/.local/share/research-harness/python/bin/python" "$HOME/.claude/hooks/worktree.py" \
-        "$HOME/.local/state/research-harness/broker"
+        "$HOME/.local/state/research-harness/broker" "$HOME/.config/research-harness/sandbox/$1.json"
     if ! [ -f "$1" ] || ! [ -x "$1" ]; then
         printf 'agentbox: no worktree broker: %s is not an executable file; run harness setup\n' "$1" >&2
         return 0
@@ -183,11 +188,11 @@ broker() {
         printf 'agentbox: no worktree broker: %s cannot be made with mode 700\n' "$3" >&2
         return 0
     fi
-    set -- "$1" "$2" "$3/$$.sock"
+    set -- "$1" "$2" "$3/$$.sock" "$4"
     if [ -S "$3" ]; then
         rm -f "$3"
     fi
-    "$1" "$2" --serve "$3" --parent "$$" >"${GLAB_CONFIG_DIR%/glab}/broker.log" 2>&1 </dev/null &
+    "$1" "$2" --serve "$3" --parent "$$" --settings "$4" >"${GLAB_CONFIG_DIR%/glab}/broker.log" 2>&1 </dev/null &
     set -- "$3" 50
     while ! [ -S "$1" ]; do
         if [ "$2" -eq 0 ]; then
@@ -266,7 +271,7 @@ claude)
     shift
     check claude claude "$@"
     caches
-    broker
+    broker claude
     forge
     AGENTBOX=1
     export AGENTBOX
@@ -277,7 +282,7 @@ opencode)
     shift
     check opencode opencode "$@"
     caches
-    broker
+    broker opencode
     forge
     AGENTBOX=1
     export AGENTBOX
@@ -288,7 +293,7 @@ omp)
     shift
     check omp omp "$@"
     caches
-    broker
+    broker omp
     forge
     AGENTBOX=1
     export AGENTBOX
@@ -299,7 +304,7 @@ agy)
     shift
     check antigravity agy "$@"
     caches
-    broker
+    broker antigravity
     forge
     AGENTBOX=1
     export AGENTBOX

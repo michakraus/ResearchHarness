@@ -44,16 +44,32 @@ it sends its payload as one JSON line to the socket that `AGENTBOX_BROKER` names
 JSON line back, `{"path": …, "stderr": …}` or `{"error": …, "stderr": …}`. `agentbox` starts
 the broker outside srt, as this script:
 
-    worktree.py --serve <socket> --parent <pid>
+    worktree.py --serve <socket> --parent <pid> --settings <file>
 
-It binds `<socket>` with mode 600, replacing a stale socket and refusing any other file there,
-serves one connection at a time, runs each create or remove as this script in a process of its
-own, without `AGENTBOX` and with `GIT_TERMINAL_PROMPT=0`, and answers a request that is larger
-than 64 KiB, no JSON object, or of another `hook_event_name` with an `error`. An idle broker
-exits and removes its socket within 5 seconds after its parent ends. When the parent ends during
-a request, the broker does not stop the request: it reads the request (at most `LOCAL`, 60 s),
-runs the create or remove to its end or to `WORK` (400 s), then looks at its parent and exits
-without taking another connection. SIGTERM and SIGHUP still end it at once.
+`<file>` is the srt settings file of the frontend. The broker reads it, a JSON object whose
+`filesystem.allowWrite` is a list of strings, makes its staging directory `STAGES/<pid>` with mode
+700, replacing a stale directory and refusing a link or any other file there, and writes the
+profile `STAGES/<pid>.json` with mode 600: `<file>` with the staging directory appended to
+`filesystem.allowWrite`. It binds `<socket>` with mode 600, replacing a stale socket and refusing
+any other file there, serves one connection at a time, runs each create or remove as this script
+in a process of its own, `worktree.py --boxed <profile>`, without `AGENTBOX` and with
+`GIT_TERMINAL_PROMPT=0`, and answers a request that is larger than 64 KiB, no JSON object, or of
+another `hook_event_name` with an `error`. An idle broker exits and removes its socket, its
+profile and its staging directory, the last only where it is empty, within 5 seconds after its
+parent ends. When the parent ends during a request, the broker does not stop the request: it reads
+the request (at most `LOCAL`, 60 s), runs the create or remove to its end or to `WORK` (400 s),
+then looks at its parent and exits without taking another connection. SIGTERM and SIGHUP still end
+it at once.
+
+**A boxed child runs every git inside srt**, as `SRT --settings <profile> -- git …`, the config
+check included: a program in the box can swap the `.git` that the check read for another before
+git reads it, so a git outside srt would run a config that the box chose with the host's rights.
+srt denies the box's writes to `.githooks`, so a boxed create adds the worktree in the staging
+directory, which must lie on the device of ROOT, renames it to ROOT without git, runs `git worktree
+repair` and checks that the repaired `.git` file names the repository (`staged_add`); a failed step
+removes what the child made and runs `git worktree prune`. A boxed remove renames the worktree into
+the staging directory, repairs and removes it there, and renames it back where git refuses
+(`staged_remove`). Without `--boxed` git runs as `git …`, outside srt.
 
 A worktree made with `--relative-paths`, or in a repository or git config with
 `worktree.useRelativePaths=true`, is refused, even one this hook made itself: `main_checkout`
@@ -86,7 +102,7 @@ from pathlib import Path
 from types import FrameType
 
 from guard import HarnessError
-from guard.jsonio import JsonValue, loads
+from guard.jsonio import JsonValue, load, loads
 
 ROOT = Path.home() / "Research" / ".worktrees"
 # The tree whose repositories this hook makes worktrees of.
@@ -146,6 +162,11 @@ LIMIT = 64 * 1024
 WORK = 400
 ANSWER = 420
 LOOK = 1
+# The srt that a boxed child runs every git in, as `agentbox` runs the frontend in it; and the
+# directory of the brokers' staging directories, one `<pid>` per broker with its profile
+# `<pid>.json` beside it, below `~/.local/state`, which no box may write.
+SRT = Path.home() / ".local" / "bin" / "srt"
+STAGES = Path.home() / ".local" / "state" / "research-harness" / "worktree-stage"
 
 
 class Refusal(Exception):
@@ -176,17 +197,20 @@ class Reply:
 
 
 def run_git(
-    *args: str, repo: Path, cwd: Path | None = None, timeout: int = LOCAL
+    *args: str, repo: Path, cwd: Path | None = None, timeout: int = LOCAL, profile: Path | None = None
 ) -> subprocess.CompletedProcess[str]:
     """git with OPTIONS and `args` in `cwd`, by default `repo`, with GIT_DIR set to `repo`'s `.git`,
     GIT_ALLOW_PROTOCOL set to PROTOCOLS, and no GIT_WORK_TREE or GIT_COMMON_DIR of the caller: the one
     place where this hook starts git. GIT_DIR pins git to the repository that `main_checkout` and
     `checked_config` read, so that git does not search for one itself: a `.git` that git does not
     take as a repository would make it walk up to a parent's, and a directory with a HEAD, `objects`
-    and `refs` would make it take that directory as a bare repository."""
+    and `refs` would make it take that directory as a bare repository. With a `profile`, the boxed
+    child's, git runs as `SRT --settings <profile> -- git …`, inside srt, with the same `cwd`,
+    environment and timeout."""
     env = {key: value for key, value in os.environ.items() if key not in UNSET}
+    boxed = [str(SRT), "--settings", str(profile), "--"] if profile is not None else []
     return subprocess.run(
-        ["git", *OPTIONS, *args],  # noqa: S607 -- the `git` on PATH
+        [*boxed, "git", *OPTIONS, *args],
         cwd=repo if cwd is None else cwd,
         env={**env, "GIT_DIR": str(repo / ".git"), "GIT_ALLOW_PROTOCOL": PROTOCOLS},
         capture_output=True,
@@ -197,8 +221,8 @@ def run_git(
     )
 
 
-def git(*args: str, repo: Path, timeout: int = LOCAL) -> str:
-    proc = run_git(*args, repo=repo, timeout=timeout)
+def git(*args: str, repo: Path, timeout: int = LOCAL, profile: Path | None = None) -> str:
+    proc = run_git(*args, repo=repo, timeout=timeout, profile=profile)
     sys.stderr.write(proc.stderr)
     if proc.returncode != 0:
         raise Refusal(f"`git {' '.join(args)}` in {repo} exited {proc.returncode}")
@@ -243,13 +267,22 @@ def without_commondir(repo: Path) -> Path:
     return repo
 
 
-def checked_config(repo: Path) -> None:
+def checked_config(repo: Path, profile: Path | None = None) -> None:
     """Refuse `repo` where its `.git/config`, read by `git config --no-includes`, holds a key that
     `allowed` refuses, or cannot be read: git outside the sandbox reads that file, and a key there
-    can run a command (`core.sshCommand`, a filter, a URL rewrite) or pull in another file."""
+    can run a command (`core.sshCommand`, a filter, a URL rewrite) or pull in another file. A boxed
+    child reads it under srt with its `profile`, as every other git of it."""
     config = repo / ".git" / "config"
     proc = run_git(
-        "config", "--file", str(config), "--no-includes", "--null", "--list", repo=repo, cwd=Path("/")
+        "config",
+        "--file",
+        str(config),
+        "--no-includes",
+        "--null",
+        "--list",
+        repo=repo,
+        cwd=Path("/"),
+        profile=profile,
     )
     if proc.returncode != 0:
         raise Refusal(
@@ -341,23 +374,29 @@ def slug(name):
     return "-".join(segments)
 
 
-def registered(repo: Path, path: Path) -> bool:
-    listing = git("worktree", "list", "--porcelain", repo=repo)
+def registered(repo: Path, path: Path, profile: Path | None = None) -> bool:
+    listing = git("worktree", "list", "--porcelain", repo=repo, profile=profile)
     return f"worktree {path}" in listing.splitlines()
 
 
-def base_ref(repo: Path) -> str:
-    head = run_git("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", repo=repo)
+def base_ref(repo: Path, profile: Path | None = None) -> str:
+    head = run_git(
+        "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", repo=repo, profile=profile
+    )
     if head.returncode == 0:
         return head.stdout.strip()
-    if run_git("rev-parse", "--verify", "--quiet", "refs/remotes/origin/main", repo=repo).returncode == 0:
+    main = run_git("rev-parse", "--verify", "--quiet", "refs/remotes/origin/main", repo=repo, profile=profile)
+    if main.returncode == 0:
         return "origin/main"
     raise Refusal(
         f"{repo} has neither `origin/HEAD` nor `origin/main`; run `git remote set-head origin --auto` there"
     )
 
 
-def create(payload: dict[str, JsonValue]) -> Path:
+def create(payload: dict[str, JsonValue], profile: Path | None = None) -> Path:
+    """The worktree of the payload's `name` for the repository of its `cwd`, made at ROOT; with the
+    `profile` of a boxed child, every git runs under srt and the worktree is made in the staging
+    directory and moved to ROOT (`staged_add`)."""
     cwd, name = payload.get("cwd", ""), payload.get("name", "")
     if not isinstance(cwd, str) or not isinstance(name, str):
         raise Refusal(f"the hook input's cwd {cwd!r} or name {name!r} is not a string")
@@ -366,23 +405,142 @@ def create(payload: dict[str, JsonValue]) -> Path:
 
     if path.is_symlink():
         raise Refusal(f"{path} is a symbolic link; a worktree path must be a new directory")
-    checked_config(repo)
+    checked_config(repo, profile)
     if path.exists():
-        if registered(repo, path):
+        if registered(repo, path, profile):
             return path
         raise Refusal(f"{path} exists and is not a worktree of {repo}; look at it before removing it")
 
-    git("fetch", "--quiet", "origin", repo=repo, timeout=NETWORK)
-    if AGENT.match(name):
-        git("worktree", "add", "--detach", str(path), base_ref(repo), repo=repo)
-        copy_manifest(repo, path)
-        return path
-    if run_git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}", repo=repo).returncode == 0:
-        git("worktree", "add", str(path), name, repo=repo)
+    git("fetch", "--quiet", "origin", repo=repo, timeout=NETWORK, profile=profile)
+    if profile is None:
+        git(*add_arguments(repo, name, path, None), repo=repo)
     else:
-        git("worktree", "add", "--no-track", "-b", name, str(path), base_ref(repo), repo=repo)
+        staged_add(repo, name, path, profile)
     copy_manifest(repo, path)
     return path
+
+
+def add_arguments(repo: Path, name: str, target: Path, profile: Path | None) -> list[str]:
+    """The `git worktree add` that makes the worktree `name` at `target`: detached at the base for
+    a sub-agent's `agent-<hex>`, the existing branch `name`, or a new branch `name` from the base,
+    with no upstream."""
+    if AGENT.match(name):
+        return ["worktree", "add", "--detach", str(target), base_ref(repo, profile)]
+    if (
+        run_git(
+            "rev-parse", "--verify", "--quiet", f"refs/heads/{name}", repo=repo, profile=profile
+        ).returncode
+        == 0
+    ):
+        return ["worktree", "add", str(target), name]
+    return ["worktree", "add", "--no-track", "-b", name, str(target), base_ref(repo, profile)]
+
+
+def same_device(a: Path, b: Path, stat: Callable[[Path], os.stat_result] = os.stat) -> bool:
+    """Whether `a` and `b` lie on one device, so that `os.rename` moves one into the other."""
+    return stat(a).st_dev == stat(b).st_dev
+
+
+def stage_of(profile: Path) -> Path:
+    """The staging directory of the boxed child whose profile is `profile`: `<pid>` beside
+    `<pid>.json`, refused where it is a link or no directory, where ROOT is a link or no directory,
+    or where the two lie on different devices. ROOT is made where it is missing, `~/Research`
+    itself not; `mkdir` with `exist_ok` refuses a ROOT that exists and is no directory."""
+    stage = profile.with_suffix("")
+    if stage.is_symlink() or not stage.is_dir():
+        raise Refusal(f"the staging directory {stage} is a symbolic link or no directory")
+    if ROOT.is_symlink():
+        raise Refusal(f"{ROOT} is a symbolic link; the worktrees' root must be a directory")
+    try:
+        ROOT.mkdir(exist_ok=True)
+    except OSError as err:
+        raise Refusal(f"{ROOT} is no directory and cannot be made one: {err}") from None
+    if not same_device(stage, ROOT):
+        raise Refusal(
+            f"the staging directory {stage} and {ROOT} lie on different devices; a worktree is moved, "
+            "never copied, between them"
+        )
+    return stage
+
+
+def plain_directory(path: Path) -> bool:
+    """Whether `path` is a directory and no symbolic link."""
+    return not path.is_symlink() and path.is_dir()
+
+
+def move(source: Path, target: Path) -> None:
+    """Rename the directory `source` to `target`, which must not exist; refused where `source` is
+    a link or no directory, where `target` exists or is a link, and where the rename fails. On
+    macOS a rename replaces an empty directory that appears at `target` after the test, and fails
+    on any other entry there."""
+    if not plain_directory(source):
+        raise Refusal(f"{source} is a symbolic link or no directory")
+    if target.exists(follow_symlinks=False):
+        raise Refusal(f"{target} exists; a worktree is moved only to a new path")
+    try:
+        source.rename(target)
+    except OSError as err:
+        raise Refusal(f"{source} cannot be renamed to {target}: {err}") from None
+
+
+def moved(target: Path) -> None:
+    """Refuse a `target` of `move` that is a symbolic link or no directory after the rename."""
+    if not plain_directory(target):
+        raise Refusal(f"{target} is a symbolic link or no directory after the rename")
+
+
+def discard(path: Path) -> None:
+    """Remove `path`, a directory that this child made: a link there is unlinked, never followed."""
+    if path.is_symlink() or (path.exists() and not path.is_dir()):
+        path.unlink()
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
+def staged_add(repo: Path, name: str, final: Path, profile: Path) -> None:
+    """Make the worktree `name` at `final` through the staging directory of `profile`: `git worktree
+    add` there under srt, a rename to `final` without git, `git worktree repair` under srt, and a
+    test that the repaired `.git` file names `repo`. A failed step removes what this child made,
+    the staged directory or, after its rename, `final`, and nothing that it found, runs `git
+    worktree prune` under srt, and raises the step's refusal."""
+    made: Path | None = None
+    done = False
+    try:
+        stage = stage_of(profile)
+        staged = stage / final.name
+        if staged.exists(follow_symlinks=False):
+            raise Refusal(f"{staged} exists; the staging directory holds no worktree between requests")
+        made = staged
+        git(*add_arguments(repo, name, staged, profile), repo=repo, profile=profile)
+        move(staged, final)
+        made = final
+        moved(final)
+        git("worktree", "repair", str(final), repo=repo, profile=profile)
+        dot = final.resolve() / ".git"
+        try:
+            owner = linked_checkout(dot, RESEARCH.resolve())
+        except Refusal as err:
+            raise Refusal(f"the repaired {dot} does not name {repo}: {err}") from None
+        if owner != repo:
+            raise Refusal(f"the repaired {dot} names {owner}, not {repo}")
+        done = True
+    finally:
+        if not done:
+            undo(repo, made, profile)
+
+
+def undo(repo: Path, made: Path | None, profile: Path) -> None:
+    """Remove `made`, where it is given, and run `git worktree prune` under srt, whose failure only
+    writes to stderr: the step that failed before gives the refusal."""
+    if made is not None:
+        with contextlib.suppress(OSError):
+            discard(made)
+    try:
+        proc = run_git("worktree", "prune", repo=repo, profile=profile)
+    except (OSError, subprocess.TimeoutExpired) as err:
+        sys.stderr.write(f"worktree hook: `git worktree prune` in {repo} failed: {err}\n")
+        return
+    sys.stderr.write(proc.stderr)
 
 
 def copy_manifest(repo, path):
@@ -510,15 +668,45 @@ def compat_ranges(spec):
     return ranges
 
 
-def remove(payload):
-    path = Path(payload.get("worktree_path", "")).resolve()
+def remove(payload: dict[str, JsonValue], profile: Path | None = None) -> None:
+    """Remove the worktree at the payload's `worktree_path`, directly below ROOT; with the `profile`
+    of a boxed child, every git runs under srt and the worktree is removed in the staging directory
+    (`staged_remove`)."""
+    where = payload.get("worktree_path", "")
+    if not isinstance(where, str):
+        raise Refusal(f"the hook input's worktree_path {where!r} is not a string")
+    path = Path(where).resolve()
     if path.parent != ROOT.resolve():
         raise Refusal(f"{path} is not directly under {ROOT}; this hook removes only the worktrees it creates")
     repo = main_checkout(str(path), RESEARCH)
-    checked_config(repo)
-    if not registered(repo, path):
+    checked_config(repo, profile)
+    if not registered(repo, path, profile):
         raise Refusal(f"{path} is not a registered worktree of {repo}")
-    git("worktree", "remove", str(path), repo=repo)
+    if profile is None:
+        git("worktree", "remove", str(path), repo=repo)
+    else:
+        staged_remove(repo, path, profile)
+
+
+def staged_remove(repo: Path, path: Path, profile: Path) -> None:
+    """Remove the worktree `path` through the staging directory of `profile`: a rename there without
+    git, then `git worktree repair` and `git worktree remove`, without `--force`, under srt. Where
+    git refuses, the worktree is renamed back and repaired, and git's refusal is raised; where the
+    rename back fails, the refusal names the staged path."""
+    stage = stage_of(profile)
+    staged = stage / path.name
+    move(path, staged)
+    try:
+        moved(staged)
+        git("worktree", "repair", str(staged), repo=repo, profile=profile)
+        git("worktree", "remove", str(staged), repo=repo, profile=profile)
+    except Refusal, subprocess.TimeoutExpired:
+        try:
+            move(staged, path)
+        except Refusal as err:
+            raise Refusal(f"the worktree stays at {staged}, since it cannot be moved back: {err}") from None
+        sys.stderr.write(run_git("worktree", "repair", str(path), repo=repo, profile=profile).stderr)
+        raise
 
 
 def ask(payload: dict[str, JsonValue], *, created: bool) -> None:
@@ -584,12 +772,16 @@ def receive(
     return data.split(b"\n", 1)[0]
 
 
-def serve(path: Path, parent: int) -> None:
-    """The broker: bind `path` with mode 600, replacing a stale socket and refusing any other file
-    there, and answer each connection in turn (`answer`) while `parent` is this process's parent;
-    then remove the socket. SIGTERM and SIGHUP end it the same way."""
+def serve(path: Path, parent: int, settings: Path) -> None:
+    """The broker: read the srt settings file `settings` (`allowed_writes`), make its staging
+    directory and profile (`staged_profile`), bind `path` with mode 600, replacing a stale socket
+    and refusing any other file there, and answer each connection in turn (`answer`) while `parent`
+    is this process's parent; then remove the socket, the profile and the staging directory, the
+    last only where it is empty. SIGTERM and SIGHUP end it the same way."""
     if os.getppid() != parent:
         raise Refusal(f"the parent of the broker is {os.getppid()}, not {parent}")
+    value = load(settings)
+    writes = allowed_writes(value, settings)
     try:
         mode = path.lstat().st_mode
     except FileNotFoundError:
@@ -598,29 +790,75 @@ def serve(path: Path, parent: int) -> None:
         if not stat.S_ISSOCK(mode):
             raise Refusal(f"{path} exists and is not a socket; the broker replaces only a stale socket")
         path.unlink()
-    for signum in (signal.SIGTERM, signal.SIGHUP):
-        signal.signal(signum, ended)
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
-        old = os.umask(0o177)
-        try:
-            listener.bind(str(path))
-        except OSError as err:
-            raise Refusal(f"the broker cannot bind {path}: {err}") from None
-        finally:
-            os.umask(old)
-        try:
-            path.chmod(0o600)
-            listener.listen()
-            listener.settimeout(LOOK)
-            while os.getppid() == parent:
-                try:
-                    connection, _ = listener.accept()
-                except TimeoutError:
-                    continue
-                with connection:
-                    answer(connection)
-        finally:
-            path.unlink(missing_ok=True)
+    stage = STAGES / str(parent)
+    profile = stage.parent / f"{stage.name}.json"
+    try:
+        staged_profile(value, writes, stage, profile)
+        for signum in (signal.SIGTERM, signal.SIGHUP):
+            signal.signal(signum, ended)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            old = os.umask(0o177)
+            try:
+                listener.bind(str(path))
+            except OSError as err:
+                raise Refusal(f"the broker cannot bind {path}: {err}") from None
+            finally:
+                os.umask(old)
+            try:
+                path.chmod(0o600)
+                listener.listen()
+                listener.settimeout(LOOK)
+                while os.getppid() == parent:
+                    try:
+                        connection, _ = listener.accept()
+                    except TimeoutError:
+                        continue
+                    with connection:
+                        answer(connection, profile)
+            finally:
+                path.unlink(missing_ok=True)
+    finally:
+        profile.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            stage.rmdir()
+
+
+def allowed_writes(value: dict[str, JsonValue], settings: Path) -> list[str]:
+    """The `filesystem.allowWrite` list of the srt settings `value`, read from `settings`; refused
+    where `filesystem` is no object or `allowWrite` no list of strings."""
+    filesystem = value.get("filesystem")
+    writes = filesystem.get("allowWrite") if isinstance(filesystem, dict) else None
+    if not isinstance(writes, list) or not all(isinstance(w, str) for w in writes):
+        raise Refusal(f"{settings} holds no filesystem.allowWrite that is a list of strings")
+    return [w for w in writes if isinstance(w, str)]
+
+
+def staged_profile(value: dict[str, JsonValue], writes: list[str], stage: Path, profile: Path) -> None:
+    """Make the staging directory `stage` with mode 700, replacing a stale directory there and
+    refusing a link or any other file, and write `profile` with mode 600: the srt settings `value`
+    with `stage` appended to `writes`, its `filesystem.allowWrite`, so that the boxed git can write
+    there and nowhere else that the box cannot."""
+    try:
+        stage.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if stage.is_symlink() or (stage.exists() and not stage.is_dir()):
+            raise Refusal(
+                f"{stage} is a symbolic link or no directory; the broker replaces only a stale directory"
+            )
+        if stage.exists():
+            shutil.rmtree(stage)
+        stage.mkdir(mode=0o700)
+        stage.chmod(0o700)
+        filesystem = value.get("filesystem")
+        fields = filesystem if isinstance(filesystem, dict) else {}
+        text = json.dumps({**value, "filesystem": {**fields, "allowWrite": [*writes, str(stage)]}}) + "\n"
+        profile.unlink(missing_ok=True)
+        descriptor = os.open(profile, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as f:
+            f.write(text)
+    except OSError as err:
+        raise Refusal(
+            f"the broker cannot make its staging directory {stage} and profile {profile}: {err}"
+        ) from None
 
 
 def ended(signum: int, frame: FrameType | None) -> None:
@@ -629,15 +867,15 @@ def ended(signum: int, frame: FrameType | None) -> None:
     sys.exit(0)
 
 
-def answer(connection: socket.socket) -> None:
-    """Read one request from `connection` and send `respond`'s answer as one JSON line. A client that
-    leaves, or has not sent its request within LOCAL seconds, takes its reply with it; the broker
-    serves the next."""
+def answer(connection: socket.socket, profile: Path) -> None:
+    """Read one request from `connection` and send `respond`'s answer with `profile` as one JSON
+    line. A client that leaves, or has not sent its request within LOCAL seconds, takes its reply
+    with it; the broker serves the next."""
     try:
         data = receive(connection, LIMIT, time.monotonic() + LOCAL)
     except OSError:
         return
-    reply = respond(data)
+    reply = respond(data, profile)
     with contextlib.suppress(OSError):
         connection.settimeout(LOCAL)
         connection.sendall(reply.line())
@@ -659,10 +897,11 @@ def read_request(data: bytes) -> Request:
     return Request(event, json.dumps(payload))
 
 
-def respond(data: bytes) -> Reply:
+def respond(data: bytes, profile: Path) -> Reply:
     """The answer to the request `data` (`read_request`): the path and stderr of this script run on
-    it without AGENTBOX and AGENTBOX_BROKER, and with GIT_TERMINAL_PROMPT=0, so that a fetch never
-    prompts on the frontend's terminal; or an error, also where that process cannot start."""
+    it as `--boxed <profile>`, without AGENTBOX and AGENTBOX_BROKER, and with GIT_TERMINAL_PROMPT=0,
+    so that a fetch never prompts on the frontend's terminal; or an error, also where that process
+    cannot start."""
     try:
         request = read_request(data)
     except (Refusal, HarnessError) as err:
@@ -672,7 +911,7 @@ def respond(data: bytes) -> Reply:
     }
     try:
         proc = subprocess.run(
-            [sys.executable, str(Path(__file__).absolute())],
+            [sys.executable, str(Path(__file__).absolute()), "--boxed", str(profile)],
             input=request.text,
             capture_output=True,
             text=True,
@@ -689,26 +928,47 @@ def respond(data: bytes) -> Reply:
     return Reply(path=proc.stdout.strip(), stderr=proc.stderr)
 
 
-def serve_arguments(args: Sequence[str]) -> tuple[Path, int]:
-    """The socket and the parent's process ID of `--serve <socket> --parent <pid>`."""
-    if len(args) != 4 or args[0] != "--serve" or args[2] != "--parent" or not args[3].isdigit():
-        raise Refusal("usage: worktree.py [--serve <socket> --parent <pid>]")
-    return Path(args[1]), int(args[3])
+USAGE = "usage: worktree.py [--serve <socket> --parent <pid> --settings <file> | --boxed <profile>]"
+
+
+def serve_arguments(args: Sequence[str]) -> tuple[Path, int, Path]:
+    """The socket, the parent's process ID and the settings file of `--serve <socket> --parent
+    <pid> --settings <file>`."""
+    match list(args):
+        case ["--serve", path, "--parent", parent, "--settings", settings] if parent.isdigit():
+            return Path(path), int(parent), Path(settings)
+        case _:
+            raise Refusal(USAGE)
+
+
+def boxed_profile(args: Sequence[str]) -> Path | None:
+    """The profile of `--boxed <profile>`, or None for no arguments; refused where SRT is no
+    executable file, links followed, since every git of a boxed child runs in it."""
+    match list(args):
+        case []:
+            return None
+        case ["--boxed", profile]:
+            if not SRT.is_file() or not os.access(SRT, os.X_OK):
+                raise Refusal(f"{SRT} is not an executable file; a boxed child runs every git in srt")
+            return Path(profile)
+        case _:
+            raise Refusal(USAGE)
 
 
 def main(args: Sequence[str] = ()) -> int:
     try:
-        if args:
+        if args and args[0] == "--serve":
             serve(*serve_arguments(args))
             return 0
+        profile = boxed_profile(args)
         payload = loads(sys.stdin.read(), where="hook input")
         event = payload.get("hook_event_name")
         if "AGENTBOX" in os.environ:
             ask(payload, created=event == "WorktreeCreate")
         elif event == "WorktreeCreate":
-            print(create(payload))
+            print(create(payload, profile))
         elif event == "WorktreeRemove":
-            remove(payload)
+            remove(payload, profile)
         else:
             raise Refusal(f"unexpected hook_event_name {event!r}")
     except (Refusal, HarnessError) as err:

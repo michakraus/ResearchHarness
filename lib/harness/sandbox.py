@@ -2016,10 +2016,22 @@ def bind_verdict_cases(check: Check) -> None:
     )
 
 
+def broker_settings_case(check: Check, box: Box, name: str, policy: str) -> None:
+    """The last two arguments of the worktree broker of the run of `name` on `box`: `--settings` and
+    the srt settings file of `policy`. The stub interpreter writes its arguments before it binds, so
+    the case runs also where this environment refuses the bind."""
+    args = box.broker_args()
+    check(
+        args is not None and args[-2:] == ["--settings", f"{box.home}/{DIRECTORY}/{policy}.json"],
+        f"agentbox {name}: the worktree broker gets --settings <home>/{DIRECTORY}/{policy}.json last: {args}",
+    )
+
+
 def agentbox_cases(check: Check, root: pathlib.Path) -> None:
     """sandbox/agentbox, run as a program on a fresh `Box` below `root` per case: its mode; for each
     frontend, the arguments that srt sees, with the caller's `a b`, `--`, the empty string, `--model`
-    and `x` each as one argument, and the environment, the caller's with AGENTBOX=1, the three
+    and `x` each as one argument, the settings file that the worktree broker gets
+    (`broker_settings_case`), and the environment, the caller's with AGENTBOX=1, the three
     cache variables of CACHES, the variables of the forges (`Box.forge`) and AGENTBOX_BROKER
     (`Box.broker`) added; `resolution_cases`; `cache_cases`; `forge_cases`; `broker_cases`; srt's
     exit status; each
@@ -2086,6 +2098,7 @@ def agentbox_cases(check: Check, root: pathlib.Path) -> None:
             parent == str(os.getpid()),
             f"agentbox {name} execs srt, whose parent is then the caller: {parent}, caller {os.getpid()}",
         )
+        broker_settings_case(check, box, name, policy)
         if not bound:
             continue
         seen = box.environment() if got is not None else {}
@@ -2766,15 +2779,18 @@ def forge_cases(check: Check, root: pathlib.Path) -> None:
 
 def broker_cases(check: Check, root: pathlib.Path, *, bound: bool) -> None:
     """The worktree broker of a run. For each frontend: the stub interpreter gets `<hook> --serve
-    <home>/BROKER_DIR/<pid>.sock --parent <pid>`, `<pid>` being the process ID that srt runs as;
+    <home>/BROKER_DIR/<pid>.sock --parent <pid> --settings <home>/DIRECTORY/<policy name>.json`,
+    `<pid>` being the process ID that srt runs as and the policy name that of the frontend;
     srt's environment holds AGENTBOX_BROKER as that path, which is a socket; the directory has mode
     700, also where it had another; broker.log is in the run directory; stderr is empty. With no
     interpreter, an interpreter that is not executable, no hook file, a file where the directory
     belongs, or an interpreter that binds nothing: srt runs, with no AGENTBOX_BROKER, also where the
     caller set one, and stderr holds one line that names the cause. The started cases bind a
     socket, and run only where `bound` says that this environment allows it."""
-    for name in ("claude", "opencode", "omp", "agy") if bound else ():
+    policies = {"claude": "claude", "opencode": "opencode", "omp": "omp", "agy": "antigravity"}
+    for name, policy in policies.items() if bound else ():
         box = Box.fresh(root / "started", name)
+        settings = f"{box.home}/{DIRECTORY}/{policy}.json"
         directory = box.home / BROKER_DIR
         if name == "omp":
             directory.mkdir(parents=True, mode=0o755)
@@ -2790,14 +2806,15 @@ def broker_cases(check: Check, root: pathlib.Path, *, bound: bool) -> None:
             p.returncode == 0
             and p.stderr == ""
             and path is not None
-            and args == [str(box.home / BOX_HOOK), "--serve", path, "--parent", pid]
+            and args == [str(box.home / BOX_HOOK), "--serve", path, "--parent", pid, "--settings", settings]
             and seen.get("AGENTBOX_BROKER") == path
             and pathlib.Path(path).is_socket()
             and mode == BROKER_MODE
             and len(made) == 1
             and (made[0] / "broker.log").is_file(),
             f"agentbox {name}{' with a broker directory of mode 755' if name == 'omp' else ''}: the "
-            f"interpreter gets the hook, --serve <home>/{BROKER_DIR}/<pid>.sock and --parent <pid> of srt, "
+            f"interpreter gets the hook, --serve <home>/{BROKER_DIR}/<pid>.sock, --parent <pid> of srt and "
+            f"--settings <home>/{DIRECTORY}/{policy}.json, "
             f"srt gets AGENTBOX_BROKER as that socket, the directory has mode 700, and broker.log is in the "
             f"run directory: {p.returncode}, {p.stderr!r}, {args}, {seen.get('AGENTBOX_BROKER')}, "
             f"{mode and oct(mode)}, {made}",
