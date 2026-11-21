@@ -803,6 +803,26 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   checker where it should report a violation. Give the second parse the first one's tolerance, or
   derive both readings from one tree, and add a case with such a statement (B round 1, *Make the
   test suites fast without losing scrutiny*)
+- a cleanup of what a failed step made, wrapped in `contextlib.suppress(OSError)`: a directory
+  that cannot be removed, such as one of mode 0500 that a sandboxed program left, stays without a
+  word, and the next run of the same name is refused as "exists". Keep the first cause as the
+  refusal and write one line that names the path and the error (G3c round 1, *Sandbox the agent
+  frontends*)
+- a start-up cleanup that removes a stale directory with `shutil.rmtree`, where an earlier run with
+  the same key, such as a reused PID, can have left the user's work there: it deletes that work
+  without a message. Remove an empty one, move a non-empty one aside to a new name and write one
+  line that names both paths (G3c finish 1, the verifier)
+- two renames around a step, with an `except` that names only the step's own errors: an `OSError`
+  of a program start between them escapes the rename back, so the object stays at the
+  intermediate place and the caller gets a traceback. Catch `OSError` with the others, and test a
+  program that cannot start between the renames (G3c round 1)
+- a `finally` that unlinks a path that the run made, where another file can lie at that path, such
+  as a directory: the unlink raises and replaces the error that the `try` raised. Refuse such a
+  path before the `try`, or keep the first error (G3c round 1)
+- a recovery text for a state that a routine command destroys: `git worktree repair` brings back a
+  worktree that was moved, but once `git worktree prune` or `git gc` has run, the admin entry is
+  gone and only the files and the branch remain. Name that command in the text, and give the way
+  back after it (G3c verify 3)
 
 ## A step that runs a user's script
 
@@ -858,6 +878,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   pipefail, so the pipe returns the status of `tee` and a failed check passes the job. Set
   `shell: bash`, which adds `-o pipefail`, and run the step on a mutant that fails the check (J4a
   round 1, *Strengthen the Julia coding layer of the harness*)
+- a timeout on a wrapper that starts the real program, such as `srt … -- git …`:
+  `subprocess.run` kills only the wrapper, and the program keeps running and writing after the
+  caller gave up and cleaned up. Start the wrapper in a session of its own and kill its process
+  group on the timeout, or decide the edge in the spec (G3c round 1, *Sandbox the agent
+  frontends*)
 
 ## A lint cleanup
 
