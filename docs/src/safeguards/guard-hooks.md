@@ -594,13 +594,16 @@ of that name is removed where it is empty, and is never deleted where it holds a
 broker moves it aside to `worktree-stage/<pid>.stale-<ns>`, a path that must not exist yet, and
 names both paths in `broker.log`. Such a directory holds a worktree that an earlier broker with
 the same process ID left there. Move the worktree back to its path below `~/Research/.worktrees`
-and run `git worktree repair <path>` from the repository's main checkout. The broker writes the
-profile `worktree-stage/<pid>.json` with mode 600: `<file>` with the staging directory added to
-`filesystem.allowWrite`. It removes both when it exits, the staging directory only when it is
-empty. Each child `worktree.py --boxed <profile>` runs every `git`, the config check included, as
-`~/.local/bin/srt --settings <profile> -- git …`, so a config that the box chose runs with the
-box's own rights and the staging directory, not on the host. A child refuses a request where
-`~/.local/bin/srt` is not an executable file.
+and run `git worktree repair <path>` from the repository's main checkout, before any later create
+in that repository. A failed boxed create runs `git worktree prune`, and so does `git gc` once the
+registration expires; a prune drops the registration of a worktree whose path is gone. After a
+prune only the files and the branch remain: run `git worktree add <path> <branch>` at a fresh path
+and copy the files into it. The broker writes the profile `worktree-stage/<pid>.json` with mode
+600: `<file>` with the staging directory added to `filesystem.allowWrite`. It removes both when it
+exits, the staging directory only when it is empty. Each child `worktree.py --boxed <profile>`
+runs every `git`, the config check included, as `~/.local/bin/srt --settings <profile> -- git …`,
+so a config that the box chose runs with the box's own rights and the staging directory, not on
+the host. A child refuses a request where `~/.local/bin/srt` is not an executable file.
 
 A boxed create adds the worktree in the staging directory, because the box may not write
 `.githooks` below `~/Research`. The staging directory and `~/Research/.worktrees` must lie on one

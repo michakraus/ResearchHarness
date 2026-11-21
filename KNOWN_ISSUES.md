@@ -956,7 +956,7 @@
 
 ### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
 
-- location: `hooks/probe.py:3828`
+- location: `hooks/probe.py:3912`
 - evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
   reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
   calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
