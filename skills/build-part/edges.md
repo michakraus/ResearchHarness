@@ -1166,11 +1166,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   the name in plain backticks, or give `docs/make.jl` the plugin (P39 round 1,
   *Rewrite the reduced basis packages*)
 - **a Markdown file under `docs/src/` that a page reads in and that no `pages` entry names:**
-  Documenter builds every `.md` below `docs/src/` as a page of its own, so a table that a page
-  includes with `Markdown.parse` also appears as `assets/<name>.html`, reachable by its URL and from
-  no menu, and the build passes. Write such a fragment outside `docs/src/`, or give it another
-  extension, and list `docs/build/` after a local build for an `.html` that no `pages` entry names
-  (I3b round 1, the plan that revives the multisymplectic package)
+  Documenter builds every `.md` below `docs/src/` as a page of its own unless `makedocs` sets
+  `pagesonly = true`, so a table that a page includes with `Markdown.parse` from `docs/src/assets/`
+  also appears as `assets/<name>.html`, or as `assets/<name>/index.html` with `prettyurls`,
+  reachable by its URL and from no menu, and the build passes. Write such a fragment outside
+  `docs/src/`, or give it another extension, and list `docs/build/` after a local build for an
+  `.html` that no `pages` entry names (I3b round 1, the plan that revives the multisymplectic
+  package)
 - **a text fix that generalises from the one instance it verified to its neighbours:** the sentence
   said `--seed` names the run "like every other option here", and of the four neighbours it named
   only the seed did. Read the source of every claim a generalising phrase covers — `run_id(o)` named
