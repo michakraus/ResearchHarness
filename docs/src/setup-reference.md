@@ -895,8 +895,8 @@ model, `flash`, `flash_lite` or `pro`. The account maps each word to a model: `p
 Argon and `flash` runs Gemini 3.8 Flash. Select the session model in the model menu of the app,
 or with `agy --model`, for example `gemini-4-neon-high`: with `large = "inherit"`, an agent of
 tier `large` inherits it. To run one agent on another tier, map it in
-`[antigravity.model_overrides]`, for example `advisor = "pro"`. Without the table, the
-install stops with exit status 2, an error. A copy of `examples/models.toml` has it. To an older
+`[antigravity.model_overrides]`, for example `advisor = "pro"`. Without the table `[antigravity]`,
+the install stops with exit status 2, an error. A copy of `examples/models.toml` has it. To an older
 copy, this block adds the table of the example. Run it once: a second table stops the install too.
 
 ```bash
