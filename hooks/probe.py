@@ -1572,6 +1572,64 @@ def boxed_edge_cases(hook: types.ModuleType, report: Callable[[object, str], Non
         not stuck.exists(follow_symlinks=False) and stage_empty(),
         f"that worktree, moved back by the probe, is removed: {outcome}",
     )
+    boxed_swap_case(hook, report)
+
+
+def boxed_swap_case(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """A boxed remove whose staged worktree becomes a link to another worktree right after the
+    rename, as a process that a config started could make it: refused before any git runs on the
+    staged path, and the other worktree stays, registered."""
+    profile = pathlib.Path(WT_PROFILE)
+    victim = pathlib.Path(WT_ROOT, "Repo-victim")
+    racer = pathlib.Path(WT_ROOT, "Repo-racer")
+    staged = pathlib.Path(WT_STAGE, "Repo-racer")
+    aside = pathlib.Path(FIXTURE.name, "wt-racer-aside")
+    made = [
+        inprocess(hook, lambda name=name: hook.create(create(name), profile=profile))[0]
+        for name in ("victim", "racer")
+    ]
+    real_move = hook.move
+
+    def swapped(source: pathlib.Path, target: pathlib.Path) -> None:
+        real_move(source, target)
+        if target == staged:
+            target.rename(aside)
+            target.symlink_to(victim)
+
+    outcome, seen = inprocess(
+        hook,
+        lambda: hook.remove({"worktree_path": str(racer)}, profile=profile),
+        mock.patch.object(hook, "move", swapped),
+    )
+    on_staged = [a[len(WT_BOXED) :] for a in seen if str(staged) in a]
+    report(
+        outcome.startswith("refused: ")
+        and not on_staged
+        and victim.is_dir()
+        and listed(victim)
+        and linked(victim),
+        f"a boxed remove whose staged worktree becomes a link to another worktree: refused before any "
+        f"git on the staged path, and the other worktree stays: {made}, {outcome}, {on_staged}",
+    )
+    if staged.is_symlink():
+        staged.unlink()
+    if aside.is_dir():
+        aside.rename(racer)
+        subprocess.run(
+            ["git", "-C", WT_REPO, "worktree", "repair", str(racer)],  # noqa: S607 -- the `git` on PATH
+            capture_output=True,
+            env=WORKTREE_ENV,
+            timeout=60,
+            check=False,
+        )
+    for path in (racer, victim):
+        inprocess(hook, lambda path=path: hook.remove({"worktree_path": str(path)}, profile=profile))
+    report(
+        not racer.exists(follow_symlinks=False)
+        and not victim.exists(follow_symlinks=False)
+        and stage_empty(),
+        "the probe removes both worktrees of that case",
+    )
 
 
 def boxed_step_cases(report: Callable[[object, str], None]) -> None:
@@ -1597,13 +1655,14 @@ def boxed_step_cases(report: Callable[[object, str], None]) -> None:
         report(
             proc is not None
             and proc.returncode == 1
-            and WT_SRT in last(proc)
+            and proc.stderr
+            == f"worktree hook: {WT_SRT} is not an executable file; a boxed child runs every git in srt\n"
             and not started
             and not boxed
             and not pathlib.Path(WT_ROOT, "Repo-nosrt").exists(follow_symlinks=False)
             and stage_empty(),
-            f"a boxed create where srt is {label}: exits 1 with a line that names {WT_SRT}, and starts "
-            f"no git: {said(proc)}, {started}",
+            f"a boxed create where srt is {label}: exits 1 with the one line that names {WT_SRT}, before "
+            f"any git: {said(proc)}, {started}",
         )
 
     found = pathlib.Path(WT_STAGE, "Repo-found")
@@ -1759,7 +1818,7 @@ def broker_start_cases(hook: types.ModuleType, report: Callable[[object, str], N
         [
             ("whose settings file is no JSON", bad_json, str(bad_json)),
             ("whose settings file's filesystem.allowWrite is a string", bad_list, str(bad_list)),
-            ("whose staging directory is a link", pathlib.Path(WT_SETTINGS), str(stage)),
+            ("whose staging directory is a link", pathlib.Path(WT_SETTINGS), f"{stage} is a symbolic link"),
         ]
     ):
         if settings == pathlib.Path(WT_SETTINGS):

@@ -162,8 +162,9 @@ LIMIT = 64 * 1024
 WORK = 400
 ANSWER = 420
 LOOK = 1
-# The srt that a boxed child runs every git in, as `agentbox` runs the frontend in it; and the
-# directory of the brokers' staging directories, one `<pid>` per broker with its profile
+# The srt that a boxed child runs every git in, `~/.local/bin/srt`, as `agentbox` runs the frontend
+# in it; and the directory of the brokers' staging directories,
+# `~/.local/state/research-harness/worktree-stage`, one `<pid>` per broker with its profile
 # `<pid>.json` beside it, below `~/.local/state`, which no box may write.
 SRT = Path.home() / ".local" / "bin" / "srt"
 STAGES = Path.home() / ".local" / "state" / "research-harness" / "worktree-stage"
@@ -426,12 +427,8 @@ def add_arguments(repo: Path, name: str, target: Path, profile: Path | None) -> 
     with no upstream."""
     if AGENT.match(name):
         return ["worktree", "add", "--detach", str(target), base_ref(repo, profile)]
-    if (
-        run_git(
-            "rev-parse", "--verify", "--quiet", f"refs/heads/{name}", repo=repo, profile=profile
-        ).returncode
-        == 0
-    ):
+    branch = run_git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}", repo=repo, profile=profile)
+    if branch.returncode == 0:
         return ["worktree", "add", str(target), name]
     return ["worktree", "add", "--no-track", "-b", name, str(target), base_ref(repo, profile)]
 
