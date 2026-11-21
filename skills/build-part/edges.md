@@ -279,6 +279,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   cannot (M1b verify 3, *Simplify the optimiser package and the learning package for 0.9*)
 - a first trial step of `Inf`, or above the caller's ceiling; an invalid ceiling
 - an empty, a one-element or a zero-width case; the edge of a grid
+- **a reversed interval or domain (`lo > hi`) that the base type already accepts:** its steps are
+  negative, so a weight such as `√h` throws a `DomainError` and a moment changes sign. Decide in
+  the spec whether the part guards it or records it as a known issue of the base type. When
+  several parts read the same type, say so plan-wide (L1 round 1a, *a dynamical low-rank plan*)
 - a value read out of a live cache and stored beside the solution: it aliases the cache, so every
   stored entry ends up equal to the last one. Copy it, and give the test's fixture a
   step-dependent value so the test can see the difference (C, a package revival)
