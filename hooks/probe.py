@@ -1443,7 +1443,7 @@ def boxed_recorded_cases(hook: types.ModuleType, report: Callable[[object, str],
 
 def boxed_device_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
     """`same_device` with an injected stat that gives two devices, and a boxed create in this
-    process with that stat and with a WORKTREES root that is a link: each refused with a line that
+    process with that stat and with a ROOT that is a link: each refused with a line that
     names its cause, with no `worktree add`, a `worktree prune` under srt, and no worktree."""
     profile = pathlib.Path(WT_PROFILE)
     real_same = getattr(hook, "same_device", None)
@@ -1495,7 +1495,7 @@ def boxed_device_cases(hook: types.ModuleType, report: Callable[[object, str], N
 
 def boxed_edge_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
     """The decided edges of a boxed create and remove, in this process: a staging directory that is
-    a link, a WORKTREES root that is missing, which the child makes, below a `Research` that is
+    a link; a ROOT that is missing, which the child makes, and a ROOT below a directory that is
     missing, which it does not make; a rename that fails, as across devices; a final path that
     becomes a link after the rename; and a refused remove whose rename back fails."""
     profile = pathlib.Path(WT_PROFILE)

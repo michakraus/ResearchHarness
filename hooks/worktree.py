@@ -691,8 +691,8 @@ def remove(payload: dict[str, JsonValue], profile: Path | None = None) -> None:
 def staged_remove(repo: Path, path: Path, profile: Path) -> None:
     """Remove the worktree `path` through the staging directory of `profile`: a rename there without
     git, then `git worktree repair` and `git worktree remove`, without `--force`, under srt. Where
-    git refuses, the worktree is renamed back and repaired, and git's refusal is raised; where the
-    rename back fails, the refusal names the staged path."""
+    a later step refuses or git times out, the worktree is renamed back and repaired, and that error
+    is raised; where the rename back fails, the refusal names the staged path."""
     stage = stage_of(profile)
     staged = stage / path.name
     move(path, staged)
