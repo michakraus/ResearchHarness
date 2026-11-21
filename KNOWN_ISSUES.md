@@ -1213,3 +1213,24 @@
   commit.
 - kind: not verified
 - found: 2026-11-21, CodeRabbit on a pull request of the learning package
+
+### K182 · The `ci-groups` rule of `test-layout.jl` accepts a group name of `test/ci-groups.toml` that ends in a newline.
+
+- location: `scripts/test-layout.jl:178`
+- evidence: `CI_GROUP_NAME = r"^[a-z][a-z0-9]*$"`, and PCRE's `$` also matches before a final
+  newline: `julia --startup-file=no -e 'println(occursin(r"^[a-z][a-z0-9]*$", "training\n"))'`
+  prints `true`; with `\z` in place of `$` it prints `false`, and `"training"` still matches. A
+  TOML string `"training\n"` therefore passes the rule at line 338, and the `groups` jobs of the
+  workflows refuse it with `re.fullmatch`, so the failure shows in CI and not in the hook.
+- kind: defect
+- found: 2026-11-21, CodeRabbit on a pull request of the learning package
+
+### K183 · `tests_lines` of `test-layout.jl` takes the first child of a pair as its label, which is the operator for a pair in prefix form.
+
+- location: `scripts/test-layout.jl:167`
+- evidence: `tests_lines` returns `JS.source_line(first(kids(f)))` for each pair `f` of `TESTS`.
+  `tests_table` accepts `(=>)(label, path)` as well as `label => path`. For the prefix form, the
+  first child is the operator, so a call that starts on the line before its label makes the rule
+  D10 read the wrong line. Not reproduced: no repository writes a pair in prefix form.
+- kind: not verified
+- found: 2026-11-21, CodeRabbit on a pull request of the learning package
