@@ -165,7 +165,7 @@ LOOK = 1
 # The srt that a boxed child runs every git in, `~/.local/bin/srt`, as `agentbox` runs the frontend
 # in it; and the directory of the brokers' staging directories,
 # `~/.local/state/research-harness/worktree-stage`, one `<pid>` per broker with its profile
-# `<pid>.json` beside it, below `~/.local/state`, which no box may write.
+# `<pid>.json` beside it, below `~/.local/state/research-harness`, which no box may write.
 SRT = Path.home() / ".local" / "bin" / "srt"
 STAGES = Path.home() / ".local" / "state" / "research-harness" / "worktree-stage"
 
