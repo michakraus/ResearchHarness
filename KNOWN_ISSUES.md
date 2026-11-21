@@ -1227,10 +1227,12 @@
 
 ### K183 · `tests_lines` of `test-layout.jl` takes the first child of a pair as its label, which is the operator for a pair in prefix form.
 
-- location: `scripts/test-layout.jl:167`
+- location: `scripts/test-layout.jl:166`
 - evidence: `tests_lines` returns `JS.source_line(first(kids(f)))` for each pair `f` of `TESTS`.
   `tests_table` accepts `(=>)(label, path)` as well as `label => path`. For the prefix form, the
   first child is the operator, so a call that starts on the line before its label makes the rule
-  D10 read the wrong line. Not reproduced: no repository writes a pair in prefix form.
-- kind: not verified
+  D10 read the wrong line. `tests_lines` of a file that holds
+  `const TESTS = ["broken" => ["a" => "a.jl", (=>)(` and, on the next line, `"b", "b.jl")]]`
+  returns `[1, 1]`; the label `"b"` is on line 2. No repository writes a pair in prefix form.
+- kind: defect
 - found: 2026-11-21, CodeRabbit on a pull request of the learning package
