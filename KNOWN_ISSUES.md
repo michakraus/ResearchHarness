@@ -801,7 +801,7 @@
 
 ### K145 · In a cmux terminal `agentbox agy` gives `srt` cmux's `agy` wrapper, not the real `agy`.
 
-- location: `sandbox/agentbox:68`
+- location: `sandbox/agentbox:94`
 - evidence: a cmux terminal puts `/Applications/cmux.app/Contents/Resources/bin` early on the
   `PATH`, and that directory holds `agy`, a bash script whose header reads `# cmux agy wrapper -
   installs cmux hooks and captures launch metadata.` The filter of `resolve` skips only the
@@ -1112,10 +1112,10 @@
 ### K174 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
 
 - location: `hooks/probe.py:806`
-- evidence: `hooks/probe.py:806-822` defines `unix_bind` and `bind_verdict`, and `:1956-1967`
+- evidence: `hooks/probe.py:806-822` defines `unix_bind` and `bind_verdict`, and `:2025-2036`
   repeats the body of `bind_verdict_cases`, the same code as `lib/harness/sandbox.py:1982-2016`,
   about 30 lines. `hooks/probe.py` already puts `REPO/lib` on `sys.path` and imports `harness` in
-  other groups (`from harness import install_cases`, `:4182`), so it can import them. Each copy
+  other groups (`from harness import install_cases`, `:4251`), so it can import them. Each copy
   has its own mutants: the three mutants of the three-way decision run twice.
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
@@ -1199,3 +1199,15 @@
   commit.
 - kind: not verified
 - found: 2026-11-21, CodeRabbit on a pull request of the learning package
+
+### K182 · The worktree broker's `--parent` test accepts a digit that is not ASCII.
+
+- location: `hooks/worktree.py:938`
+- evidence: `serve_arguments` admits `parent` where `parent.isdigit()` holds, and then calls
+  `int(parent)`. `"²".isdigit()` is `True`, and `int("²")` raises `ValueError: invalid literal for
+  int() with base 10: '²'`, so `worktree.py --serve <socket> --parent ² --settings <file>` ends in
+  a traceback, not in the usage line. A digit such as `"٣"` passes `int` and gives 3, which the
+  check against `os.getppid()` then refuses. `parent.isascii() and parent.isdigit()` closes it.
+  Commit `69179e7d` has the same test.
+- kind: defect
+- found: 2026-11-21, the review of part G3c of the sandbox plan

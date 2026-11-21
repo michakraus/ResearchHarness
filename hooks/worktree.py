@@ -527,9 +527,9 @@ def staged_add(repo: Path, name: str, final: Path, profile: Path) -> None:
 
 
 def undo(repo: Path, made: Path | None, profile: Path) -> None:
-    """Remove `made`, where it is given, and then run `git worktree prune` under srt. A failure of
-    either writes one line to stderr, which names `made` or the repository, and raises nothing: the
-    step that failed before gives the refusal."""
+    """Remove `made`, where given, then run `git worktree prune` under srt. A failed removal, or a
+    prune that cannot start or times out, writes one stderr line that names `made` or the
+    repository; the prune's own stderr passes through. Raises nothing: the earlier step refuses."""
     if made is not None:
         try:
             discard(made)
