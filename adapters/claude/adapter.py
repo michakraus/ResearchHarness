@@ -2032,9 +2032,10 @@ def layer_cases(check, tmp):
         f"event or group of the template is empty: {no_source} have no source, {empty_events} are empty",
     )
 
-    # The guard runs on the Bash, directory, Kaimon and web matchers, with `|| exit 2` as the shell's operator,
-    # so that a guard that cannot start blocks the call; the Bash group runs `rtk hook claude`, the
-    # guard and kaimon-note.py and nothing else; the Edit matcher runs edit-scope.py and not the guard.
+    # The guard runs on every tool call, alone in the group of the matcher `*`, with `|| exit 2` as the
+    # shell's operator, so that a guard that cannot start blocks the call; no other group runs it, so
+    # each call starts it once. The Bash group runs `rtk hook claude` and kaimon-note.py and nothing
+    # else; the Edit matcher runs edit-scope.py and not the guard.
     groups = settings_template(dataclasses.replace(profile, home=spaced), home / "network.toml", python)[
         "hooks"
     ]
@@ -2043,15 +2044,13 @@ def layer_cases(check, tmp):
     by_matcher = {g.get("matcher"): [h["command"] for h in g["hooks"]] for g in groups["PreToolUse"]}
     case(
         lambda: (
-            by_matcher.get("Bash") == ["rtk hook claude", guard, note]
-            and by_matcher.get("mcp__ccd_directory__.*|EnterWorktree|ExitWorktree") == [guard]
-            and by_matcher.get("mcp__kaimon__.*") == [guard]
-            and by_matcher.get("WebFetch|WebSearch") == [guard]
-            and sum(c == guard for c in rendered) == 4
+            by_matcher.get("*") == [guard]
+            and by_matcher.get("Bash") == ["rtk hook claude", note]
+            and sum(c == guard for c in rendered) == 1
         ),
-        f"the Bash group runs rtk hook claude, the guard and kaimon-note.py, and the directory, Kaimon and web "
-        f"groups the guard, "
-        f"rendered as {guard!r} with the operator unquoted: {by_matcher}",
+        f"the group of the matcher * runs the guard alone, rendered as {guard!r} with the operator unquoted, "
+        f"the Bash group runs rtk hook claude and kaimon-note.py, and no other hook command of the template "
+        f"is the guard: {by_matcher}",
     )
     edit_matcher = "Edit|Write|MultiEdit|NotebookEdit"
     case(

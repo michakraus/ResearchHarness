@@ -1792,14 +1792,15 @@ def omp_reply(
     mode: str = "",
     path: str | None = None,
     extra: dict[str, str] | None = None,
+    drop: tuple[str, ...] = (),
 ) -> PluginReply:
     """The extension's answer in the home `home` to one event of the call (tool, input), in the
     working directory `cwd`, the driver in the mode `mode`; `path`, the `PATH` of `node`; `extra`,
-    further variables of its environment."""
+    further variables of its environment; `drop`, the variables of this process that it lacks."""
     node = shutil.which("node") or "node"
     tool, data = call
     event = json.dumps({"type": "tool_call", "toolCallId": "probe", "toolName": tool, "input": data})
-    env = {**CLEAN, "HOME": home, **(extra or {})}
+    env = {**{k: v for k, v in CLEAN.items() if k not in drop}, "HOME": home, **(extra or {})}
     if path is not None:
         env["PATH"] = path
     start = time.monotonic()
@@ -1980,7 +1981,7 @@ def omp_cases():
     )
     # The check runs before the guard reads its path list: a list that holds no list of strings under
     # `ask` gives the launcher's reason.
-    got = omp_reply(opened_unusable, ("bash", status))
+    got = omp_reply(opened_unusable, ("bash", status), drop=LAUNCHER_ENV)
     reason = LAUNCHER_OUTSIDE if MAC else "no list of strings"
     report(
         ok=got.decision == "deny" and reason in got.reason,
@@ -2133,13 +2134,15 @@ def oc_cases():
         path: str | None = None,
         config_dir: str | None = None,
         extra: dict[str, str] | None = None,
+        drop: tuple[str, ...] = (),
     ) -> Any:
         """The driver's answer for one event, or the text of what went wrong. `cwd` is the
         session's directory, `ctx.location.directory`, or "" for a context with no `location`;
         `process_cwd`, the working directory of the `node` process, or None for this one's; `path`,
         the `PATH` of the `node` process, or None for this one's; `config_dir`, its
-        `OPENCODE_CONFIG_DIR`, or None for none; `extra`, further variables of its environment."""
-        env = {k: v for k, v in CLEAN.items() if k != "OPENCODE_CONFIG_DIR"} | (extra or {})
+        `OPENCODE_CONFIG_DIR`, or None for none; `extra`, further variables of its environment;
+        `drop`, the variables of this process that it lacks."""
+        env = {k: v for k, v in CLEAN.items() if k != "OPENCODE_CONFIG_DIR" and k not in drop} | (extra or {})
         if path is not None:
             env["PATH"] = path
         if config_dir is not None:
@@ -2214,6 +2217,7 @@ def oc_cases():
         config_dir: str | None = None,
         path: str | None = None,
         extra: dict[str, str] | None = None,
+        drop: tuple[str, ...] = (),
     ) -> PluginReply:
         """The guard plugin's answer in the home `home` to one event, with the session's directory and
         the directory of `node` of `place`, and the options of `drive`."""
@@ -2228,6 +2232,7 @@ def oc_cases():
             config_dir=config_dir,
             path=path,
             extra=extra,
+            drop=drop,
         )
         seconds = time.monotonic() - start
         if isinstance(answer, str) or "setup" in answer:
@@ -2294,7 +2299,7 @@ def oc_cases():
     broken = pathlib.Path(FIXTURE.name, "oc-local", "launcher")
     broken.mkdir(parents=True)
     (broken / "guard-paths.json").write_text("{", encoding="utf-8")
-    got = reply(opened, status, config_dir=str(broken))
+    got = reply(opened, status, config_dir=str(broken), drop=LAUNCHER_ENV)
     reason = LAUNCHER_OUTSIDE if MAC else "so the call is blocked"
     report(
         ok=got.decision == "deny" and reason in got.reason,
@@ -3778,9 +3783,10 @@ def guard_reads() -> list[str]:
     return found
 
 
-def guard_entry(missing: str) -> tuple[list[str], str]:
-    """The commands of the `Bash` group of the settings template as the Claude Code adapter renders them
-    with the dummy profile, a home `missing` and this interpreter, and the guard's command among them."""
+def guard_entry(missing: str) -> tuple[list[str], list[str], str]:
+    """The commands of the `*` group and of the `Bash` group of the settings template as the Claude
+    Code adapter renders them with the dummy profile, a home `missing` and this interpreter, and the
+    guard's command, which the `*` group runs on every tool call."""
     sys.path.insert(0, REPO + "/lib")
     frontends = importlib.import_module("harness.frontends")
     profile = importlib.import_module("harness.profile")
@@ -3788,9 +3794,10 @@ def guard_entry(missing: str) -> tuple[list[str], str]:
     cfg = frontends.adapter("claude").settings_template(
         dummy, FIXTURE.name + "/no-network.toml", sys.executable
     )
-    group = next(g for g in cfg["hooks"]["PreToolUse"] if g.get("matcher") == "Bash")
+    every = next(g for g in cfg["hooks"]["PreToolUse"] if g.get("matcher") == "*")
+    bash = next(g for g in cfg["hooks"]["PreToolUse"] if g.get("matcher") == "Bash")
     guard = shlex.join([sys.executable, missing + "/.claude/hooks/guard", "--from", "claude"]) + " || exit 2"
-    return [str(h["command"]) for h in group["hooks"]], guard
+    return [str(h["command"]) for h in every["hooks"]], [str(h["command"]) for h in bash["hooks"]], guard
 
 
 def launcher_cases(report: Callable[..., None]) -> None:
@@ -4291,14 +4298,14 @@ def command_cases():
     report(ok=not reads, line=f"exp none got {reads}  [guard    ]  file-system reads outside paths.py")
 
     try:
-        commands, guard = guard_entry(FIXTURE.name + "/missing-home")
-    except (ImportError, OSError, ValueError, LookupError, TypeError) as e:
+        commands, bash, guard = guard_entry(FIXTURE.name + "/missing-home")
+    except (ImportError, OSError, ValueError, LookupError, TypeError, StopIteration) as e:
         report(ok=False, line=f"exp render got {type(e).__name__}  [guard    ]  {e}")
         return total, wrong
     note = shlex.join([sys.executable, FIXTURE.name + "/missing-home/.claude/hooks/kaimon-note.py"])
     report(
-        ok=commands == ["rtk hook claude", guard, note],
-        line=f"exp rtk, guard and kaimon-note got {commands}  [guard    ]  the rendered Bash group",
+        ok=commands == [guard] and bash == ["rtk hook claude", note],
+        line=f"exp guard; rtk and kaimon-note got {commands}; {bash}  [guard    ]  the rendered * and Bash groups",
     )
     # Claude Code runs the rendered hook command through a shell, the payload on stdin. The guard's path
     # is missing below the fixture's home, and then the interpreter is too, which exits 127 without the

@@ -109,8 +109,12 @@ each mechanism: [Sandboxes](sandbox.md), [Permissions](permissions.md),
   starts Kaimon and `julia-update` under [`bwrap`](sandbox.md#the-daemon-profiles), with
   arguments from the same rule list, and both keep the network. For every other MCP server, no
   profile applies.
-- **OpenCode and oh-my-pi have no sandbox of their own.** Started without `agentbox`, their
-  permission blocks and guard extensions check text, as the deny list and the hooks do. Started
+- **OpenCode and oh-my-pi have no sandbox of their own.** On macOS,
+  [the launcher check](guard-hooks.md#the-launcher-check) of the guard refuses every tool call of
+  a frontend that you start without `agentbox`: of OpenCode, of oh-my-pi, and of Claude Code
+  outside the two sessions that its own sandbox holds, in the Code tab of the Claude desktop app
+  and in `claudex`. On Linux the check refuses nothing, and the permission blocks and guard
+  extensions of OpenCode and oh-my-pi check text, as the deny list and the hooks do. Started
   through [`agentbox`](sandbox.md#the-launcher-agentbox), each runs with every command that it
   starts inside the sandbox of `srt`. Antigravity runs commands in its terminal sandbox in the
   CLI and the desktop app, and its guard hook sets `BypassSandbox` on each command and checks paths
@@ -136,8 +140,6 @@ decide that a rule does not work.
 These safeguards are decided, and none of them runs yet. [Sandboxes](sandbox.md#planned) gives
 each sandbox item in more detail.
 
-- **A guard against a session with no sandbox** ([planned](../planned.md#no-sandbox-guard)): a
-  guard hook refuses every tool call when `~/.ssh` is readable and no sandbox is on.
 - **Kaimon without the network on Linux** ([planned](../planned.md#kaimon-without-network)):
   only the loopback addresses and Kaimon's own sockets stay reachable, as on macOS.
 - **The desktop apps under an outer sandbox** ([planned](../planned.md#desktop-apps)), and

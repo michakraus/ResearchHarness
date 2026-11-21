@@ -101,9 +101,12 @@ frontend all the same; the worktree hook then fails. The broker serves the workt
 `git pull`, `git switch` or `git rebase` that changes `.githooks/` still fails inside the
 sandbox.
 
-**`agentbox` is opt-in.** A frontend that you start without it does not read its `srt` file, and
-runs as it would without the harness: Claude Code with its session sandbox, OpenCode and oh-my-pi
-with none. The probe battery `scripts/probe-agentbox.py` checks the boundary on macOS; run it from
+**`agentbox` is opt-in.** A frontend that you start without it does not read its `srt` file. On
+macOS, [the launcher check](guard-hooks.md#the-launcher-check) of the guard then refuses every
+tool call of OpenCode, of oh-my-pi, and of Claude Code outside the two sessions that its own
+sandbox holds, in the Code tab of the Claude desktop app and in `claudex`. On Linux the check
+refuses nothing: Claude Code runs with its session sandbox, OpenCode and oh-my-pi with none. The
+probe battery `scripts/probe-agentbox.py` checks the boundary on macOS; run it from
 a plain terminal, not from a session. [The srt settings](../components/sandbox.md) describes the
 rendering, the launcher and the probe in full.
 
@@ -349,9 +352,6 @@ abstract-socket gaps, is planned.
 
 These sandboxes are decided, and none of them runs yet:
 
-- **A guard against a session with no sandbox** ([planned](../planned.md#no-sandbox-guard)): a
-  hook that refuses every tool call when `~/.ssh` is readable and no sandbox is on: neither the
-  launcher nor Claude Code's own sandbox.
 - **Fewer prompts under the launcher** ([planned](../planned.md#fewer-prompts)): the permission
   prompts that the outer sandbox makes safe go, as a settings change with probes.
 - **The desktop apps** ([planned](../planned.md#desktop-apps)): an outer sandbox for Claude Code's
