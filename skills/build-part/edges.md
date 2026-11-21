@@ -960,6 +960,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - an earlier `[Unreleased]` bullet that quotes a time or a count the change supersedes, such as
   "takes 218 s" for a sweep the part cuts (D, *Faster test suites for the learning package and
   the optimiser package*)
+- a plan whose collisions row allows a shared `CHANGELOG.md` "added lines only", while the part's
+  move makes earlier `[Unreleased]` sentences false: the plan row and the changelog rule then
+  contradict each other, and the builder can keep neither. Decide it in the spec: in-place
+  corrections of the sentences the move makes false, inside the base's `[Unreleased]` section only,
+  with a list of the stale phrases (base finds each, head none) and a range guard over the
+  `git diff -U0` hunk headers (C round 1, *Make the test suites fast without losing scrutiny*)
 - a name that a case-sensitive search misses, such as an organisation in lower case inside a
   host name: search the names with `-i` (D3, *Unify the agent configuration*)
 - a rewritten line that removes the only introduction of a term, while a later line that no
