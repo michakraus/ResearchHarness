@@ -1382,7 +1382,7 @@ def boxed_undo_case(hook: types.ModuleType, report: Callable[[object, str], None
         return subprocess.CompletedProcess(list(args), 0, "", "")
 
     err = io.StringIO()
-    locked.chmod(0o500)
+    locked.chmod(0o500)  # not private: a directory whose file rmtree cannot remove
     try:
         with (
             mock.patch.object(hook, "discard", discard),
@@ -1395,7 +1395,7 @@ def boxed_undo_case(hook: types.ModuleType, report: Callable[[object, str], None
     else:
         outcome = "returned"
     finally:
-        locked.chmod(0o700)
+        locked.chmod(0o700)  # not private: the probe's own removal of that directory
     lines = [line for line in err.getvalue().splitlines() if str(made) in line.replace(str(locked), "")]
     report(
         outcome == "returned"
