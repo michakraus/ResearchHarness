@@ -70,8 +70,9 @@ SHELL: tuple[Check, ...] = (
     web_identity.check,
 )
 
-# (matcher, checks): the matchers of the settings template's `PreToolUse` groups that run the guard,
-# each read as a whole tool name.
+# (matcher, checks): the checks of each tool whose whole name the matcher reads. Claude Code runs
+# the guard on every tool call, in the settings template's `PreToolUse` group of the matcher `*`,
+# and a tool that no matcher reads gets no check of this table.
 TABLE: tuple[tuple[re.Pattern[str], tuple[Check, ...]], ...] = (
     (re.compile(r"Bash"), SHELL),
     (re.compile(r"mcp__ccd_directory__.*|EnterWorktree|ExitWorktree"), (directory_scope.check,)),

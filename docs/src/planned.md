@@ -11,7 +11,6 @@ feature. When a feature lands, its row and its marks go in the same change.
 
 | feature | state | described in |
 |:--|:--|:--|
-| **A guard against a session with no sandbox**{#no-sandbox-guard} | planned | [Sandboxes](safeguards/sandbox.md#planned), [The security model](safeguards/security-model.md#planned-safeguards) |
 | **Fewer prompts under the launcher**{#fewer-prompts} | planned | [Sandboxes](safeguards/sandbox.md#planned) |
 | **The desktop apps under an outer sandbox**{#desktop-apps} | planned | [Sandboxes](safeguards/sandbox.md#planned), [The security model](safeguards/security-model.md#planned-safeguards) |
 | **The launcher on Linux**{#linux-launcher} | planned | [Sandboxes](safeguards/sandbox.md#planned), [The security model](safeguards/security-model.md#planned-safeguards) |

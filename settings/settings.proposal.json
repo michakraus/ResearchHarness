@@ -702,6 +702,16 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{home}/.claude/hooks/guard --from claude || exit 2",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
@@ -711,22 +721,7 @@
           },
           {
             "type": "command",
-            "command": "{home}/.claude/hooks/guard --from claude || exit 2",
-            "timeout": 5
-          },
-          {
-            "type": "command",
             "command": "{home}/.claude/hooks/kaimon-note.py",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__ccd_directory__.*|EnterWorktree|ExitWorktree",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/guard --from claude || exit 2",
             "timeout": 5
           }
         ]
@@ -737,26 +732,6 @@
           {
             "type": "command",
             "command": "{home}/.claude/hooks/edit-scope.py",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__kaimon__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/guard --from claude || exit 2",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "WebFetch|WebSearch",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "{home}/.claude/hooks/guard --from claude || exit 2",
             "timeout": 5
           }
         ]

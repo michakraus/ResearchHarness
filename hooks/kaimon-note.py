@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Add a note that names Kaimon to a Bash call that runs a Julia probe in a fresh process.
 
-Claude Code runs this hook on `PreToolUse` for `Bash`, beside `rtk hook claude` and the guard. A
-probe in a fresh `julia` process pays the process start and the package load on each call, which a
-warm Kaimon session pays once. The hook adds a note to the model's context as `additionalContext`
-and lets the call run: some probes have a reason to run fresh, such as a base, a head or a scratch
-environment. It holds no state between calls, so every matching call gets the note.
+Claude Code runs this hook on `PreToolUse` for `Bash`, beside `rtk hook claude`; the guard runs on
+every tool call, in a group of its own. A probe in a fresh `julia` process pays the process start
+and the package load on each call, which a warm Kaimon session pays once. The hook adds a note to
+the model's context as `additionalContext` and lets the call run: some probes have a reason to run
+fresh, such as a base, a head or a scratch environment. It holds no state between calls, so every
+matching call gets the note.
 
 A simple command of the call is a probe when its program, read after the reserved words such as
 `then`, `do` and `!` and after the environment assignments, is `julia` (a path whose last part is
@@ -25,8 +26,8 @@ The hook reads the command only, as Claude Code sends it: it opens no script. It
 of each here-document before it splits the command with the guard's `lex`, so the lines of a body
 are no commands. **It never blocks.** Every payload exits 0. A payload it cannot read (no JSON, no
 `tool_input`, no string `command`, a tool other than `Bash`) gives no output: the guard, which runs
-beside it, refuses a `Bash` payload that it cannot read. A command with an open quote gives no
-output either, since the shell does not run it.
+on the same call, refuses a `Bash` payload that it cannot read. A command with an open quote gives
+no output either, since the shell does not run it.
 
 Test it without installing:
 

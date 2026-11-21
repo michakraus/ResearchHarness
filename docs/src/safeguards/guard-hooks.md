@@ -17,9 +17,9 @@ The hooks of this page use the Claude Code events `PreToolUse`, `PostToolUse`, `
 
 The sources are in `hooks/`. `harness install --apply` copies them to `~/.claude/hooks/`.
 Claude Code calls them through the `hooks` section of its settings, which
-`harness install --apply` writes from `settings/settings.proposal.json`. On the `Bash` matcher,
-the directory and worktree tools and the Kaimon tools, Claude Code runs one program, the guard
-package `hooks/guard/`, which holds every check of a tool call. Antigravity runs the same package,
+`harness install --apply` writes from `settings/settings.proposal.json`. On every tool call,
+Claude Code runs one program, the guard package `hooks/guard/`, which holds every check of a tool
+call, in a group of its own. Antigravity runs the same package,
 with `--from antigravity`, on every tool call. oh-my-pi runs it with `--from omp` through its guard
 extension `adapters/omp/guards.ts`, and OpenCode with `--from opencode` through its plugin
 `adapters/opencode/plugins/guards.ts`, on every tool call. Each of the three frontends runs its own
@@ -47,10 +47,10 @@ page groups the hooks: first the guard package and its checks, then `edit-scope.
 ## The guard package
 
 The guard is one program in `hooks/guard/` that decides a tool call before it runs. Claude Code
-runs it as a `PreToolUse` hook on the matchers `Bash`,
-`mcp__ccd_directory__.*|EnterWorktree|ExitWorktree`, `mcp__kaimon__.*` and `WebFetch|WebSearch`,
-with the command `<python> ~/.claude/hooks/guard --from claude || exit 2`. The `Bash` matcher runs
-`rtk hook claude` first, then the guard. Antigravity runs its copy as a `PreToolUse` hook on every
+runs it as a `PreToolUse` hook on every tool call, with the matcher `*`, in a group that runs
+nothing else, with the command `<python> ~/.claude/hooks/guard --from claude || exit 2`. No other
+group runs the guard, so each call starts it once; the `Bash` group runs `rtk hook claude` and
+`kaimon-note.py`. Antigravity runs its copy as a `PreToolUse` hook on every
 tool call, with the command `<python> ~/.gemini/config/hooks/guard --from antigravity`;
 [the adapters page](../components/adapters.md) describes its answers. The plugins of oh-my-pi and OpenCode run
 `<python> <their directory>/../hooks/guard --from omp` or `--from opencode` on every tool call,
@@ -68,10 +68,15 @@ staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, rm, archive, gi
 deletion, web, token, Kaimon and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
 guard answers the first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's
 reason, in the form of the frontend: for Claude Code exit 2 with the reason on standard error for
-`deny`, a JSON decision for `ask` and `allow`, and no output for `pass`. A tool that the table does
-not name passes. oh-my-pi and OpenCode cannot ask the user from a plugin, so their tables answer
-an `ask` as a block whose reason tells the model to ask the user in chat; `plugin.py` holds what
-the two tables share: the reading of the message, the size check of the command and the answer.
+`deny`, a JSON decision for `ask` and `allow`, and no output for `pass`. On macOS,
+[the launcher check](#the-launcher-check) first refuses every call of a Claude Code, OpenCode or
+oh-my-pi session outside `agentbox`, before the table reads the payload, except a Claude Code
+session in the Code tab of the desktop app or in `claudex` with its own sandbox on, which passes;
+in any other session, no check reads a tool that the table does not name, and the call goes on
+when the table can read the payload.
+oh-my-pi and OpenCode cannot ask the user from a plugin, so their tables answer an `ask` as a
+block whose reason tells the model to ask the user in chat; `plugin.py` holds what the two tables
+share: the reading of the message, the size check of the command and the answer.
 
 The directory check asks before a session leaves `~/Research`, or removes a worktree. A
 `change_directory` or `request_directory` call of the Claude desktop app passes when the path
@@ -86,7 +91,9 @@ only with `action: "keep"` and no `discard_changes`. Every other such call gets 
 
 The guard fails closed. It refuses a payload that is not UTF-8 or not a JSON object, or that has
 no `tool_name`; for a tool that it checks, a `tool_input` that is no object, a `Bash` call without
-a command, and a command of more than 1 MiB. A check that must resolve a path against the working
+a command, and a command of more than 1 MiB. Claude Code's guard reads the whole payload before
+its table, so it also refuses, for every tool, including one that no check reads, a payload that
+nests deeper than 200 or holds an integer of more than 4300 digits. A check that must resolve a path against the working
 directory refuses the command when the payload names none. A guard that raises refuses the call
 with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline and a quoted operator are read as the shell
@@ -622,9 +629,10 @@ echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | LOG=$TMPDIR/p.jsonl 
 
 This hook adds a note to a `Bash` call that runs a Julia probe in a fresh `julia` process. Such a
 probe pays the start of the process and the load of its packages on every call; a warm Kaimon
-session pays them once. Claude Code runs the hook on `PreToolUse` for `Bash`, in one entry with
-`rtk hook claude` and the guard. It runs the three in parallel, so the hook reads the command as
-Claude Code sends it, and a refusal of the guard wins over the note.
+session pays them once. Claude Code runs the hook on `PreToolUse` for `Bash`, beside
+`rtk hook claude`, and the guard on every tool call, in a group of its own. It runs the matching
+hooks of a call in parallel, so the hook reads the command as Claude Code sends it, and a refusal
+of the guard wins over the note.
 
 A simple command of the call is a probe when its program, after the reserved words such as `then`,
 `do` and `!` and after the environment assignments, is `julia` and it runs code: with `-e`, `-E`,

@@ -239,8 +239,11 @@ The OpenCode plugin of the guard hook. On every tool call it runs the install's 
 package in `hooks/guard/` of OpenCode's configuration directory, with `--from opencode` and the
 interpreter that `guard-paths.json` beside the plugin names under `python`. It sends the event
 and the session's directory as JSON on standard input, and throws the reason of an answer that
-blocks, which refuses the call. The guard's table checks the `shell` call and every Kaimon call
-`kaimon_<tool>`, and lets every other tool pass; [Guard hooks](../safeguards/guard-hooks.md)
+blocks, which refuses the call. On macOS the guard first runs
+[the launcher check](../safeguards/guard-hooks.md#the-launcher-check), which refuses every call of
+a session outside `agentbox`. Then its table checks the `shell` call, every Kaimon call
+`kaimon_<tool>` and the calls `webfetch` and `websearch`, and no check reads any other tool;
+[Guard hooks](../safeguards/guard-hooks.md)
 describes each check, the path list and its list in `$OPENCODE_CONFIG_DIR`, and the refusal of an
 in-place edit such as `sed -i`.
 
