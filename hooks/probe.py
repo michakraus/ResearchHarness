@@ -1819,7 +1819,22 @@ def broker_start_cases(hook: types.ModuleType, report: Callable[[object, str], N
     bad_json = pathlib.Path(FIXTURE.name, "wt-bad.json")
     bad_json.write_text("not json\n", encoding="utf-8")
     broker_bad_start_cases(report, bad_json)
-    broker_listener_cases(hook, report, bad_json)
+    try:
+        broker_listener_cases(hook, report, bad_json)
+    finally:
+        remove_asides(pathlib.Path(WT_STAGES, str(os.getppid())))
+
+
+def asides(stage: pathlib.Path) -> list[pathlib.Path]:
+    """The directories `<stage>.stale-*` beside the staging directory `stage`, where a broker moves
+    a stale staging directory that holds anything."""
+    return sorted(stage.parent.glob(f"{stage.name}.stale-*"))
+
+
+def remove_asides(stage: pathlib.Path) -> None:
+    """Remove every directory `<stage>.stale-*` beside the staging directory `stage`."""
+    for aside in asides(stage):
+        shutil.rmtree(aside)
 
 
 def broker_argument_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
@@ -1931,7 +1946,8 @@ def broker_listener_cases(
     """In this process, with a bind that the probe refuses, the broker makes the staging directory
     with mode 700 in place of a stale one and the profile with mode 600 before it binds, reads the
     settings file `bad_json`, no JSON, before it binds, removes both when it ends, and leaves a
-    staging directory that holds a worktree."""
+    staging directory that holds a worktree; the next broker moves that directory aside
+    (`broker_stale_cases`)."""
     parent = os.getppid()
     stage = pathlib.Path(WT_STAGES, str(parent))
     own = stage.parent / f"{stage.name}.json"
@@ -1946,29 +1962,36 @@ def broker_listener_cases(
     fake = types.SimpleNamespace(socket=listener, AF_UNIX=socket.AF_UNIX, SOCK_STREAM=socket.SOCK_STREAM)
     handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGHUP)}
 
-    def start(settings: pathlib.Path) -> str:
+    def start(settings: pathlib.Path) -> tuple[str, str]:
+        errors = io.StringIO()
         with (
             mock.patch.object(hook, "socket", fake),
             mock.patch.object(hook, "STAGES", pathlib.Path(WT_STAGES), create=True),
-            contextlib.redirect_stderr(io.StringIO()),
+            contextlib.redirect_stderr(errors),
         ):
             try:
                 hook.serve(pathlib.Path(WT_SOCKETS, "fake.sock"), parent, settings)
             except (hook.Refusal, hook.HarnessError, TypeError) as err:
-                return f"refused: {err}"
+                return f"refused: {err}", errors.getvalue()
             else:
-                return "served"
+                return "served", errors.getvalue()
             finally:
                 for signum, handler in handlers.items():
                     signal.signal(signum, handler)
 
-    outcome = start(pathlib.Path(WT_SETTINGS))
+    outcome, _ = start(pathlib.Path(WT_SETTINGS))
     report(
         snapshots == [((0o700, []), (0o600, profiled(stage)))],
         f"before it binds, the broker replaces a stale staging directory by an empty one of mode 700 and "
         f"writes its profile with mode 600, the settings file with that directory appended to "
         f"filesystem.allowWrite: {outcome}, {snapshots}",
     )
+    moved = asides(stage)
+    report(
+        len(moved) == 1 and (moved[0] / "stale" / "file").read_text(encoding="utf-8") == "stale\n",
+        f"the broker moves a stale staging directory that holds a file aside, with the file: {moved}",
+    )
+    remove_asides(stage)
     report(
         "refused by the probe" in outcome
         and not stage.exists(follow_symlinks=False)
@@ -1976,7 +1999,7 @@ def broker_listener_cases(
         f"a broker that ends removes its staging directory and its profile: {outcome}, "
         f"stage {stage.exists(follow_symlinks=False)}, profile {own.exists(follow_symlinks=False)}",
     )
-    outcome = start(bad_json)
+    outcome, _ = start(bad_json)
     report(
         len(snapshots) == 1 and str(bad_json) in outcome and not stage.exists(follow_symlinks=False),
         f"a broker whose settings file is no JSON refuses before it binds and makes no staging directory: "
@@ -1988,14 +2011,74 @@ def broker_listener_cases(
         return Listener((stage / "Repo-stuck").mkdir)
 
     with mock.patch.object(fake, "socket", stuck):
-        outcome = start(pathlib.Path(WT_SETTINGS))
+        outcome, _ = start(pathlib.Path(WT_SETTINGS))
     report(
         (stage / "Repo-stuck").is_dir() and not own.exists(follow_symlinks=False),
         f"a broker that ends with a worktree in its staging directory removes its profile and leaves the "
         f"directory: {outcome}, {stage_state(stage)}",
     )
-    if (stage / "Repo-stuck").is_dir():
-        shutil.rmtree(stage)
+    broker_stale_cases(hook, report, start, snapshots, stage)
+
+
+def broker_stale_cases(
+    hook: types.ModuleType,
+    report: Callable[[object, str], None],
+    start: Callable[[pathlib.Path], tuple[str, str]],
+    snapshots: list[tuple[object, object]],
+    stage: pathlib.Path,
+) -> None:
+    """The next broker on a staging directory `stage` that a broker left: `start` serves in this
+    process and appends the staging directory and profile at its bind to `snapshots`. A stale
+    directory that holds a worktree with a change moves aside to `<stage>.stale-<ns>`, with a line on
+    standard error that names it, and the new one is empty; an empty stale directory is removed and
+    moves nowhere; `staged_profile` refuses where the path aside exists, and moves nothing."""
+    stuck = stage / "Repo-stuck"
+    stuck.mkdir(parents=True, exist_ok=True)
+    stuck.chmod(0o700)  # not private: the listener made it under the broker's umask 177
+    (stuck / "change.txt").write_text("change\n", encoding="utf-8")
+    snapshots.clear()
+    outcome, errors = start(pathlib.Path(WT_SETTINGS))
+    moved = asides(stage)
+    report(
+        [s[0] for s in snapshots] == [(0o700, [])]
+        and len(moved) == 1
+        and (moved[0] / "Repo-stuck" / "change.txt").read_text(encoding="utf-8") == "change\n"
+        and str(moved[0]) in errors,
+        f"a broker moves a stale staging directory that holds a worktree aside, with its change, names the "
+        f"path aside on standard error, and binds with an empty one: {outcome}, {snapshots}, {moved}, "
+        f"{errors!r}",
+    )
+    remove_asides(stage)
+    stage.mkdir(mode=0o700)
+    snapshots.clear()
+    outcome, errors = start(pathlib.Path(WT_SETTINGS))
+    report(
+        [s[0] for s in snapshots] == [(0o700, [])] and not asides(stage),
+        f"a broker removes an empty stale staging directory and moves nothing aside: {outcome}, "
+        f"{snapshots}, {asides(stage)}, {errors!r}",
+    )
+    stage.mkdir(mode=0o700)
+    (stage / "keep").write_text("keep\n", encoding="utf-8")
+    taken = stage.parent / f"{stage.name}.stale-7"
+    taken.mkdir()
+    writes = [*WT_SETTINGS_VALUE["filesystem"]["allowWrite"]]
+    profile = stage.parent / f"{stage.name}.json"
+    try:
+        hook.staged_profile(WT_SETTINGS_VALUE, writes, stage, profile, now=lambda: 7)
+    except hook.Refusal as err:
+        outcome = f"refused: {err}"
+    else:
+        outcome = "made"
+    report(
+        str(taken) in outcome
+        and stage_state(stage) == (0o700, ["keep"])
+        and stage_state(taken) is not None
+        and not any(taken.iterdir())
+        and not profile.exists(follow_symlinks=False),
+        f"where the path aside exists, the broker refuses to start and moves nothing: {outcome}, "
+        f"{stage_state(stage)}, {stage_state(taken)}",
+    )
+    shutil.rmtree(stage)
 
 
 def worktree_git_cases() -> tuple[int, int]:

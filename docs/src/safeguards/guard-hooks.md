@@ -589,13 +589,18 @@ away and put another in its place between the config check and the read of `git`
 check alone does not hold for a `git` outside the sandbox. At its start the broker reads
 `<file>`, a JSON object whose `filesystem.allowWrite` must be a list of strings, and makes its
 staging directory `~/.local/state/research-harness/worktree-stage/<pid>` with mode 700, `<pid>`
-the process ID of `agentbox`. A stale directory of that name is replaced, and a link or a file
-there refuses the start. It writes the profile `worktree-stage/<pid>.json` with mode 600: `<file>`
-with the staging directory added to `filesystem.allowWrite`. It removes both when it exits, the
-staging directory only when it is empty. Each child `worktree.py --boxed <profile>` runs every
-`git`, the config check included, as `~/.local/bin/srt --settings <profile> -- git …`, so a config
-that the box chose runs with the box's own rights and the staging directory, not on the host. A
-child refuses a request where `~/.local/bin/srt` is not an executable file.
+the process ID of `agentbox`. A link or a file of that name refuses the start. A stale directory
+of that name is removed where it is empty, and is never deleted where it holds anything: the
+broker moves it aside to `worktree-stage/<pid>.stale-<ns>`, a path that must not exist yet, and
+names both paths in `broker.log`. Such a directory holds a worktree that an earlier broker with
+the same process ID left there. Move the worktree back to its path below `~/Research/.worktrees`
+and run `git worktree repair <path>` from the repository's main checkout. The broker writes the
+profile `worktree-stage/<pid>.json` with mode 600: `<file>` with the staging directory added to
+`filesystem.allowWrite`. It removes both when it exits, the staging directory only when it is
+empty. Each child `worktree.py --boxed <profile>` runs every `git`, the config check included, as
+`~/.local/bin/srt --settings <profile> -- git …`, so a config that the box chose runs with the
+box's own rights and the staging directory, not on the host. A child refuses a request where
+`~/.local/bin/srt` is not an executable file.
 
 A boxed create adds the worktree in the staging directory, because the box may not write
 `.githooks` below `~/Research`. The staging directory and `~/Research/.worktrees` must lie on one

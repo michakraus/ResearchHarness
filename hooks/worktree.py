@@ -833,19 +833,36 @@ def allowed_writes(value: dict[str, JsonValue], settings: Path) -> list[str]:
     return [w for w in writes if isinstance(w, str)]
 
 
-def staged_profile(value: dict[str, JsonValue], writes: list[str], stage: Path, profile: Path) -> None:
-    """Make the staging directory `stage` with mode 700, replacing a stale directory there and
-    refusing a link or any other file, and write `profile` with mode 600: the srt settings `value`
-    with `stage` appended to `writes`, its `filesystem.allowWrite`, so that the boxed git can write
-    there and nowhere else that the box cannot."""
+def staged_profile(
+    value: dict[str, JsonValue],
+    writes: list[str],
+    stage: Path,
+    profile: Path,
+    now: Callable[[], int] = time.time_ns,
+) -> None:
+    """Make the staging directory `stage` with mode 700 and write `profile` with mode 600: the srt
+    settings `value` with `stage` appended to `writes`, its `filesystem.allowWrite`, so that the
+    boxed git can write there and nowhere else that the box cannot. A link or any other file at
+    `stage` refuses. A stale directory there is removed where it is empty; one that holds anything,
+    such as a worktree that an earlier broker could not move back, is never deleted: it moves aside
+    to `<stage>.stale-<now()>`, a path that must not exist, and one line on standard error names
+    both paths."""
     try:
         stage.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         if stage.is_symlink() or (stage.exists() and not stage.is_dir()):
             raise Refusal(
                 f"{stage} is a symbolic link or no directory; the broker replaces only a stale directory"
             )
-        if stage.exists():
-            shutil.rmtree(stage)
+        if stage.exists() and any(stage.iterdir()):
+            aside = stage.with_name(f"{stage.name}.stale-{now()}")
+            if aside.exists(follow_symlinks=False):
+                raise Refusal(f"{aside} exists; the broker moves the stale {stage} only to a new path")
+            stage.rename(aside)
+            print(
+                f"worktree hook: the stale {stage} is not empty, and moves aside to {aside}", file=sys.stderr
+            )
+        elif stage.exists():
+            stage.rmdir()
         stage.mkdir(mode=0o700)
         stage.chmod(0o700)
         filesystem = value.get("filesystem")

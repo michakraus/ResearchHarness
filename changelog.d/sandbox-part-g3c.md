@@ -10,5 +10,7 @@
   directory, renames it into `~/Research/.worktrees` without `git`, and repairs it; a remove
   renames it into the staging directory, repairs and removes it there, and puts it back where `git`
   refuses. The staging directory and `~/Research/.worktrees` must lie on one device, and nothing is
-  copied. A failed step removes only what the child made and prunes the worktree. A
+  copied. A failed step removes only what the child made and prunes the worktree. The broker
+  never deletes a staging directory that holds anything: at its start it moves a stale one that
+  is not empty aside to `<pid>.stale-<ns>` and names both paths in `broker.log`. A
   `WorktreeRemove` whose `worktree_path` is no string now gets a one-line refusal.
