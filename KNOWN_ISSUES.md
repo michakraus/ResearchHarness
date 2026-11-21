@@ -801,7 +801,7 @@
 
 ### K145 · In a cmux terminal `agentbox agy` gives `srt` cmux's `agy` wrapper, not the real `agy`.
 
-- location: `sandbox/agentbox:68`
+- location: `sandbox/agentbox:94`
 - evidence: a cmux terminal puts `/Applications/cmux.app/Contents/Resources/bin` early on the
   `PATH`, and that directory holds `agy`, a bash script whose header reads `# cmux agy wrapper -
   installs cmux hooks and captures launch metadata.` The filter of `resolve` skips only the
@@ -956,7 +956,7 @@
 
 ### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
 
-- location: `hooks/probe.py:2895`
+- location: `hooks/probe.py:3912`
 - evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
   reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
   calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
@@ -1088,16 +1088,14 @@
 - kind: defect
 - found: 2026-11-17, the branch verifier of part E2a of the test-speed plan
 
-### K172 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte or is no string.
+### K172 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte.
 
-- location: `hooks/worktree.py:514`
-- evidence: `remove` calls `Path(payload.get("worktree_path", "")).resolve()`, which raises
+- location: `hooks/worktree.py:678`
+- evidence: `remove` calls `Path(where).resolve()` on the payload's `worktree_path`, which raises
   `ValueError: lstat: embedded null character in path`, and `main` does not catch it:
   `printf '%s' '{"hook_event_name":"WorktreeRemove","worktree_path":"/a\u0000b"}' | python3.14
-  hooks/worktree.py` ends in that traceback, with exit 1. A `worktree_path` of `1` ends in
-  `TypeError: argument should be a str or an os.PathLike object …, not 'int'`. The line is the
-  same on `f3a56a15`, and both payloads give the same traceback there. Through the worktree
-  broker, the traceback comes back as the reply's `stderr`.
+  hooks/worktree.py` ends in that traceback, with exit 1. The payload gives the same traceback on
+  `f3a56a15`. Through the worktree broker, the traceback comes back as the reply's `stderr`.
 - kind: defect
 - found: 2026-11-17, the fix round of part G3a of the sandbox plan
 
@@ -1113,18 +1111,18 @@
 
 ### K174 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
 
-- location: `hooks/probe.py:733`
-- evidence: `hooks/probe.py:733-749` defines `unix_bind` and `bind_verdict`, and `:1133-1144`
+- location: `hooks/probe.py:806`
+- evidence: `hooks/probe.py:806-822` defines `unix_bind` and `bind_verdict`, and `:2108-2119`
   repeats the body of `bind_verdict_cases`, the same code as `lib/harness/sandbox.py:1982-2016`,
   about 30 lines. `hooks/probe.py` already puts `REPO/lib` on `sys.path` and imports `harness` in
-  other groups (`from harness import install_cases`, `:3312`), so it can import them. Each copy
+  other groups (`from harness import install_cases`, `:4334`), so it can import them. Each copy
   has its own mutants: the three mutants of the three-way decision run twice.
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
 
 ### K175 · The worktree hook's `git fetch` reads a legacy `.git/remotes/<name>` or `.git/branches/<name>` file, whose URL the config check does not see.
 
-- location: `hooks/worktree.py:375`
+- location: `hooks/worktree.py:415`
 - evidence: `checked_config` reads only `.git/config`, and `remote_url` tests only the URLs there.
   A repository whose config has no `remote.origin` and whose `.git/remotes/origin` holds
   `URL: ext::sh -c touch% <marker>` passes the check, and git 2.54.0 reads that file for the
@@ -1140,47 +1138,35 @@
 
 ### K176 · The worktree hook's git reads the user's global and system config, so a global `filter.lfs` driver runs outside the sandbox on a branch that a sandboxed program made.
 
-- location: `hooks/worktree.py:178`
+- location: `hooks/worktree.py:200`
 - evidence: `run_git` sets `GIT_DIR`, `GIT_ALLOW_PROTOCOL` and the two `-c` options, and passes the
   caller's `HOME`, so git reads `~/.gitconfig`, `~/.config/git/config` and the system config.
   `checked_config` refuses every `filter.*` key of the repository's `.git/config`, but not of
   those files. `git worktree add` checks out the branch, and a `.gitattributes` with
   `filter=lfs` on a branch that a program inside the sandbox committed makes git run the
-  global `filter.lfs.smudge` command, `git-lfs`, outside the sandbox, on content that the program
-  chose. No case shows what `git-lfs` then does.
+  global `filter.lfs.smudge` command, `git-lfs`, on content that the program chose. On the direct
+  path, without `--boxed`, as in the Code tab, `claudex` or a plain session, that git runs outside
+  the sandbox; a child of the worktree broker under `agentbox` runs it with `--boxed`, inside srt.
+  No case shows what `git-lfs` then does.
 - kind: not verified
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
 
-### K177 · A sandboxed program can replace a repository's `.git` between the worktree hook's config check and git's own read of that config.
-
-- location: `hooks/worktree.py:246`
-- evidence: `checked_config` reads `<repo>/.git/config` once, and each later `run_git` names the
-  same path in `GIT_DIR`, so git reads whatever `.git` is at that path when it starts. Under
-  `agentbox`, a program renamed an existing `.git` directory below `~/Research` to another name and
-  renamed a prepared directory to `.git` in its place: srt allows both renames. So a program in the
-  box can let the check pass on one config and give the `git fetch` and `git worktree add` that
-  follow, which run outside srt, another one, with a key that the check refuses. No check that
-  reads the file before git does closes this; a fix lets git read a copy that the hook owns, or
-  has srt refuse a rename of `.git`. No case measures the swap within the hook's run.
-- kind: defect
-- found: 2026-11-18, the verification of part G3a of the sandbox plan
-
 ### K178 · The worktree hook's git inherits every `GIT_*` variable of its caller except `GIT_WORK_TREE` and `GIT_COMMON_DIR`.
 
-- location: `hooks/worktree.py:187`
+- location: `hooks/worktree.py:211`
 - evidence: `run_git` drops only the names of `UNSET`, `GIT_WORK_TREE` and `GIT_COMMON_DIR`, and
   sets `GIT_DIR` and `GIT_ALLOW_PROTOCOL`. `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`,
   `GIT_CONFIG_COUNT` with its `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, and
   `GIT_CONFIG_PARAMETERS` reach every git that the hook starts, and the config check does not
-  read the config that the last three give. The process that runs git is the broker, which
-  `agentbox` starts before srt, or, without `AGENTBOX`, the hook that the frontend starts, so a
-  program in srt sets none of them.
+  read the config that the last three give. The process that starts git is a child of the broker,
+  which `agentbox` starts before srt, or, without `AGENTBOX`, the hook that the frontend starts, so
+  a program in srt sets none of them.
 - kind: found late
 - found: 2026-11-18, the verification of part G3a of the sandbox plan
 
 ### K179 · No case of the worktree hook's tests sets a `GIT_DIR` in the caller's environment, so a change that lets the caller's value override the pin passes.
 
-- location: `hooks/worktree.py:191`
+- location: `hooks/worktree.py:216`
 - evidence: `run_git` builds `env={**env, "GIT_DIR": …, …}`, so its own `GIT_DIR` wins today. A
   mutant `env={"GIT_DIR": …, **env, …}` survives `probe.py payloads`, because the case of the
   caller's `GIT_COMMON_DIR` and `GIT_WORK_TREE` sets no `GIT_DIR`. A `GIT_DIR` in that case's
@@ -1236,3 +1222,15 @@
   returns `[1, 1]`; the label `"b"` is on line 2. No repository writes a pair in prefix form.
 - kind: defect
 - found: 2026-11-21, CodeRabbit on a pull request of the learning package
+
+### K184 · The worktree broker's `--parent` test accepts a digit that is not ASCII.
+
+- location: `hooks/worktree.py:955`
+- evidence: `serve_arguments` admits `parent` where `parent.isdigit()` holds, and then calls
+  `int(parent)`. `"²".isdigit()` is `True`, and `int("²")` raises `ValueError: invalid literal for
+  int() with base 10: '²'`, so `worktree.py --serve <socket> --parent ² --settings <file>` ends in
+  a traceback, not in the usage line. A digit such as `"٣"` passes `int` and gives 3, which the
+  check against `os.getppid()` then refuses. `parent.isascii() and parent.isdigit()` closes it.
+  Commit `69179e7d` has the same test.
+- kind: defect
+- found: 2026-11-21, the review of part G3c of the sandbox plan

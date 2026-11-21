@@ -88,11 +88,15 @@ directories for npm, uv and LaTeX, because the sandbox denies their caches in th
 
 **A worktree broker runs outside the sandbox.** `srt` denies writes to every `.githooks`, so a
 `git worktree add` of Claude Code's worktree hook fails inside it. Before it starts `srt`, the
-launcher starts the hook as a broker, `worktree.py --serve <socket> --parent <pid>`, with the
-harness's Python, outside the sandbox. The socket is `<pid>.sock` in
+launcher starts the hook as a broker,
+`worktree.py --serve <socket> --parent <pid> --settings <file>`, with the harness's Python,
+outside the sandbox; `<file>` is the frontend's own settings file. The socket is `<pid>.sock` in
 `~/.local/state/research-harness/broker/`, a directory of mode 700, and the launcher exports its
 path as `AGENTBOX_BROKER`. The hook inside the sandbox sends its payload there, and the broker
-runs the `git` work ([`worktree.py`](guard-hooks.md#worktree-py)). Each settings file allows a
+runs the `git` work ([`worktree.py`](guard-hooks.md#worktree-py)). That `git` runs under `srt`
+too, with the frontend's settings plus one staging directory of the broker,
+`~/.local/state/research-harness/worktree-stage/<pid>`, where the broker makes a new worktree
+before it renames it into `~/Research/.worktrees`. Each settings file allows a
 connection to that directory in `allowUnixSockets`, and no write to it, so a command in the
 sandbox can reach the broker and cannot replace its socket. The broker ends with `srt`, which
 keeps the launcher's process ID, and its output goes to `broker.log` in the run's directory.
