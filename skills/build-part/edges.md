@@ -1250,6 +1250,12 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   return a correct fresh array and leave `out` wrong, or never write it, survived. Assert
   `f!(out, args...) === out` and compare `out` itself, with `out` prefilled with values the correct
   result does not hold (L3 round 1, *a dynamical low-rank plan*)
+- **an allocation bound set far above what the call allocates:** the bound
+  `32(nx + nv) r · sizeof(T) + 16384` lay two to three orders of magnitude above the measured
+  bytes, so a temporary `nx × r` array that the clause forbids passed it. Count the arrays the call
+  allocates, add a fixed allowance for their headers, and check that one more array of the
+  forbidden size breaks the bound at every tested size; take the minimum of a few calls (L3 review,
+  *a dynamical low-rank plan*)
 - **a constant factor of a formula tested only where it equals 1:** the one test of
   $|E_1| = k\,(2/N_x)\,|\cdot|$ used $k = 1$, and every other check was a log slope, which a constant
   factor does not change, so dropping $k$ survived. Give the fixture a value of each factor other
