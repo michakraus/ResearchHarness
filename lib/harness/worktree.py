@@ -197,13 +197,24 @@ def command_cases(check: Callable[[object, str], None], f: Fixture) -> None:
         f"remove --apply sends the WorktreeRemove payload with the absolute path: {logged}",
     )
     check(p.returncode == 0, f"remove --apply exits 0: {p.returncode}")
-    f.install(err="worktree hook: first line\nworktree hook: the last line\n", code=1)
+    f.install(err="worktree hook: first line\nworktree hook: the last line\n\n", code=1)
     p = f.run("add", "x", "--apply")
     check(
         p.returncode == FAILED
         and p.stderr.endswith("harness worktree: worktree hook: the last line\n")
         and "worktree hook: first line\n" in p.stderr,
         f"a failing hook exits 2 with its last line, and its stderr reaches stderr: {p.stderr!r}",
+    )
+    f.install(code=3)
+    p = f.run("add", "x", "--apply")
+    check(
+        p.returncode == FAILED and p.stderr == f"harness worktree: {f.stub} exited 3\n",
+        f"a hook that fails with no stderr exits 2 and names its status: {p.stderr!r}",
+    )
+    p = f.run()
+    check(
+        p.returncode == FAILED and "<action>" in p.stderr and f.logged() is None,
+        f"`harness worktree` with no action is a usage error: {p.returncode} {p.stderr!r}",
     )
     f.install(err="worktree hook: fetched\n")
     p = f.run("add", "x", "--apply")

@@ -5,7 +5,8 @@
   payload of a `WorktreeCreate` event, in the working directory, and prints the worktree's path;
   `harness worktree remove <path> --apply` sends `WorktreeRemove`. Under `agentbox` the hook asks
   its broker outside the sandbox, as for Claude Code. Without `--apply` the subcommand prints the
-  request and exits 1; a missing hook, or a hook that fails, exits 2 with the hook's last line. The
+  request and exits 1; a missing hook exits 2 and names `harness install --apply`, and a hook that
+  fails exits 2 with its last line of standard error. The
   section *Worktrees: ask for them* of `OPENCODE-DELTA.md` and `OMP-DELTA.md`, the OpenCode rule
   of an agent with `isolation: worktree` and the `worktree` section of `UNDER-OMP.md` now send the
   agent to `harness worktree add`. Antigravity's instructions keep `git worktree add`: its shell
