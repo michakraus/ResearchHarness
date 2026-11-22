@@ -781,8 +781,9 @@ seconds later. A SIGINT, SIGTERM or SIGHUP of the subcommand goes on to the same
 **Exit status:** 0 after `--apply`; 1 for the dry run; 2 when `<name>` or `<path>` is empty or
 holds a line break, when the working directory no longer exists, when the hook is not installed,
 when it exits with another status than 0, with the hook's last line of standard error, or when
-it runs longer than 480 seconds; 128 plus the number of a SIGINT, SIGTERM or SIGHUP that stops
-it.
+it runs longer than 480 seconds; 128 plus the number of a SIGINT, SIGTERM or SIGHUP that arrives
+while the hook runs, the stop after a timeout included, also where the hook fails or runs too
+long.
 
 **Where to run it:** in a session under `agentbox` or of OpenCode or oh-my-pi, from the
 repository, or in your own terminal.

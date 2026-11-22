@@ -810,7 +810,8 @@ def sweep_fixture(f: Fixture) -> dict[str, pathlib.Path]:
 def sweep_cases(check: Callable[[object, str], None], f: Fixture) -> None:
     """`harness worktree sweep` on a worktree of each kind: the dry run lists each with its kind,
     and not the hidden `.claude`, exits 1, and runs no hook; `--apply` asks the hook to remove the
-    one removable worktree alone; a hook that fails makes the sweep exit 2 and name the worktree."""
+    one removable worktree alone; a hook that fails makes the sweep exit 2 and name the worktree; a
+    SIGTERM during the first of two removals ends the sweep with 143 and asks the hook once."""
     trees = sweep_fixture(f)
     kinds = {
         "old": "removable",
