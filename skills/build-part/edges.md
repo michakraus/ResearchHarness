@@ -904,6 +904,16 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   caller gave up and cleaned up. Start the wrapper in a session of its own and kill its process
   group on the timeout, or decide the edge in the spec (G3c round 1, *Sandbox the agent
   frontends*)
+- a payload value passed to git as a positional argument, such as a worktree or branch name: git
+  reads a value that begins with `-` as an option, so `-f` becomes `--force` and `-m` renames the
+  current branch. Refuse a leading `-` where the value enters, before any git runs, and test `-f`,
+  `-m` and `--force` (G3d verify 2, *Sandbox the agent frontends*)
+- a guard against a second signal placed in the handler of some of the signals that start a stop:
+  a handler that sets `SIG_IGN` passes that disposition on through `exec` to every later child,
+  and a stop that a timeout or another signal began is not guarded at all. Block the signals for
+  the duration of the stop itself (`signal.pthread_sigmask`) and restore the mask in a `finally`,
+  or record the window as a limit; test each pair of first event and second signal (G3d verify 2
+  and finish, *Sandbox the agent frontends*)
 
 ## A lint cleanup
 
@@ -921,6 +931,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   type-checker baseline written by the same branch suppresses by file and code, so the branch's own
   new lines pass with findings that the rule for new code forbids. Check the lines that the branch
   adds with the generated record removed (Q1 round 1, *Make the Harness enforce strict Python*)
+- a `# noqa` that the branch writes on its own line: ruff honours it, so a check of the added lines
+  with the generated records removed still passes. Run that check with `ruff check --ignore-noqa`,
+  or count the added `# noqa` comments in the diff (G3d round 1 and verify 3, *Sandbox the agent
+  frontends*)
 
 ## A migration of tests or of text
 
