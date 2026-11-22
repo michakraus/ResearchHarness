@@ -16,6 +16,7 @@ from . import setup
 from . import jobsandbox
 from . import sandbox
 from . import forge
+from . import worktree
 
 # The modules of lib/harness/; the adapters of lib/harness/frontends.py follow `install`.
 MODULES = [install, update, frontmatter, githooks, repos, protection, fmt, profile]
@@ -41,6 +42,7 @@ MODULES.append(jobsandbox)
 MODULES.append(testrun)
 MODULES.append(sandbox)
 MODULES.append(forge)
+MODULES.append(worktree)
 
 
 def modules():

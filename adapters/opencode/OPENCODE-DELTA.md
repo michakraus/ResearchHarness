@@ -47,14 +47,17 @@ A file that a later command reads back goes in `~/Research/.scratch/<task>/`, un
 carries the repository or task. `$TMPDIR` is shared by every session, so such a file never goes
 there.
 
-## Worktrees: make them yourself
+## Worktrees: ask for them
 
-There is no `WorktreeCreate` hook, no `EnterWorktree` and no `isolation: "worktree"`. Make the
-worktree with `git`, at the location and from the base that the tree instructions give:
+There is no `WorktreeCreate` hook, no `EnterWorktree` and no `isolation: "worktree"`. Ask the
+installed hook for the worktree; it makes it at the location and from the base that the tree
+instructions give, and prints its path. With `workdir` the repository, run:
 
 ```bash
-cd <repository> && git fetch origin && git worktree add -b <branch> ~/Research/.worktrees/<Repository>-<slug> origin/HEAD
+harness worktree add <branch> --apply
 ```
+
+Remove one with `harness worktree remove <path> --apply`.
 
 ## Nothing runs in the background
 
