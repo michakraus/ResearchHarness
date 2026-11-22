@@ -3010,10 +3010,10 @@ def worktree_git_cases() -> tuple[int, int]:
     (`run_git_timeout_cases`) and on a signal to the hook (`run_git_signal_cases`); the failures
     of a boxed remove and of `undo` whose srt cannot start at one step (`boxed_gone_case`,
     `boxed_norepair_case`, `boxed_prune_case`) or whose git fails (`failure_unit_cases`); the branch
-    of a boxed create (`boxed_branch_cases`, `boxed_base_case`, `boxed_racer_case`); names that end in a newline and parents of a digit
-    that is not ASCII (`name_cases`); the broker's profile at its end (`broker_profile_cases`); the life of a
-    broker; and the options of every git that the hook starts, recorded in this process: (number of
-    cases, number wrong)."""
+    of a boxed create (`boxed_branch_cases`, `boxed_base_case`, `boxed_racer_case`); names that end
+    in a newline and parents of a digit that is not ASCII (`name_cases`); the broker's profile at
+    its end (`broker_profile_cases`); the life of a broker; and the options of every git that the
+    hook starts, recorded in this process: (number of cases, number wrong)."""
     verdict, why = bind_verdict(unix_bind, ci="CI" in os.environ)
     worktree_fixture()
     total = wrong = 0
