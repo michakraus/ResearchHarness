@@ -28,6 +28,7 @@ from typing import TextIO
 # directory first on `sys.path`, and the `OWN` entry of `lib/harness/strict.py` allows the name here.
 from guard import (
     HarnessError,
+    agentbox_worktree,
     directory_scope,
     gh_api_writes,
     gh_pr_create,
@@ -59,6 +60,7 @@ SHELL: tuple[Check, ...] = (
     token_forms.check,
     no_blind_stage.check,
     no_shell_file_write.check,
+    agentbox_worktree.check,
     sandbox_semantics.check,
     gh_api_writes.check,
     gh_pr_create.check,

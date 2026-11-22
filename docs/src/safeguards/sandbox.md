@@ -103,7 +103,11 @@ keeps the launcher's process ID, and its output goes to `broker.log` in the run'
 Where the broker cannot start, the launcher writes one line on standard error and starts the
 frontend all the same; the worktree hook then fails. The broker serves the worktree hook only: a
 `git pull`, `git switch` or `git rebase` that changes `.githooks/` still fails inside the
-sandbox.
+sandbox. A `git worktree` command run directly fails too, and the guard refuses it
+([the agentbox worktree check](guard-hooks.md#the-agentbox-worktree-check)). A running broker
+keeps the loop and the arguments of the `worktree.py` and the launcher that were installed when
+it started: after a `harness install --apply` that changes either, start each running `agentbox`
+session again.
 
 **`agentbox` is opt-in.** A frontend that you start without it does not read its `srt` file. On
 macOS, [the launcher check](guard-hooks.md#the-launcher-check) of the guard then refuses every

@@ -31,7 +31,18 @@ sub-agent's worktree stays after it returns**, and the caller removes it.
 **Remove a worktree yourself; do not hand the command to the user.** Run `git worktree remove
 <path>` as a Bash call of its own, from the main checkout, with `git` as the whole command: it
 runs outside the sandbox and succeeds. Claude Code's own note that `.git/worktrees` is read-only in
-the sandbox holds only for a sandboxed `git`, such as one after `cd … &&` or with `-C`.
+the sandbox holds only for a sandboxed `git`, such as one after `cd … &&` or with `-C`. **Under
+`agentbox` every `git` is sandboxed**, and a remove there deletes the worktree's record and leaves
+its files: run `harness worktree remove <path> --apply` instead, which the guard names. Never `cd`
+into a worktree before you remove it: the sandbox leaves a `.claude/.cc-writes` in every directory
+that a shell enters, and only the user can delete it. `harness worktree sweep` lists every
+worktree as removable, kept or orphan.
+
+**A side session that works in a repository starts without a worktree when this session's folder
+is no repository**, such as `~/Research`: the hook gets that folder and has no repository to
+choose, and Claude Desktop refuses a `cwd` in a repository that it has no record of. Start it with
+`use_worktree: false` and `cwd` set to the repository, and make `EnterWorktree` the first step of
+its brief.
 
 **A new clone under `~/Research` is untrusted until the user adds its entry.** Claude Code keys
 workspace trust on the repository root, a trusted parent does not cover it, and a session cannot

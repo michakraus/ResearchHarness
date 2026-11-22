@@ -746,19 +746,29 @@ set. The skip list that remains names the files that JuliaFormatter cannot forma
 ```text
 harness worktree add <name> [--apply]
 harness worktree remove <path> [--apply]
+harness worktree sweep [--apply]
 ```
 
 Makes or removes a worktree through the worktree hook that `install` puts at
-`~/.claude/hooks/worktree.py`, for a frontend that has no worktree hook of its own: OpenCode and
-oh-my-pi. The subcommand sends the hook the payload of Claude Code's event on its standard input,
-so the hook decides where the worktree goes and runs the git; under `agentbox` the hook asks its
-broker outside the sandbox. `~` is the home that `HOME` gives.
+`~/.claude/hooks/worktree.py`, for a frontend that has no worktree hook of its own, OpenCode and
+oh-my-pi, and for every frontend under `agentbox`, where a `git worktree` command runs inside srt
+and the guard refuses it. The subcommand sends the hook the payload of Claude Code's event on its
+standard input, so the hook decides where the worktree goes and runs the git; under `agentbox`
+the hook asks its broker outside the sandbox. `~` is the home that `HOME` gives.
 
 - `add` sends `WorktreeCreate` with the working directory and `<name>`: the hook makes the
   worktree of the repository that holds the working directory, on the branch `<name>`, or
   detached for a name `agent-<hex>`, and the subcommand prints its path.
 - `remove` sends `WorktreeRemove` with `<path>`, made absolute: the hook removes the worktree,
   without `--force`, and keeps its branch.
+- `sweep` lists each directory below `~/Research/.worktrees`, hidden names left out, as
+  `removable` (clean, its HEAD in `origin/HEAD`, its record unused for 12 hours), `kept`, with the
+  reason, or `orphan` (git holds no record of it). With `--apply` it sends `WorktreeRemove` for
+  each removable worktree and names every one that fails. It never touches an orphan.
+
+Outside `agentbox`, run `remove --apply` and `sweep --apply` from your own terminal: from a
+sandboxed call, the hook's own git runs in the sandbox, and the hook refuses a remove where it
+cannot write in a `.githooks` or `.claude` of the worktree.
 
 Without `--apply`, the subcommand prints the request in one line and runs nothing. With
 `--apply`, it runs the hook with the interpreter of `harness`, in the working directory and in a
@@ -772,8 +782,8 @@ when it exits with another status than 0, with the hook's last line of standard 
 it runs longer than 480 seconds; 128 plus the number of a SIGINT, SIGTERM or SIGHUP that stops
 it.
 
-**Where to run it:** in a session of OpenCode or oh-my-pi, from the repository, or in your own
-terminal.
+**Where to run it:** in a session under `agentbox` or of OpenCode or oh-my-pi, from the
+repository, or in your own terminal.
 
 ## The profile
 
@@ -1606,10 +1616,12 @@ no `selftest`, and the sweep does not run it, because it runs Julia over the tre
 
 ### `worktree.py`
 
-The subcommand `harness worktree add <name>` and `harness worktree remove <path>`, each with
-`--apply`. It runs the installed hook `~/.claude/hooks/worktree.py`, below the home of `HOME`,
-with `sys.executable`, and writes the JSON payload of a `WorktreeCreate` or `WorktreeRemove`
-event to its standard input; it runs no git itself. The hook runs in a session of its own, so
+The subcommand `harness worktree add <name>`, `harness worktree remove <path>` and `harness
+worktree sweep`, each with `--apply`. The sweep reads each worktree with `git --no-optional-locks`,
+so that its status leaves the index's time, which tells the last use, as it is. It runs the
+installed hook `~/.claude/hooks/worktree.py`, below the home of `HOME`, with `sys.executable`, and
+writes the JSON payload of a `WorktreeCreate` or `WorktreeRemove` event to its standard input;
+only the sweep runs git itself, and only to read. The hook runs in a session of its own, so
 that a timeout or a forwarded signal reaches the programs that it started, and its output is
 decoded with replacement characters. A missing hook, a hook that exits with another status than
 0 or runs too long, an empty `<name>` or `<path>` or one with a line break, and a working
@@ -1618,7 +1630,7 @@ of standard error. Its cases run `harness worktree` in a fixture home whose hook
 records its input, its working directory and its arguments, or that signals its caller. They run
 a stub that hangs through `request` in their own process, with a timeout of 1 s, and they read the
 two deltas of OpenCode and oh-my-pi for the section that sends an agent to the
-subcommand.
+subcommand. The sweep's cases run on a fixture repository with a worktree of each kind.
 
 ### `changelog.py`
 

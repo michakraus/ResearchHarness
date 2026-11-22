@@ -2,6 +2,7 @@
 
     harness worktree add <name> [--apply]
     harness worktree remove <path> [--apply]
+    harness worktree sweep [--apply]
 
 OpenCode and oh-my-pi have no `WorktreeCreate` hook, so an agent there runs this subcommand in
 the repository instead. It runs the hook that `harness install` puts at
@@ -9,7 +10,7 @@ the repository instead. It runs the hook that `harness install` puts at
 the payload that Claude Code sends it on stdin: `{"hook_event_name": "WorktreeCreate", "cwd": …,
 "name": …}` for `add`, `{"hook_event_name": "WorktreeRemove", "worktree_path": …}` for `remove`.
 The hook holds the whole logic of a worktree, and under `agentbox` it asks the broker outside the
-sandbox; this subcommand runs no git of its own.
+sandbox; this subcommand runs git of its own only in `sweep`, and only to read.
 
 The dry run prints the request in one line and exits 1. `--apply` runs the hook with this
 interpreter, in the working directory and in a session of its own, for at most TIMEOUT seconds;
@@ -18,18 +19,28 @@ and exits 0. A missing hook, a hook that exits other than 0 or runs longer than 
 a NAME or a PATH that is empty or holds a line break, and a working directory that no longer
 exists are a HarnessError, so `harness` exits 2. A SIGINT, SIGTERM or SIGHUP during the hook's run
 goes on to the hook's process group, and `harness` then exits 128 + the signal's number.
+
+`sweep` lists each directory directly below `~/Research/.worktrees`: `removable` where it is clean,
+its HEAD is in `origin/HEAD` and its record shows no use for FRESH seconds; `kept` otherwise; and
+`orphan` where git holds no record of it, which the sweep never touches. With `--apply` it sends a
+`WorktreeRemove` request for each removable one and reports every failure. The hook refuses a
+remove that it cannot finish, so run it under `agentbox` or from a terminal, not from a sandboxed
+call: there the hook's own git runs in the sandbox.
 """
 
 import argparse
 import contextlib
+import dataclasses
 import io
 import json
 import os
 import pathlib
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable
 from unittest import mock
 
@@ -41,6 +52,10 @@ TIMEOUT = 480
 GRACE = 5
 DRY = 1  # the exit status of a dry run
 FAILED = 2  # the exit status of a HarnessError
+# Seconds for each `git` of the sweep, and the seconds since a worktree's last use within which the
+# sweep keeps it: a new worktree is clean and at origin/HEAD while an agent starts in it.
+GIT_TIMEOUT = 30
+FRESH = 12 * 3600
 
 
 def hook() -> pathlib.Path:
@@ -162,6 +177,112 @@ def cmd_remove(args: argparse.Namespace) -> int:
     return request(payload, f"to remove the worktree {path}", apply=args.apply)
 
 
+def worktrees() -> pathlib.Path:
+    """The directory of the worktrees, below the home of `HOME`, as the hook reads it."""
+    return pathlib.Path.home() / "Research" / ".worktrees"
+
+
+def git(directory: pathlib.Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    """`git -C <directory> <arguments>`, which takes no optional lock, so that the index of a worktree
+    keeps its time; for at most GIT_TIMEOUT seconds."""
+    return subprocess.run(
+        [shutil.which("git") or "git", "--no-optional-locks", "-C", str(directory), *arguments],
+        capture_output=True,
+        text=True,
+        errors="replace",
+        check=False,
+        timeout=GIT_TIMEOUT,
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class Found:
+    """One directory below the worktrees' directory: its path, its kind (`removable`, `kept` or
+    `orphan`) and why."""
+
+    path: pathlib.Path
+    kind: str
+    why: str
+
+
+def record_of(tree: pathlib.Path) -> pathlib.Path | None:
+    """The record `<repository>/.git/worktrees/<name>` that the `.git` file of `tree` names, where
+    that file holds one `gitdir:` line and the record is a directory; else None."""
+    dot = tree / ".git"
+    if dot.is_symlink() or not dot.is_file():
+        return None
+    line = dot.read_text(encoding="utf-8", errors="replace").strip()
+    record = pathlib.Path(line.removeprefix("gitdir: "))
+    if not line.startswith("gitdir: ") or "\n" in line or not record.is_absolute() or not record.is_dir():
+        return None
+    return record
+
+
+def last_use(record: pathlib.Path) -> float:
+    """The newest modification time of the record's HEAD, index and logs/HEAD, in seconds since the
+    epoch; git writes them at a checkout, a commit and a status that refreshes the index."""
+    times = [
+        path.stat().st_mtime
+        for path in (record / "HEAD", record / "index", record / "logs" / "HEAD")
+        if path.is_file()
+    ]
+    return max(times, default=record.stat().st_mtime)
+
+
+def judge(tree: pathlib.Path, now: float) -> Found:
+    """`tree`'s kind: `orphan` with no record of git, `kept` where it was used within FRESH seconds
+    before `now`, has a change or an untracked file, or a HEAD that `origin/HEAD` does not hold;
+    else `removable`."""
+    record = record_of(tree)
+    if record is None:
+        return Found(
+            tree, "orphan", "git holds no record of it; look at it, then delete it outside the sandbox"
+        )
+    if now - last_use(record) < FRESH:
+        return Found(tree, "kept", f"used within the last {FRESH // 3600} hours")
+    status = git(tree, "status", "--porcelain")
+    if status.returncode != 0:
+        return Found(tree, "kept", f"`git status` exits {status.returncode}")
+    if status.stdout.strip():
+        return Found(tree, "kept", "it holds changes or untracked files")
+    merged = git(tree, "merge-base", "--is-ancestor", "HEAD", "refs/remotes/origin/HEAD")
+    if merged.returncode != 0:
+        return Found(tree, "kept", "its HEAD is not in origin/HEAD")
+    return Found(tree, "removable", "clean, and its HEAD is in origin/HEAD")
+
+
+def survey(root: pathlib.Path, now: float) -> list[Found]:
+    """Each directory directly below `root`, judged, in the order of their names; links and hidden
+    names left out, such as the `.claude` that Claude Code's sandbox makes where a shell enters."""
+    if not root.is_dir():
+        return []
+    return [
+        judge(tree, now)
+        for tree in sorted(root.iterdir())
+        if tree.is_dir() and not tree.is_symlink() and not tree.name.startswith(".")
+    ]
+
+
+def cmd_sweep(args: argparse.Namespace) -> int:
+    found = survey(worktrees(), time.time())
+    for entry in found:
+        print(f"{entry.kind:<9}  {entry.path}  {entry.why}")
+    removable = [entry.path for entry in found if entry.kind == "removable"]
+    if not args.apply:
+        print(f"would ask {hook()} to remove {len(removable)} worktrees")
+        return DRY
+    failed: list[str] = []
+    for path in removable:
+        payload = {"hook_event_name": "WorktreeRemove", "worktree_path": str(path)}
+        try:
+            request(payload, "", apply=True)
+        except HarnessError as err:
+            failed.append(f"{path.name}: {err}")
+    if failed:
+        raise HarnessError(f"{len(failed)} of {len(removable)} removals failed: " + "; ".join(failed))
+    return 0
+
+
 def register(sub: fmt.Subcommands) -> None:
     parser = sub.add_parser(
         "worktree",
@@ -192,6 +313,16 @@ def register(sub: fmt.Subcommands) -> None:
     )
     remove.add_argument("path", metavar="PATH", help="the worktree, absolute or relative")
     remove.set_defaults(run=cmd_remove)
+    sweep = changing(
+        actions.add_parser(
+            "sweep",
+            help="list the worktrees, and remove the clean ones that origin/HEAD holds",
+            description="List each directory below ~/Research/.worktrees as removable (clean, its "
+            "HEAD in origin/HEAD, unused for 12 hours), kept, or orphan (no record of git). With "
+            "--apply, ask the hook to remove each removable one. An orphan is never touched.",
+        )
+    )
+    sweep.set_defaults(run=cmd_sweep)
 
 
 # A stub of the hook: it writes its stdin, its working directory and its arguments to LOG, writes
@@ -481,6 +612,104 @@ def timeout_cases(check: Callable[[object, str], None], f: Fixture) -> None:
         )
 
 
+def fixture_git(directory: pathlib.Path, *arguments: str) -> str:
+    """git in `directory` with a fixed author and no configuration of the caller; its stdout."""
+    env = {
+        **{k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_AUTHOR_NAME": "probe",
+        "GIT_AUTHOR_EMAIL": "probe@example.org",
+        "GIT_COMMITTER_NAME": "probe",
+        "GIT_COMMITTER_EMAIL": "probe@example.org",
+    }
+    return subprocess.run(
+        [shutil.which("git") or "git", "-C", str(directory), *arguments],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=GIT_TIMEOUT,
+        env=env,
+    ).stdout
+
+
+def sweep_fixture(f: Fixture) -> dict[str, pathlib.Path]:
+    """A repository `Repo` below the fixture home's `Research`, whose `origin/HEAD` names its first
+    commit, and below `Research/.worktrees` a worktree of each kind, by name: `old` clean at
+    `origin/HEAD` and unused for two FRESH spans, `fresh` the same but new, `dirty` old with an
+    untracked file, `ahead` old with a commit of its own, `lost` whose record is gone and `bare`
+    with no `.git`; and a `.claude` directory, which is no worktree."""
+    repo = f.home / "Research" / "Repo"
+    root = f.home / "Research" / ".worktrees"
+    root.mkdir(parents=True)
+    repo.mkdir(parents=True)
+    fixture_git(repo, "init", "--quiet", "--initial-branch=main")
+    (repo / "a").write_text("a\n")
+    fixture_git(repo, "add", "a")
+    fixture_git(repo, "commit", "--quiet", "-m", "a")
+    fixture_git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    fixture_git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    trees = {name: root / f"Repo-{name}" for name in ("old", "fresh", "dirty", "ahead", "lost", "bare")}
+    for name in ("old", "fresh", "dirty", "ahead", "lost"):
+        fixture_git(repo, "worktree", "add", "--quiet", "--detach", str(trees[name]), "origin/main")
+    (trees["dirty"] / "b").write_text("b\n")
+    (trees["ahead"] / "a").write_text("c\n")
+    fixture_git(trees["ahead"], "commit", "--quiet", "-am", "c")
+    shutil.rmtree(repo / ".git" / "worktrees" / "Repo-lost")
+    trees["bare"].mkdir()
+    (root / ".claude").mkdir()
+    old = time.time() - 2 * FRESH
+    for name in ("old", "dirty", "ahead"):
+        record = repo / ".git" / "worktrees" / f"Repo-{name}"
+        for path in (record, record / "HEAD", record / "index", record / "logs" / "HEAD"):
+            if path.exists():
+                os.utime(path, (old, old))
+    return trees
+
+
+def sweep_cases(check: Callable[[object, str], None], f: Fixture) -> None:
+    """`harness worktree sweep` on a worktree of each kind: the dry run lists each with its kind,
+    and not the hidden `.claude`, exits 1, and runs no hook; `--apply` asks the hook to remove the
+    one removable worktree alone; a hook that fails makes the sweep exit 2 and name the worktree."""
+    trees = sweep_fixture(f)
+    kinds = {
+        "old": "removable",
+        "fresh": "kept",
+        "dirty": "kept",
+        "ahead": "kept",
+        "lost": "orphan",
+        "bare": "orphan",
+    }
+    f.install()
+    p = f.run("sweep")
+    listed = {words[1]: words[0] for words in (line.split() for line in p.stdout.splitlines()[:-1])}
+    check(
+        p.returncode == DRY
+        and listed == {str(trees[name]): kind for name, kind in kinds.items()}
+        and p.stdout.endswith(f"would ask {f.stub} to remove 1 worktrees\n")
+        and f.logged() is None,
+        f"the dry run of sweep lists each worktree with its kind, exits 1 and runs no hook: "
+        f"{p.returncode} {p.stdout!r}",
+    )
+    p = f.run("sweep", "--apply")
+    logged = f.logged()
+    check(
+        p.returncode == 0
+        and logged is not None
+        and logged[0] == {"hook_event_name": "WorktreeRemove", "worktree_path": str(trees["old"])},
+        f"sweep --apply asks the hook to remove the removable worktree alone: {p.returncode} {logged}",
+    )
+    f.install(err=b"worktree hook: cannot write\n", code=1)
+    p = f.run("sweep", "--apply")
+    check(
+        p.returncode == FAILED
+        and p.stderr.endswith(
+            "harness worktree: 1 of 1 removals failed: Repo-old: worktree hook: cannot write\n"
+        ),
+        f"a hook that fails makes sweep --apply exit 2 and name the worktree: {p.returncode} {p.stderr!r}",
+    )
+
+
 def selftest() -> tuple[int, int]:
     """`harness worktree` in a fixture home whose hook is a stub, and the deltas of the two
     frontends that use it: (number of cases, number wrong)."""
@@ -497,6 +726,7 @@ def selftest() -> tuple[int, int]:
         argument_cases(check, Fixture(tmp / "argument"))
         signal_cases(check, Fixture(tmp / "signal"))
         timeout_cases(check, Fixture(tmp / "timeout"))
+        sweep_cases(check, Fixture(tmp / "sweep"))
     for delta in DELTAS:
         text = delta.read_text()
         check(
