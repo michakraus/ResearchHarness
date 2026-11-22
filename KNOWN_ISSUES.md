@@ -956,18 +956,18 @@
 
 ### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
 
-- location: `hooks/probe.py:4667`
+- location: `hooks/probe.py:4754`
 - evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
   reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
   calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
   `matcher calls 471, 7.20 seconds`. The matcher calls stay at their bound, so the guard is right
   and only its time is close to the limit. The case measures wall time while the other parts of
   `harness test` run in parallel. So the verdict of the case depends on wall-clock time: the
-  bound of the matcher calls (line 4667, `0 <= calls <= indexed`) already checks the guard's work,
+  bound of the matcher calls (line 4754, `0 <= calls <= indexed`) already checks the guard's work,
   so `seconds <= MIB_LIMIT` on the same line adds only a dependence on the load of the machine,
-  and the `timeout=MIB_LIMIT` of line 4656 makes a slow run a failure. The cases of the commands
-  of 1 MiB at line 5849 depend on it the same way: `guard_run(..., limit=MIB_LIMIT)` passes the
-  limit as `timeout=` (line 5327) and returns `timeout` past it (line 5331), which fails
+  and the `timeout=MIB_LIMIT` of line 4743 makes a slow run a failure. The cases of the commands
+  of 1 MiB at line 5936 depend on it the same way: `guard_run(..., limit=MIB_LIMIT)` passes the
+  limit as `timeout=` (line 5414) and returns `timeout` past it (line 5418), which fails
   `got == expected`.
 - kind: defect
 - found: #282
@@ -1090,7 +1090,7 @@
 
 ### K172 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte.
 
-- location: `hooks/worktree.py:771`
+- location: `hooks/worktree.py:777`
 - evidence: `remove` calls `Path(where).resolve()` on the payload's `worktree_path`, which raises
   `ValueError: lstat: embedded null character in path`, and `main` does not catch it:
   `printf '%s' '{"hook_event_name":"WorktreeRemove","worktree_path":"/a\u0000b"}' | python3.14
@@ -1102,17 +1102,17 @@
 ### K174 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
 
 - location: `hooks/probe.py:823`
-- evidence: `hooks/probe.py:823-839` defines `unix_bind` and `bind_verdict`, and `:2840-2851`
+- evidence: `hooks/probe.py:823-839` defines `unix_bind` and `bind_verdict`, and `:2926-2937`
   repeats the body of `bind_verdict_cases`, the same code as `lib/harness/sandbox.py:1982-2016`,
   about 30 lines. `hooks/probe.py` already puts `REPO/lib` on `sys.path` and imports `harness` in
-  other groups (`from harness import install_cases`, `:5073`), so it can import them. Each copy
+  other groups (`from harness import install_cases`, `:5160`), so it can import them. Each copy
   has its own mutants: the three mutants of the three-way decision run twice.
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
 
 ### K175 · The worktree hook's `git fetch` reads a legacy `.git/remotes/<name>` or `.git/branches/<name>` file, whose URL the config check does not see.
 
-- location: `hooks/worktree.py:487`
+- location: `hooks/worktree.py:493`
 - evidence: `checked_config` reads only `.git/config`, and `remote_url` tests only the URLs there.
   A repository whose config has no `remote.origin` and whose `.git/remotes/origin` holds
   `URL: ext::sh -c touch% <marker>` passes the check, and git 2.54.0 reads that file for the
@@ -1128,7 +1128,7 @@
 
 ### K176 · The worktree hook's git reads the user's global and system config, so a global `filter.lfs` driver runs outside the sandbox on a branch that a sandboxed program made.
 
-- location: `hooks/worktree.py:230`
+- location: `hooks/worktree.py:231`
 - evidence: `run_git` sets `GIT_DIR`, `GIT_ALLOW_PROTOCOL` and the two `-c` options, and passes the
   caller's `HOME`, so git reads `~/.gitconfig`, `~/.config/git/config` and the system config.
   `checked_config` refuses every `filter.*` key of the repository's `.git/config`, but not of
@@ -1143,7 +1143,7 @@
 
 ### K178 · The worktree hook's git inherits every `GIT_*` variable of its caller except `GIT_WORK_TREE` and `GIT_COMMON_DIR`.
 
-- location: `hooks/worktree.py:244`
+- location: `hooks/worktree.py:247`
 - evidence: `run_git` drops only the names of `UNSET`, `GIT_WORK_TREE` and `GIT_COMMON_DIR`, and
   sets `GIT_DIR` and `GIT_ALLOW_PROTOCOL`. `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`,
   `GIT_CONFIG_COUNT` with its `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, and
@@ -1156,7 +1156,7 @@
 
 ### K179 · No case of the worktree hook's tests sets a `GIT_DIR` in the caller's environment, so a change that lets the caller's value override the pin passes.
 
-- location: `hooks/worktree.py:251`
+- location: `hooks/worktree.py:254`
 - evidence: `run_git` builds `env={**env, "GIT_DIR": …, …}`, so its own `GIT_DIR` wins today. A
   mutant `env={"GIT_DIR": …, **env, …}` survives `probe.py payloads`, because the case of the
   caller's `GIT_COMMON_DIR` and `GIT_WORK_TREE` sets no `GIT_DIR`. A `GIT_DIR` in that case's
@@ -1222,3 +1222,16 @@
   no `WorktreeCreate` event" for the same fact. Commit `8b78c846` has the same text.
 - kind: docs
 - found: 2026-11-22, a builder of the branch `sandbox/part-g3e`
+
+### K190 · The worktree broker stops a boxed child that runs longer than `WORK` with a `SIGKILL` to the child alone, so the child's running `git` goes on.
+
+- location: `hooks/worktree.py:1074`
+- evidence: `respond` runs `worktree.py --boxed <profile>` with `subprocess.run(…, timeout=WORK)`.
+  On the timeout, `subprocess.run` sends `SIGKILL` to that child's process ID and to nothing else.
+  The child starts each `git`, or the `srt` of it, in a session of its own (`run_git`), and its
+  handlers for SIGTERM and SIGHUP that stop that session's group cannot run on a `SIGKILL`. So a
+  `git` that the child started when `WORK`, 400 s, ran out keeps running until it ends by itself.
+  Read from the code; no run reproduces it. A SIGTERM first, then the `SIGKILL` after a grace,
+  would let the child stop its `git`.
+- kind: defect
+- found: 2026-11-22, the advisor's ruling on part G3d of the sandbox plan

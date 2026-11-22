@@ -2,7 +2,9 @@
   boxed create deletes the branch that it made.** Every `git` of `hooks/worktree.py`, and the
   `srt` of a boxed `git`, now starts in a session of its own; past its timeout the hook sends
   `SIGTERM` to the group and `SIGKILL` 5 seconds later where it has not ended, so the stop reaches
-  the `git` inside `srt` and the `ssh` of a fetch, not only `srt` or `git`. A program that cannot
+  the `git` inside `srt` and the `ssh` of a fetch, not only `srt` or `git`. A `SIGINT`, `SIGTERM`
+  or `SIGHUP` of the hook, such as `harness worktree` passes on, stops that group the same way
+  before the hook ends. A program that cannot
   start is a one-line refusal, not a traceback, and a boxed remove whose `srt` cannot start puts
   the worktree back at its path. A broker that refuses to start because of a directory at its
   profile's path now exits with that refusal, not with a traceback, and leaves the directory. A

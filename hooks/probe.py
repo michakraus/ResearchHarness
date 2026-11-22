@@ -2048,6 +2048,92 @@ def run_git_timeout_cases(hook: types.ModuleType, report: Callable[[object, str]
         )
 
 
+class InterruptedGit(FakeGit):
+    """A FakeGit whose first `communicate` calls `interrupt`, as a signal that arrives while the
+    hook waits for git, and whose later calls return no output."""
+
+    def __init__(self, args: list[str], waits: list[float | None], interrupt: Callable[[], None]) -> None:
+        super().__init__(args, 0, waits)
+        self.interrupt = interrupt
+
+    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+        first = not self.waits
+        self.waits.append(timeout)
+        if first:
+            self.interrupt()
+        return "", ""
+
+
+def run_git_signal_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """A signal while the hook waits for git, with `subprocess.Popen` patched to start an
+    InterruptedGit and `os.killpg` to a recorder: a KeyboardInterrupt in `run_git` stops git's
+    process group and passes on; `main` on a create, for SIGTERM and for SIGHUP, whose git calls
+    the handler of that signal, stops the group, raises SystemExit with 128 + the signal's
+    number, and leaves the handlers as they were before it."""
+    repo = pathlib.Path(WT_REPO)
+
+    def interrupt() -> None:
+        raise KeyboardInterrupt
+
+    def handler_of(signum: int) -> Callable[[], None]:
+        def call() -> None:
+            handler = signal.getsignal(signum)
+            if callable(handler):
+                handler(signum, None)
+
+        return call
+
+    runs: list[tuple[str, Callable[[], object], Callable[[], None], int | None]] = [
+        ("KeyboardInterrupt", lambda: hook.run_git("status", repo=repo), interrupt, None),
+        *[
+            (
+                signum.name,
+                lambda: hook.main(),
+                handler_of(signum),
+                128 + signum,
+            )
+            for signum in (signal.SIGTERM, signal.SIGHUP)
+        ],
+    ]
+    for label, work, call, code in runs:
+        signals: list[tuple[int, int]] = []
+        waits: list[float | None] = []
+        before = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)}
+
+        def start(
+            args: list[str], waits: list[float | None] = waits, call: Callable[[], None] = call, **_: Any
+        ) -> InterruptedGit:
+            return InterruptedGit([str(a) for a in args], waits, call)
+
+        def killpg(pid: int, signum: int, signals: list[tuple[int, int]] = signals) -> None:
+            signals.append((pid, signum))
+
+        payload = json.dumps(create("signalled"))
+        with (
+            mock.patch.object(subprocess, "Popen", side_effect=start),
+            mock.patch.object(os, "killpg", side_effect=killpg),
+            mock.patch.dict(os.environ, WT_ENV, clear=True),
+            mock.patch.object(sys, "stdin", io.StringIO(payload)),
+            mock.patch.object(hook, "RESEARCH", pathlib.Path(WT_R)),
+            mock.patch.object(hook, "ROOT", pathlib.Path(WT_ROOT)),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            try:
+                outcome: object = f"returned {work()!r}"
+            except KeyboardInterrupt:
+                outcome = "KeyboardInterrupt"
+            except SystemExit as raised:
+                outcome = raised.code
+        after = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)}
+        want = "KeyboardInterrupt" if code is None else code
+        report(
+            outcome == want and signals[:1] == [(FakeGit.pid, signal.SIGTERM)] and after == before,
+            f"a {label} while the hook waits for git stops git's process group and ends with {want}, "
+            f"and the signal handlers are those of before: {outcome}, {signals}, "
+            f"{'kept' if after == before else (before, after)}",
+        )
+
+
 # Where a case moves the stub srt WT_SRT aside, so that it cannot start.
 WT_SRT_GONE = WT_SRT + "-gone"
 
@@ -2816,7 +2902,7 @@ def worktree_git_cases() -> tuple[int, int]:
     (`discovery_cases`); the GIT_ALLOW_PROTOCOL of every git; the client's
     refusals under `AGENTBOX`; the boxed child (`boxed_cases`); the broker's settings file, staging
     directory and profile (`broker_start_cases`); the stop of a git past its timeout
-    (`run_git_timeout_cases`); the failures of a boxed remove and of `undo`
+    (`run_git_timeout_cases`) and on a signal to the hook (`run_git_signal_cases`); the failures of a boxed remove and of `undo`
     (`boxed_failure_cases`, `failure_unit_cases`); the branch of a failed boxed create
     (`boxed_branch_cases`); names that end in a newline and parents of a digit that is not ASCII
     (`name_cases`); the broker's profile at its end (`broker_profile_cases`); the life of a
@@ -3062,6 +3148,7 @@ def worktree_git_cases() -> tuple[int, int]:
     boxed_cases(hook, report)
     broker_start_cases(hook, report)
     run_git_timeout_cases(hook, report)
+    run_git_signal_cases(hook, report)
     boxed_failure_cases(hook, report)
     failure_unit_cases(hook, report)
     boxed_branch_cases(report)

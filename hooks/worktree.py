@@ -79,7 +79,8 @@ removes it there, and renames it back where git refuses or cannot start (`staged
 Every git, and the srt of a boxed git, starts in a session of its own (`run_git`). One that
 outlives its timeout is stopped with its process group, which holds the programs that it started,
 such as the git inside srt or the ssh of a fetch: SIGTERM, then SIGKILL where it has not ended
-after GRACE seconds.
+after GRACE seconds. A SIGINT, SIGTERM or SIGHUP of the hook stops the group of its running git
+the same way (`main`), since a signal to the hook's own group does not reach that session.
 
 A worktree made with `--relative-paths`, or in a repository or git config with
 `worktree.useRelativePaths=true`, is refused, even one this hook made itself: `main_checkout`
@@ -239,8 +240,10 @@ def run_git(
     child's, git runs as `SRT --settings <profile> -- git …`, inside srt, with the same `cwd`,
     environment and timeout. git, or the srt of a boxed git, starts in a session of its own: where
     it outlives `timeout`, `stop_group` stops its process group, the programs that it started
-    included, and the subprocess.TimeoutExpired of the git command is raised. A program that cannot
-    start is a Refusal that names it."""
+    included, and the subprocess.TimeoutExpired of the git command is raised. Any other exception
+    that ends the wait, such as the KeyboardInterrupt of a SIGINT or the SystemExit of
+    `interrupted`, stops the group the same way and passes on. A program that cannot start is a
+    Refusal that names it."""
     env = {key: value for key, value in os.environ.items() if key not in UNSET}
     boxed = [str(SRT), "--settings", str(profile), "--"] if profile is not None else []
     command = [*boxed, "git", *OPTIONS, *args]
@@ -260,6 +263,9 @@ def run_git(
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
+        stop_group(proc)
+        raise
+    except BaseException:
         stop_group(proc)
         raise
     return subprocess.CompletedProcess(command, proc.returncode, stdout, stderr)
@@ -1113,6 +1119,31 @@ def boxed_profile(args: Sequence[str]) -> Path | None:
 
 
 def main(args: Sequence[str] = ()) -> int:
+    """`handle` with `args`, with SIGTERM and SIGHUP handlers (`interrupted`) that raise SystemExit,
+    so that `run_git` stops the process group of a running git before the hook ends; git runs in a
+    session of its own, which a signal to the hook's group does not reach. The handlers that were
+    in place before are restored. SIGINT keeps Python's KeyboardInterrupt, which `run_git` treats
+    the same way."""
+    previous = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGHUP)}
+    for signum in previous:
+        signal.signal(signum, interrupted)
+    try:
+        return handle(args)
+    finally:
+        for signum, handler in previous.items():
+            if handler is not None:
+                signal.signal(signum, handler)
+
+
+def interrupted(signum: int, frame: FrameType | None) -> None:
+    """The SIGTERM and SIGHUP handler of the hook: raise SystemExit with status 128 + `signum`."""
+    del frame
+    raise SystemExit(128 + signum)
+
+
+def handle(args: Sequence[str]) -> int:
+    """Serve as the broker, or run the create or the remove of the hook input on stdin: 0, or 1 with
+    one `worktree hook:` line for a refusal or a git past its timeout."""
     try:
         if args and args[0] == "--serve":
             serve(*serve_arguments(args))

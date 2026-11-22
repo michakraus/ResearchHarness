@@ -76,7 +76,7 @@ def here() -> pathlib.Path:
 
 def one_line(what: str, value: str) -> str:
     """`value`, which must be one line that is not empty: a line break would split the dry run's
-    line and reach the hook's patterns, whose `$` matches before a final newline."""
+    line, and the hook refuses a worktree name that holds one."""
     if value.splitlines() != [value]:
         raise HarnessError(f"the {what} {value!r} is empty or holds a line break")
     return value
