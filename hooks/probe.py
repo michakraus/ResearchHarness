@@ -2623,10 +2623,10 @@ def boxed_dash_case(report: Callable[[object, str], None]) -> None:
 
 
 def name_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
-    """A create whose name ends in a newline, `agent-ab` or `x`, or begins with `-`, `-f`, `-m` or
-    `--force`, refuses before any git runs; `add_arguments` does not take `agent-ab` and a newline
-    as a sub-agent's name; and `serve_arguments` refuses a `--parent` of a digit that is not ASCII
-    with the usage line."""
+    """A create whose name ends in a newline, `agent-ab` or `x`, or begins with `-`, as `-f`, `-m`
+    and `--force` do, refuses before any git runs; `add_arguments` does not take `agent-ab` and a
+    newline as a sub-agent's name; and `serve_arguments` refuses a `--parent` of a digit that is not
+    ASCII with the usage line."""
     for name in ("agent-ab\n", "x\n", "-f", "-m", "--force"):
         outcome, seen = inprocess(hook, lambda name=name: hook.create(create(name)))
         report(
