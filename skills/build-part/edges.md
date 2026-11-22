@@ -867,7 +867,8 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   test a removed working directory (G3b round 1)
 - a timeout of `subprocess.run` with captured output: the `TimeoutExpired` holds what the child
   wrote so far, and a caller that raises its own error drops it, so the child's last progress line
-  never reaches the user. Write `e.stderr` on before the error (G3b round 1)
+  never reaches the user. Write `e.stderr` on before the error: it is bytes even with `text=True`,
+  and `None` where the child wrote nothing, so decode it with `errors="replace"` (G3b round 1)
 - a CI stub written at the path of a program that the same job then runs for real: the
   stub `exit 0` at the environment's interpreter, made before `bin/harness render`, is an
   interpreter that starts, so `bin/harness` runs on it, every rendered unit is empty, and
