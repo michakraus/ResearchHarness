@@ -2200,7 +2200,7 @@ def interrupted_state_case(hook: types.ModuleType, report: Callable[[object, str
                 continue
             try:
                 called[s.name] = f"returned {handler(s, None)!r}"
-            except BaseException as err:  # noqa: BLE001 - the case reports any exception of the handler
+            except SystemExit as err:
                 called[s.name] = f"raised {err!r}"
     finally:
         for s, handler in before.items():
@@ -2221,36 +2221,38 @@ def interrupted_child_cases(hook: types.ModuleType, report: Callable[[object, st
     a session of its own, so its signals do not reach the probe."""
     term, hup = signal.SIGTERM, signal.SIGHUP
     stub = pathlib.Path(WT_HOME, ".local", "bin", "srt-signalled")
-    for first, second in ((term, hup), (hup, term)):
-        stub.write_text(
-            f"#!/bin/sh\nkill -{first.name[3:]} $$\nkill -{second.name[3:]} $$\necho alive\n",
-            encoding="utf-8",
-        )
-        stub.chmod(0o755)
-        before = {s: signal.getsignal(s) for s in (term, hup)}
-        outcome = "no SystemExit"
-        try:
+    try:
+        for first, second in ((term, hup), (hup, term)):
+            stub.write_text(
+                f"#!/bin/sh\nkill -{first.name[3:]} $$\nkill -{second.name[3:]} $$\necho alive\n",
+                encoding="utf-8",
+            )
+            stub.chmod(0o755)
+            before = {s: signal.getsignal(s) for s in (term, hup)}
+            outcome = "no SystemExit"
             try:
-                hook.interrupted(term, None)
-            except SystemExit:
-                with mock.patch.object(hook, "SRT", stub, create=True):
-                    proc = hook.run_git(
-                        "worktree", "prune", repo=pathlib.Path(WT_REPO), profile=pathlib.Path(WT_PROFILE)
-                    )
-                outcome = f"exit {proc.returncode}, stdout {proc.stdout!r}"
-                good = proc.returncode == -first and "alive" not in proc.stdout
-            else:
-                good = False
-        finally:
-            for s, handler in before.items():
-                if handler is not None:
-                    signal.signal(s, handler)
-        report(
-            good,
-            f"a git that the hook starts after interrupted ends on its own {first.name} and then "
-            f"{second.name} with the default handler: {outcome}",
-        )
-    stub.unlink()
+                try:
+                    hook.interrupted(term, None)
+                except SystemExit:
+                    with mock.patch.object(hook, "SRT", stub, create=True):
+                        proc = hook.run_git(
+                            "worktree", "prune", repo=pathlib.Path(WT_REPO), profile=pathlib.Path(WT_PROFILE)
+                        )
+                    outcome = f"exit {proc.returncode}, stdout {proc.stdout!r}"
+                    good = proc.returncode == -first and "alive" not in proc.stdout
+                else:
+                    good = False
+            finally:
+                for s, handler in before.items():
+                    if handler is not None:
+                        signal.signal(s, handler)
+            report(
+                good,
+                f"a git that the hook starts after interrupted ends on its own {first.name} and then "
+                f"{second.name} with the default handler: {outcome}",
+            )
+    finally:
+        stub.unlink(missing_ok=True)
 
 
 # Where a case moves the stub srt WT_SRT aside, so that it cannot start.

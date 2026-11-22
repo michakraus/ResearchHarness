@@ -1225,7 +1225,7 @@
 
 ### K190 · The worktree broker stops a boxed child that runs longer than `WORK`, or that runs when the broker gets SIGTERM or SIGHUP, with a `SIGKILL` to the child alone, so the child's running `git` goes on.
 
-- location: `hooks/worktree.py:1081`
+- location: `hooks/worktree.py:1085`
 - evidence: `respond` runs `worktree.py --boxed <profile>` with `subprocess.run(…, timeout=WORK)`.
   On the timeout, `subprocess.run` sends `SIGKILL` to that child's process ID and to nothing else.
   The child starts each `git`, or the `srt` of it, in a session of its own (`run_git`), and its
@@ -1243,7 +1243,7 @@
 
 ### K191 · The worktree hook's `parse_version` raises `ValueError` on a version part of digits that are not ASCII, so a create ends in a traceback after it has made the worktree.
 
-- location: `hooks/worktree.py:726`
+- location: `hooks/worktree.py:730`
 - evidence: `parse_version` tests each part with `p.isdigit()`, which holds for `"²"`, and then
   `int(p)` raises: `parse_version("1.²")` raises `ValueError: invalid literal for int() with
   base 10: '²'`. `copy_manifest` calls `manifest_fits`, which calls `parse_version` on each
