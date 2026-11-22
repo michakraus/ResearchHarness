@@ -51,7 +51,7 @@ describes it reads as false.
 outside it in full, and pass `-R <owner>/<repo>` to `gh`.
 
 **Do not remove the worktree.** Removing it ends your session. Name its path in your report; your
-caller runs `git worktree remove <path>`.
+caller removes it.
 
 ## GitHub access is `gh`, not an MCP server
 
