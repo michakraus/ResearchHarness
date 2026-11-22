@@ -8,7 +8,7 @@ This agent is ported from Claude Code. Where the text below names a Claude Code 
 
 ## worktree
 
-**Nothing makes a worktree for you.** oh-my-pi has no `isolation: worktree`. If your caller names an existing worktree, work in it and make none. Otherwise make it yourself before anything else, in the repository your caller names, with `git worktree add`, as the global `AGENTS.md` says, and a short slug of your own. Where the text below says that your caller made the worktree, or that `pwd` is already in it, read it as the worktree that you made. Report its path; your caller removes it.
+**Nothing makes a worktree for you.** oh-my-pi has no `isolation: worktree`. If your caller names an existing worktree, work in it and make none. Otherwise ask for it before anything else: in the repository your caller names, run `harness worktree add agent-<hex> --apply`, with a hex slug of your own. It makes a worktree detached at the base and prints its path. Where the text below says that your caller made the worktree, or that `pwd` is already in it, read it as the worktree that you made. Report its path; your caller removes it.
 
 ## agent
 

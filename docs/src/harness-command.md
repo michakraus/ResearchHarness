@@ -68,6 +68,7 @@ These options come before the subcommand.
 | [`dependents`](#dependents) | writes the list of direct dependents into each base of the profile key `dependents_bases` | yes |
 | [`ci-protection`](#ci-protection) | protects every default branch on GitHub with a ruleset | yes |
 | [`format`](#format) | runs JuliaFormatter over every tracked `.jl` file of the packages and experiments | yes |
+| [`worktree`](#worktree) | makes or removes a worktree through the installed worktree hook, for OpenCode and oh-my-pi | yes |
 | [`render`](#render) | prints a template rendered with the profile | no |
 | [`get`](#get) | prints a profile value | no |
 | [`leaks`](#leaks) | searches the repository for the private strings of the profile | no |
@@ -739,6 +740,36 @@ file; 2 on a failure.
 set. The skip list that remains names the files that JuliaFormatter cannot format.
 
 **Where to run it:** in your own terminal; it runs Julia over the whole tree.
+
+### `worktree`
+
+```text
+harness worktree add <name> [--apply]
+harness worktree remove <path> [--apply]
+```
+
+Makes or removes a worktree through the worktree hook that `install` puts at
+`~/.claude/hooks/worktree.py`, for a frontend that has no worktree hook of its own: OpenCode and
+oh-my-pi. The subcommand sends the hook the payload of Claude Code's event on its standard input,
+so the hook decides where the worktree goes and runs the git; under `agentbox` the hook asks its
+broker outside the sandbox. `~` is the home that `HOME` gives.
+
+- `add` sends `WorktreeCreate` with the working directory and `<name>`: the hook makes the
+  worktree of the repository that holds the working directory, on the branch `<name>`, or
+  detached for a name `agent-<hex>`, and the subcommand prints its path.
+- `remove` sends `WorktreeRemove` with `<path>`, made absolute: the hook removes the worktree,
+  without `--force`, and keeps its branch.
+
+Without `--apply`, the subcommand prints the request in one line and runs nothing. With
+`--apply`, it runs the hook with the interpreter of `harness`, in the working directory, for at
+most 480 seconds, and passes the hook's standard error on.
+
+**Exit status:** 0 after `--apply`; 1 for the dry run; 2 when the hook is not installed, when it
+exits with another status than 0, with the hook's last line of standard error, or when it runs
+longer than 480 seconds.
+
+**Where to run it:** in a session of OpenCode or oh-my-pi, from the repository, or in your own
+terminal.
 
 ## The profile
 
@@ -1567,6 +1598,17 @@ JuliaFormatter cannot handle. The marker, the skip list and the log go to `$FMT_
 
 The dry run counts the files that the script would format, from its summary line. The module has
 no `selftest`, and the sweep does not run it, because it runs Julia over the tree.
+
+### `worktree.py`
+
+The subcommand `harness worktree add <name>` and `harness worktree remove <path>`, each with
+`--apply`. It runs the installed hook `~/.claude/hooks/worktree.py`, below the home of `HOME`,
+with `sys.executable`, and writes the JSON payload of a `WorktreeCreate` or `WorktreeRemove`
+event to its standard input; it runs no git itself. A missing hook and a hook that exits with
+another status than 0 raise `HarnessError`, the second with the hook's last line of standard
+error. Its cases run `harness worktree` in a fixture home whose hook is a stub that records its
+input, its working directory and its arguments, and they read the two deltas of OpenCode and
+oh-my-pi for the section that sends an agent to the subcommand.
 
 ### `changelog.py`
 

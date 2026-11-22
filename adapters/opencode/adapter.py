@@ -289,15 +289,14 @@ def preamble(name: str, meta: dict[str, Any], body: str, models: profile_module.
     if meta.get("isolation") == "worktree" or "isolation" in body:
         rules.append(
             "**Nothing makes a worktree for you.** OpenCode has no `isolation: worktree`. If your "
-            "caller names an existing worktree, work in it and make none. Otherwise make it "
-            "yourself before anything else, in the repository your caller names, with a short "
-            "slug of your own:\n\n"
+            "caller names an existing worktree, work in it and make none. Otherwise ask for it "
+            "before anything else, in the repository your caller names, with a hex slug of your "
+            "own:\n\n"
             "  ```bash\n"
             "  cd ~/Research/<Packages or Experiments>/<Repository>\n"
-            "  git fetch origin\n"
-            "  git worktree add --detach ~/Research/.worktrees/<Repository>-agent-<slug> origin/HEAD\n"
+            "  harness worktree add agent-<hex> --apply\n"
             "  ```\n\n"
-            "  Then pass the worktree as `workdir` on every command. Where the text below says that your "
+            "  It makes a worktree detached at the base and prints its path. Then pass the worktree as `workdir` on every command. Where the text below says that your "
             "caller made the worktree, or that `pwd` is already in it, read it as the worktree that "
             "you made. Report its path; your caller removes it."
         )

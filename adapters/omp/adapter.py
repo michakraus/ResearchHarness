@@ -1707,8 +1707,9 @@ def omp_agent_cases(case, fresh, run, agent):
                     ),
                 ),
                 (
-                    "no `git worktree add` rule for isolation: worktree",
-                    worktree and ("Nothing makes a worktree" not in under or "git worktree add" not in under),
+                    "no `harness worktree add` rule for isolation: worktree",
+                    worktree
+                    and ("Nothing makes a worktree" not in under or "harness worktree add" not in under),
                 ),
                 (
                     "no `task` rule for the agent tool",
