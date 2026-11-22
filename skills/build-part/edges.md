@@ -912,8 +912,9 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   a handler that sets `SIG_IGN` passes that disposition on through `exec` to every later child,
   and a stop that a timeout or another signal began is not guarded at all. Block the signals for
   the duration of the stop itself (`signal.pthread_sigmask`) and restore the mask in a `finally`,
-  or record the window as a limit; test each pair of first event and second signal (G3d verify 2
-  and finish, *Sandbox the agent frontends*)
+  or record the window as a limit. A child started inside the block keeps the mask through `exec`,
+  so start no child there; test each pair of first event and second signal (G3d verify 2 and
+  finish, *Sandbox the agent frontends*)
 
 ## A lint cleanup
 
