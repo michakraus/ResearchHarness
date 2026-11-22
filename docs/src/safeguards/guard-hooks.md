@@ -663,13 +663,14 @@ process group, which holds the programs that it started, such as the `git` insid
 `ssh` of a fetch: `SIGTERM`, so that `git` removes its lock files, then `SIGKILL` after 5 seconds
 where it has not ended. A `SIGINT`, `SIGTERM` or `SIGHUP` of the hook stops its running `git`'s
 group the same way, because a signal to the hook's own process group, as `harness worktree`
-sends it, does not reach that session; a second `SIGTERM` or `SIGHUP` during that stop is
-ignored, and a `git` that the hook starts after the signal, such as the `git worktree prune` of a
-failed create, gets the default handlers of both signals. Three cases stay open: a `SIGKILL` of
-the hook leaves its `git` running; a signal that arrives after `git` starts and before the hook
-waits for it is not passed on; and a caller that sends `SIGKILL` to the hook within those 5
-seconds can end the hook before its own `SIGKILL` reaches `git`. A program that cannot start is
-refused with one line that names it.
+sends it, does not reach that session; a `SIGTERM` or `SIGHUP` during the stop that a `SIGTERM`
+or `SIGHUP` began is ignored, and a `git` that the hook starts after the signal, such as the
+`git worktree prune` of a failed create, gets the default handlers of both signals. Four cases
+stay open: a `SIGKILL` of the hook leaves its `git` running; a signal that arrives after `git`
+starts and before the hook waits for it is not passed on; a signal during the stop that a
+`SIGINT` began ends that stop before its `SIGKILL`; and a caller that sends `SIGKILL` to the hook
+within those 5 seconds can end the hook before its own `SIGKILL` reaches `git`. A program that
+cannot start is refused with one line that names it.
 
 It fails closed: on each error it exits with status 1 and gives the reason, and it creates no
 worktree. Under `AGENTBOX`, a missing or empty `AGENTBOX_BROKER`, a broker that does not answer

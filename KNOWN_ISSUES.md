@@ -956,18 +956,18 @@
 
 ### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
 
-- location: `hooks/probe.py:4961`
+- location: `hooks/probe.py:4963`
 - evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
   reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
   calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
   `matcher calls 471, 7.20 seconds`. The matcher calls stay at their bound, so the guard is right
   and only its time is close to the limit. The case measures wall time while the other parts of
   `harness test` run in parallel. So the verdict of the case depends on wall-clock time: the
-  bound of the matcher calls (line 4961, `0 <= calls <= indexed`) already checks the guard's work,
+  bound of the matcher calls (line 4963, `0 <= calls <= indexed`) already checks the guard's work,
   so `seconds <= MIB_LIMIT` on the same line adds only a dependence on the load of the machine,
-  and the `timeout=MIB_LIMIT` of line 4950 makes a slow run a failure. The cases of the commands
-  of 1 MiB at line 6143 depend on it the same way: `guard_run(..., limit=MIB_LIMIT)` passes the
-  limit as `timeout=` (line 5621) and returns `timeout` past it (line 5625), which fails
+  and the `timeout=MIB_LIMIT` of line 4952 makes a slow run a failure. The cases of the commands
+  of 1 MiB at line 6145 depend on it the same way: `guard_run(..., limit=MIB_LIMIT)` passes the
+  limit as `timeout=` (line 5623) and returns `timeout` past it (line 5627), which fails
   `got == expected`.
 - kind: defect
 - found: #282
@@ -1102,10 +1102,10 @@
 ### K174 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
 
 - location: `hooks/probe.py:823`
-- evidence: `hooks/probe.py:823-839` defines `unix_bind` and `bind_verdict`, and `:3126-3137`
+- evidence: `hooks/probe.py:823-839` defines `unix_bind` and `bind_verdict`, and `:3128-3139`
   repeats the body of `bind_verdict_cases`, the same code as `lib/harness/sandbox.py:1982-2016`,
   about 30 lines. `hooks/probe.py` already puts `REPO/lib` on `sys.path` and imports `harness` in
-  other groups (`from harness import install_cases`, `:5367`), so it can import them. Each copy
+  other groups (`from harness import install_cases`, `:5369`), so it can import them. Each copy
   has its own mutants: the three mutants of the three-way decision run twice.
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
