@@ -667,19 +667,23 @@ def window_cases(check: Callable[[object, str], None], f: Fixture) -> None:
         if callable(handler):
             handler(signum, None)
 
-    def early(command: list[str], **_kwargs: object) -> subprocess.Popen[str]:
-        deliver(signal.SIGTERM)
-        proc = real(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=f.work,
-            text=True,
-            start_new_session=True,
-        )
-        started.append(proc)
-        return proc
+    def starting(*signums: int) -> Callable[..., subprocess.Popen[str]]:
+        def early(command: list[str], **_kwargs: object) -> subprocess.Popen[str]:
+            for signum in signums:
+                deliver(signum)
+            proc = real(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=f.work,
+                text=True,
+                start_new_session=True,
+            )
+            started.append(proc)
+            return proc
+
+        return early
 
     class Late:
         def __init__(self, command: list[str], **_kwargs: object) -> None:
@@ -724,11 +728,18 @@ def window_cases(check: Callable[[object, str], None], f: Fixture) -> None:
 
     f.install()
     what = "a SIGTERM before the hook's process joins the list"
-    status, message, _ = run(early, stop, what)
+    status, message, _ = run(starting(signal.SIGTERM), stop, what)
     check(
         status == 128 + signal.SIGTERM and message is None and sent == [(started[0], signal.SIGTERM)],
         f"{what} goes on to the hook's process group after the join, and request returns 143: "
         f"{status} {message!r} {sent} {started}",
+    )
+    what = "a SIGINT and then a SIGTERM before the hook's process joins the list"
+    status, message, _ = run(starting(signal.SIGINT, signal.SIGTERM), stop, what)
+    check(
+        status == 128 + signal.SIGINT and message is None and sent == [(started[0], signal.SIGINT)],
+        f"of {what}, the first goes on to the hook's process group after the join, and request "
+        f"returns 130: {status} {message!r} {sent} {started}",
     )
     what = "a SIGTERM and then a SIGHUP while a timeout stops the hook"
     status, message, err = run(Late, stopping(signal.SIGTERM, signal.SIGHUP), what)
