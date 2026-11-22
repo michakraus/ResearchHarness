@@ -51,10 +51,10 @@ there.
 
 There is no `WorktreeCreate` hook, no `EnterWorktree` and no `isolation: "worktree"`. Ask the
 installed hook for the worktree; it makes it at the location and from the base that the tree
-instructions give, and prints its path:
+instructions give, and prints its path. With `workdir` the repository, run:
 
 ```bash
-cd <repository> && harness worktree add <branch> --apply
+harness worktree add <branch> --apply
 ```
 
 Remove one with `harness worktree remove <path> --apply`.

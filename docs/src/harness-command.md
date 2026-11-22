@@ -1024,6 +1024,7 @@ report to `$RESEARCH_ROOT/.scratch/skill-triggers/<date>-<model>.md`.
 | 0 | nothing to do, the change is made, or the read-only subcommand finished |
 | 1 | the dry run has work to do; a check (`doctor`, `leaks`, `test`, `mutate`, `settings selftest`, `skill-triggers`) failed |
 | 2 | a usage error, a refusal or a failure, with one line on standard error |
+| 128 + n | `worktree` received the signal n, a SIGINT, SIGTERM or SIGHUP, while the hook ran |
 
 ## The Julia environment
 
@@ -1614,8 +1615,9 @@ decoded with replacement characters. A missing hook, a hook that exits with anot
 0 or runs too long, an empty `<name>` or `<path>` or one with a line break, and a working
 directory that no longer exists raise `HarnessError`; a failing hook's reason is its last line
 of standard error. Its cases run `harness worktree` in a fixture home whose hook is a stub that
-records its input, its working directory and its arguments, or that hangs or signals its caller,
-and they read the two deltas of OpenCode and oh-my-pi for the section that sends an agent to the
+records its input, its working directory and its arguments, or that signals its caller. They run
+a stub that hangs through `request` in their own process, with a timeout of 1 s, and they read the
+two deltas of OpenCode and oh-my-pi for the section that sends an agent to the
 subcommand.
 
 ### `changelog.py`

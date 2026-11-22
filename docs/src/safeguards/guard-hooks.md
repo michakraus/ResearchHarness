@@ -513,7 +513,9 @@ echo '{"session_id":"s","tool_input":{"file_path":"'"$HOME"'/Research/Harness/.g
 
 This hook creates and removes the worktrees of Claude Code. Claude Code runs it on the events
 `WorktreeCreate` and `WorktreeRemove`. The reason is the sandbox: a `git worktree add` to a path
-below `~/Research/.worktrees/` runs sandboxed, where it cannot write `.git`.
+below `~/Research/.worktrees/` runs sandboxed, where it cannot write `.git`. OpenCode and
+oh-my-pi have no such events; [`harness worktree`](../harness-command.md#worktree) sends the hook
+the same payloads for them.
 
 On `WorktreeCreate` it fetches `origin` in the repository that holds `cwd`. It then creates
 `~/Research/.worktrees/<Repository>-<slug>` on the branch `name`, from `origin/HEAD`, or from
