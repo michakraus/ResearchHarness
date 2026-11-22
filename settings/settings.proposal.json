@@ -765,7 +765,7 @@
           {
             "type": "command",
             "command": "{home}/.claude/hooks/worktree.py",
-            "timeout": 120
+            "timeout": 480
           }
         ]
       }
@@ -776,7 +776,7 @@
           {
             "type": "command",
             "command": "{home}/.claude/hooks/worktree.py",
-            "timeout": 60
+            "timeout": 480
           }
         ]
       }

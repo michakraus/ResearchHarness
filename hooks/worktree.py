@@ -3,7 +3,8 @@
 
 One script for two hook events, told apart by `hook_event_name`:
 
-  * **`WorktreeCreate`** — input `{"cwd": …, "name": …}`. Fetches `origin`, then runs
+  * **`WorktreeCreate`** — input `{"cwd": …, "name": …}`. Fetches `origin`, up to three times
+    where a parallel fetch of the repository holds a ref's lock (`fetch`), then runs
     `git worktree add --no-track -b <name> <path> origin/<default>` in the repository that
     owns `cwd`, and prints `<path>` on stdout. That one line is the whole of stdout; git's
     own output goes to stderr. An existing branch is checked out rather than recreated,
@@ -15,7 +16,9 @@ One script for two hook events, told apart by `hook_event_name`:
     holds every dependency of the worktree's `Project.toml` inside its `[compat]`.
   * **`WorktreeRemove`** — input `{"worktree_path": …}`. Runs `git worktree remove <path>`
     from the owning repository. Without `--force`, so git refuses a worktree with changes.
-    The branch stays: it may carry an open pull request.
+    The branch stays: it may carry an open pull request. First it refuses where it cannot write
+    in a `.githooks` or `.claude` of the worktree (`deletable`), as inside a sandbox: git would
+    delete the files up to the first one there, then the worktree's record, and leave the rest.
 
 Why a hook: Claude Code runs a `git worktree add` whose path is absolute, starts with `~`
 or holds `..` inside the sandbox, whatever `excludedCommands` says, and the sandbox
@@ -95,6 +98,7 @@ import socket
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -112,6 +116,14 @@ AGENT = re.compile(r"^agent-[0-9a-f]+$")
 # Seconds that a local git command may take, and a fetch, which reaches the network.
 LOCAL = 60
 NETWORK = 300
+# The runs of a fetch that another fetch of the same repository can make fail with git's LOCKED,
+# and the seconds between two runs.
+FETCHES = 3
+LOCKED = "cannot lock ref"
+PAUSE = 2
+# The directories of a worktree that a sandbox denies writes in: srt and Claude Code's sandbox deny
+# every `.githooks`, and Claude Code's sandbox every `.claude` below the session's folders.
+SHIELDED = frozenset({".githooks", ".claude"})
 # The options of every git: no hook of the repository runs, and no fsmonitor daemon starts.
 OPTIONS = ("-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
 # The transports that every git may use, in GIT_ALLOW_PROTOCOL, in place of the caller's value.
@@ -168,6 +180,15 @@ LOOK = 1
 # `<pid>.json` beside it, below `~/.local/state/research-harness`, which no box may write.
 SRT = Path.home() / ".local" / "bin" / "srt"
 STAGES = Path.home() / ".local" / "state" / "research-harness" / "worktree-stage"
+
+
+# What a caller whose working directory is in no repository does instead. Claude Desktop sends the
+# session's folder as `cwd`, and refuses a `cwd` in a repository that it has no record of, so a side
+# session of such a session starts without a worktree and makes its own.
+NO_REPOSITORY = (
+    "`cd` into the repository first, or start a side session with use_worktree false and its cwd "
+    "in the repository, whose first step is EnterWorktree"
+)
 
 
 class Refusal(Exception):
@@ -242,7 +263,9 @@ def main_checkout(start: str, research: Path) -> Path:
     here = Path(start).resolve() if start else None
     if here is None or not here.is_dir():
         raise Refusal(f"{start!r} is not a directory")
-    if here == top or not here.is_relative_to(top):
+    if here == top:
+        raise Refusal(f"{start} is the root of the tree, no repository; {NO_REPOSITORY}")
+    if not here.is_relative_to(top):
         raise Refusal(f"{start} is not below {top}; this hook makes worktrees of the repositories there only")
     for directory in (here, *here.parents):
         if directory == top:
@@ -256,7 +279,7 @@ def main_checkout(start: str, research: Path) -> Path:
             return without_commondir(linked_checkout(dot, top))
         if dot.exists():
             raise Refusal(f"{dot} is neither a directory nor a file")
-    raise Refusal(f"{start} is inside no repository below {top}; `cd` into the repository first")
+    raise Refusal(f"{start} is inside no repository below {top}; {NO_REPOSITORY}")
 
 
 def without_commondir(repo: Path) -> Path:
@@ -412,13 +435,27 @@ def create(payload: dict[str, JsonValue], profile: Path | None = None) -> Path:
             return path
         raise Refusal(f"{path} exists and is not a worktree of {repo}; look at it before removing it")
 
-    git("fetch", "--quiet", "origin", repo=repo, timeout=NETWORK, profile=profile)
+    fetch(repo, profile)
     if profile is None:
         git(*add_arguments(repo, name, path, None), repo=repo)
     else:
         staged_add(repo, name, path, profile)
     copy_manifest(repo, path)
     return path
+
+
+def fetch(repo: Path, profile: Path | None = None) -> None:
+    """`git fetch --quiet origin` in `repo`, run up to FETCHES times while it fails only because
+    another fetch of the repository holds a ref's lock (`cannot lock ref`), PAUSE seconds apart; the
+    stderr of the last run passes through. Any other failure, and the last of FETCHES, refuses."""
+    for attempt in range(1, FETCHES + 1):
+        proc = run_git("fetch", "--quiet", "origin", repo=repo, timeout=NETWORK, profile=profile)
+        if proc.returncode == 0 or LOCKED not in proc.stderr or attempt == FETCHES:
+            sys.stderr.write(proc.stderr)
+            if proc.returncode != 0:
+                raise Refusal(f"`git fetch --quiet origin` in {repo} exited {proc.returncode}")
+            return
+        time.sleep(PAUSE)
 
 
 def add_arguments(repo: Path, name: str, target: Path, profile: Path | None) -> list[str]:
@@ -683,9 +720,33 @@ def remove(payload: dict[str, JsonValue], profile: Path | None = None) -> None:
     if not registered(repo, path, profile):
         raise Refusal(f"{path} is not a registered worktree of {repo}")
     if profile is None:
+        deletable(path)
         git("worktree", "remove", str(path), repo=repo)
     else:
         staged_remove(repo, path, profile)
+
+
+def deletable(tree: Path) -> None:
+    """Refuse where this process cannot write in a directory of `tree` named one of SHIELDED, `.git`
+    left out: it makes and removes one file in each. A sandbox denies writes there, and `git worktree
+    remove` deletes the files up to the first one that it cannot delete, then deletes the worktree's
+    record anyway, so the directory stays behind with no record."""
+    for top, names, _ in os.walk(tree):
+        names[:] = [name for name in names if name != ".git"]
+        for name in names:
+            if name not in SHIELDED:
+                continue
+            directory = Path(top, name)
+            try:
+                descriptor, probe = tempfile.mkstemp(prefix=".worktree-hook-", dir=directory)
+                os.close(descriptor)
+                Path(probe).unlink()
+            except OSError as err:
+                raise Refusal(
+                    f"this process cannot write in {directory} ({err.strerror}), as in a sandbox, and "
+                    "`git worktree remove` would delete the worktree's record and leave the directory: "
+                    "remove it from a process outside the sandbox"
+                ) from None
 
 
 def staged_remove(repo: Path, path: Path, profile: Path) -> None:

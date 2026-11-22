@@ -39,6 +39,7 @@ from typing import TextIO
 # directory first on `sys.path`, and the `OWN` entry of `lib/harness/strict.py` allows the name here.
 from guard import (
     HarnessError,
+    agentbox_worktree,
     gh_api_writes,
     gh_pr_create,
     gh_watch_interval,
@@ -109,6 +110,7 @@ SHELL: tuple[Check, ...] = (
     gh_api_writes.check,
     gh_pr_create.check,
     gh_watch_interval.check,
+    agentbox_worktree.check,
     rm_scope.check,
     git_archive_output.check,
     git_writes.check,

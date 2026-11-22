@@ -64,7 +64,7 @@ Antigravity, oh-my-pi and OpenCode also run the path-list check `path_list.py`, 
 frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_lift.py` on a shell
 call that it does not deny, which lifts a command out of the sandbox only where the line matches a
 closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
-staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, rm, archive, git write, push
+staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, agentbox worktree, rm, archive, git write, push
 deletion, web, token, Kaimon and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
 guard answers the first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's
 reason, in the form of the frontend: for Claude Code exit 2 with the reason on standard error for
@@ -249,6 +249,19 @@ watcher on a run of half an hour at the default interval makes thousands of call
 GitHub's secondary rate limit; after that, the REST Actions endpoints answer 403 for every session
 of the account until the limit lifts. `git ls-remote` and `git fetch` do not use the API, so they
 still read a branch, a tag or a `gh-pages` deploy.
+
+### The agentbox worktree check
+
+`agentbox_worktree.py` refuses `git worktree add`, `move` and `remove` on each shell call of every
+frontend, when `AGENTBOX` is set in the guard's environment. Under `agentbox` every `git` runs
+inside `srt`, whatever `sandbox.excludedCommands` says, and `srt` denies writes below every
+`.githooks`. A `git worktree remove` there deletes the files up to the first one below
+`.githooks`, fails, and still deletes the worktree's record below `.git/worktrees/`: the rest of
+the directory stays, and no `git worktree` command knows it. The reason names
+`harness worktree add <branch> --apply` or `harness worktree remove <path> --apply`, which ask
+the worktree broker outside `srt`. The check finds a `git` call after an assignment, after
+`cd … &&`, with `-C`, and in the script of `sh -c`, `bash -c` or `eval`. The variable is no
+boundary: the check only sends a call that would fail to the route that works.
 
 ### The rm check
 
@@ -517,7 +530,11 @@ below `~/Research/.worktrees/` runs sandboxed, where it cannot write `.git`. Ope
 oh-my-pi have no such events; [`harness worktree`](../harness-command.md#worktree) sends the hook
 the same payloads for them.
 
-On `WorktreeCreate` it fetches `origin` in the repository that holds `cwd`. It then creates
+On `WorktreeCreate` it fetches `origin` in the repository that holds `cwd`, up to three times, 2
+seconds apart, while the fetch fails only on `cannot lock ref`: two creates in one repository
+fetch at the same time. A `cwd` that is `~/Research` itself, or a directory in no repository, is
+refused with the route for a side session of Claude Desktop, which sends the session's folder:
+`use_worktree` false, `cwd` in the repository, and `EnterWorktree` as its first step. It then creates
 `~/Research/.worktrees/<Repository>-<slug>` on the branch `name`, from `origin/HEAD`, or from
 `origin/main` if `origin/HEAD` is not set. It prints the path on standard output. An existing
 branch is checked out, and an existing worktree of the repository is printed as it is. A name
@@ -526,7 +543,10 @@ checkout's `Manifest.toml` into the new worktree when the manifest holds every p
 worktree's `[deps]` at a version inside its `[compat]`. Otherwise it copies none and says why on
 standard error, because Julia does not check `[compat]` at `using`, and a stale manifest loads
 old dependencies. On `WorktreeRemove` it runs `git worktree remove` without `--force`, so git
-refuses a worktree with changes, and the branch stays.
+refuses a worktree with changes, and the branch stays. Before that it makes and removes one file in
+each `.githooks` and `.claude` of the worktree, and refuses where it cannot: in a sandbox, git
+would delete the worktree's record and leave the directory. The settings template gives both
+events 480 seconds, more than a fetch (300) and the broker's answer (420) take.
 
 **The hook finds the repository by reading files, before any `git` runs.** The directory, `cwd`
 or the worktree to remove, must lie below `~/Research`. The first `.git` above it must be a

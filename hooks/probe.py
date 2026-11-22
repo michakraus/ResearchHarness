@@ -73,7 +73,11 @@ CWD = TOOL + "/hooks/"
 # No `GIT_*` variable of the caller: a `GIT_DIR`, as git exports it to a hook, would send the
 # fixture's git commands and the hooks' to the caller's repository. No `RESEARCH_HARNESS_PROFILE`
 # either: the guard would read the caller's profile in place of the fixture home's.
-CLEAN = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") and k != "RESEARCH_HARNESS_PROFILE"}
+CLEAN = {
+    k: v
+    for k, v in os.environ.items()
+    if not k.startswith("GIT_") and k not in ("RESEARCH_HARNESS_PROFILE", "AGENTBOX", "AGENTBOX_BROKER")
+}
 # The global git configuration of every hook, in place of the caller's `~/.gitconfig` and
 # `$XDG_CONFIG_HOME/git/config`: it names OWN_EMAIL, the address that the web check refuses.
 OWN_EMAIL = "probe-user@example.org"
@@ -355,8 +359,10 @@ def own_profile(home: str) -> None:
 
 
 def profile_env(record: dict[str, Any]) -> dict[str, str]:
-    """The `RESEARCH_HARNESS_PROFILE` of a corpus record that names a `profile`, else none."""
-    return {"RESEARCH_HARNESS_PROFILE": str(record["profile"])} if "profile" in record else {}
+    """The variables of a corpus record: its `env` object, and `RESEARCH_HARNESS_PROFILE` where it
+    names a `profile`."""
+    env = {str(k): str(v) for k, v in record.get("env", {}).items()}
+    return env | ({"RESEARCH_HARNESS_PROFILE": str(record["profile"])} if "profile" in record else {})
 
 
 def load_module(name: str, path: str) -> types.ModuleType:
@@ -947,6 +953,8 @@ def broker_unit_cases(hook: types.ModuleType, report: Callable[[object, str], No
         f"limit and starts nothing: {[getattr(r, 'error', r) for r in big]}, {after_big - valid} runs",
     )
     receive_deadline_cases(hook, report)
+    fetch_retry_cases(hook, report)
+    deletable_cases(hook, report)
 
     read = getattr(hook, "read_reply", None)
     for text, want in [
@@ -1007,6 +1015,112 @@ class DripConnection:
         del size
         self.reads += 1
         return b"x" if self.reads <= 20 else b""
+
+
+def fetch_retry_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`fetch` runs the fetch again only while it fails on a ref's lock, at most FETCHES times with
+    a pause between runs, and passes the last run's stderr through; any other failure refuses at
+    once."""
+    locked = "error: cannot lock ref 'refs/remotes/origin/main': is at a but expected b\n"
+    for results, runs, outcome in (
+        ([(1, locked), (0, "")], 2, "fetched"),
+        ([(1, locked)] * 3, 3, "refused"),
+        ([(128, "fatal: unable to access\n")], 1, "refused"),
+        ([(0, "")], 1, "fetched"),
+    ):
+        calls: list[tuple[str, ...]] = []
+        pauses: list[float] = []
+        answers = iter(results)
+
+        def fake(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+            del kwargs
+            calls.append(args)
+            code, err = next(answers)
+            return subprocess.CompletedProcess(list(args), code, "", err)
+
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(hook, "run_git", side_effect=fake),
+            mock.patch.object(hook.time, "sleep", side_effect=pauses.append),
+            contextlib.redirect_stderr(stderr),
+        ):
+            try:
+                hook.fetch(pathlib.Path("/repo"))
+                got = "fetched"
+            except hook.Refusal:
+                got = "refused"
+        last_err = results[-1][1]
+        report(
+            got == outcome
+            and len(calls) == runs
+            and all(c == ("fetch", "--quiet", "origin") for c in calls)
+            and pauses == [hook.PAUSE] * (runs - 1)
+            and stderr.getvalue() == last_err,
+            f"a fetch that answers {[code for code, _ in results]} runs {runs} times with "
+            f"{runs - 1} pauses and is {outcome}, with the last run's stderr: {got}, {len(calls)} "
+            f"runs, pauses {pauses}, stderr {stderr.getvalue()!r}",
+        )
+
+
+def deletable_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`deletable` passes a tree whose `.githooks` and `.claude` it can write in, and leaves no file
+    there; it refuses, naming the directory, where one of them, also a nested one, has mode 500;
+    `.git` and other directories of mode 500 are not tested."""
+    with tempfile.TemporaryDirectory() as name:
+        tree = pathlib.Path(name, "Repo-x")
+        for sub in (".githooks", ".claude", "src/.claude", ".git/hooks", "locked"):
+            (tree / sub).mkdir(parents=True)
+        for case, locked, refused in (
+            ("writable", None, None),
+            ("a .githooks of mode 500", ".githooks", ".githooks"),
+            ("a nested .claude of mode 500", "src/.claude", "src/.claude"),
+            ("a .git and another directory of mode 500", ".git", None),
+        ):
+            shut = [tree / locked] if locked else []
+            if locked == ".git":
+                shut.append(tree / "locked")
+            for directory in shut:
+                directory.chmod(0o500)
+            try:
+                hook.deletable(tree)
+                got = None
+            except hook.Refusal as err:
+                got = str(err)
+            finally:
+                for directory in shut:
+                    directory.chmod(0o700)
+            left = sorted(str(p.relative_to(tree)) for p in tree.rglob(".worktree-hook-*"))
+            report(
+                (got is None if refused is None else got is not None and str(tree / refused) in got)
+                and not left,
+                f"deletable on a tree with {case}: refuses {refused}, leaves no probe file: {got!r}, {left}",
+            )
+    calls: list[tuple[str, ...]] = []
+
+    def refuse(tree: pathlib.Path) -> None:
+        raise hook.Refusal(f"cannot write in {tree}")
+
+    def record(*args: str, **kwargs: object) -> str:
+        del kwargs
+        calls.append(args)
+        return ""
+
+    with (
+        mock.patch.object(hook, "main_checkout", return_value=pathlib.Path("/repo")),
+        mock.patch.object(hook, "checked_config"),
+        mock.patch.object(hook, "registered", return_value=True),
+        mock.patch.object(hook, "deletable", side_effect=refuse),
+        mock.patch.object(hook, "git", side_effect=record),
+    ):
+        try:
+            hook.remove({"worktree_path": str(hook.ROOT / "Repo-x")})
+            outcome = "removed"
+        except hook.Refusal as err:
+            outcome = str(err)
+    report(
+        outcome.startswith("cannot write in") and not calls,
+        f"remove runs no git once deletable refuses: {outcome!r}, git calls {calls}",
+    )
 
 
 def receive_deadline_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
@@ -1191,6 +1305,30 @@ def discovery_cases(report: Callable[[object, str], None]) -> None:
         f"{outcome}, {[(e.get('GIT_DIR'), e.get('GIT_COMMON_DIR'), e.get('GIT_WORK_TREE')) for e in envs]}, "
         f"marker {marker.exists()}",
     )
+
+
+def no_repository_cases(report: Callable[[object, str], None]) -> None:
+    """A create whose `cwd` is the root of the tree, as Claude Desktop sends for a session there, or
+    a directory below it in no repository, exits 1 with one line that names the side-session route:
+    `use_worktree false`, a cwd in the repository, and `EnterWorktree`."""
+    plain = pathlib.Path(WT_R, "Plain")
+    plain.mkdir(exist_ok=True)
+    for cwd, said_first in (
+        (WT_R, "is the root of the tree, no repository"),
+        (str(plain), "is inside no repository below"),
+    ):
+        proc, _ = worktree_run({"hook_event_name": "WorktreeCreate", "cwd": cwd, "name": "x"}, WT_ENV)
+        lines = [] if proc is None else proc.stderr.splitlines()
+        report(
+            proc is not None
+            and proc.returncode == 1
+            and len(lines) == 1
+            and said_first in lines[0]
+            and "use_worktree false" in lines[0]
+            and "EnterWorktree" in lines[0],
+            f"a create from {cwd} exits 1 with one line that names the side-session route: "
+            f"{None if proc is None else (proc.returncode, proc.stderr)!r}",
+        )
 
 
 def stage_state(stage: pathlib.Path) -> tuple[int, list[str]] | None:
@@ -2194,6 +2332,7 @@ def worktree_git_cases() -> tuple[int, int]:
     )
     config_check_cases(report)
     discovery_cases(report)
+    no_repository_cases(report)
 
     hook = load_module("worktree_recorded", WORKTREE)
     seen: list[list[str]] = []
@@ -5053,7 +5192,7 @@ def command_cases():
 
     for stdin, expected, profile in corpus_records():
         got, _ = guard_run(stdin.encode("utf-8"), env={**ENV, **profile})
-        named = f" with the profile {profile['RESEARCH_HARNESS_PROFILE']}" if profile else ""
+        named = f" with {profile}" if profile else ""
         report(ok=got == expected, line=f"exp {expected} got {got}  [guard    ]  {stdin[:200]!r}{named}")
     launcher_cases(report)
 
