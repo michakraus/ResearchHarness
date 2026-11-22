@@ -25,7 +25,8 @@ the stop after a timeout included, goes on to the hook's process group, and `har
 its HEAD is in `origin/HEAD` and its record shows no use for FRESH seconds; `kept` otherwise; and
 `orphan` where git holds no record of it, which the sweep never touches. With `--apply` it sends a
 `WorktreeRemove` request for each removable one and reports every failure; a signal during a
-removal ends the sweep with 128 + its number before the next removal. The hook refuses a
+removal ends the sweep with 128 + its number before the next removal, and names no failure of
+the removals before it. The hook refuses a
 remove that it cannot finish, so run it under `agentbox` or from a terminal, not from a sandboxed
 call: there the hook's own git runs in the sandbox.
 """

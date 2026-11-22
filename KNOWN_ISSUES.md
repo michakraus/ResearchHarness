@@ -1237,3 +1237,13 @@
   it runs the hook. `fullmatch` or `\Z` closes it.
 - kind: defect
 - found: 2026-11-22, a critic of the branch `sandbox/part-g3b`
+
+### K189 · The `--help` description of `harness worktree` says that the frontend has no worktree hook, and then runs the installed worktree hook.
+
+- location: `lib/harness/worktree.py:316`
+- evidence: `register` describes the subcommand as "Run the installed worktree hook,
+  ~/.claude/hooks/worktree.py, with the payload of a WorktreeCreate or WorktreeRemove event, for
+  a frontend that has no worktree hook." The OpenCode and oh-my-pi deltas say "This frontend has
+  no `WorktreeCreate` event" for the same fact. Commit `8b78c846` has the same text.
+- kind: docs
+- found: 2026-11-22, a builder of the branch `sandbox/part-g3e`

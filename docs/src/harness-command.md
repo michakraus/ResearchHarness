@@ -765,7 +765,8 @@ the hook asks its broker outside the sandbox. `~` is the home that `HOME` gives.
   `removable` (clean, its HEAD in `origin/HEAD`, its record unused for 12 hours), `kept`, with the
   reason, or `orphan` (git holds no record of it). With `--apply` it sends `WorktreeRemove` for
   each removable worktree and names every one that fails; a signal during a removal ends the
-  sweep with 128 + n before the next one. It never touches an orphan.
+  sweep with 128 + n before the next one, and names no failure before it. It never touches an
+  orphan.
 
 Outside `agentbox`, run `remove --apply` and `sweep --apply` from your own terminal: from a
 sandboxed call, the hook's own git runs in the sandbox, and the hook refuses a remove where it
