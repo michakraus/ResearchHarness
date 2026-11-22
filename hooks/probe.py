@@ -2903,9 +2903,9 @@ def worktree_git_cases() -> tuple[int, int]:
     refusals under `AGENTBOX`; the boxed child (`boxed_cases`); the broker's settings file, staging
     directory and profile (`broker_start_cases`); the stop of a git past its timeout
     (`run_git_timeout_cases`) and on a signal to the hook (`run_git_signal_cases`); the failures
-    of a boxed remove and of `undo` (`boxed_failure_cases`, `failure_unit_cases`); the branch of a failed boxed create
-    (`boxed_branch_cases`); names that end in a newline and parents of a digit that is not ASCII
-    (`name_cases`); the broker's profile at its end (`broker_profile_cases`); the life of a
+    of a boxed remove and of `undo` (`boxed_failure_cases`, `failure_unit_cases`); the branch of a
+    failed boxed create (`boxed_branch_cases`); names that end in a newline and parents of a digit
+    that is not ASCII (`name_cases`); the broker's profile at its end (`broker_profile_cases`); the life of a
     broker; and the options of every git that the hook starts, recorded in this process: (number of
     cases, number wrong)."""
     verdict, why = bind_verdict(unix_bind, ci="CI" in os.environ)
