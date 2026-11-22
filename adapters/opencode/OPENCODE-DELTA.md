@@ -49,9 +49,9 @@ there.
 
 ## Worktrees: ask for them
 
-There is no `WorktreeCreate` hook, no `EnterWorktree` and no `isolation: "worktree"`. Ask the
-installed hook for the worktree; it makes it at the location and from the base that the tree
-instructions give, and prints its path. With `workdir` the repository, run:
+This frontend has no `WorktreeCreate` event, no `EnterWorktree` and no `isolation: "worktree"`.
+Ask Claude Code's installed worktree hook for the worktree; it makes it at the location and from
+the base that the tree instructions give, and prints its path. With `workdir` the repository, run:
 
 ```bash
 harness worktree add <branch> --apply

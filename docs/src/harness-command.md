@@ -764,7 +764,9 @@ the hook asks its broker outside the sandbox. `~` is the home that `HOME` gives.
 - `sweep` lists each directory below `~/Research/.worktrees`, hidden names left out, as
   `removable` (clean, its HEAD in `origin/HEAD`, its record unused for 12 hours), `kept`, with the
   reason, or `orphan` (git holds no record of it). With `--apply` it sends `WorktreeRemove` for
-  each removable worktree and names every one that fails. It never touches an orphan.
+  each removable worktree and names every one that fails; a signal during a removal ends the
+  sweep with 128 + n before the next one, and names no failure before it. It never touches an
+  orphan.
 
 Outside `agentbox`, run `remove --apply` and `sweep --apply` from your own terminal: from a
 sandboxed call, the hook's own git runs in the sandbox, and the hook refuses a remove where it
@@ -779,8 +781,9 @@ seconds later. A SIGINT, SIGTERM or SIGHUP of the subcommand goes on to the same
 **Exit status:** 0 after `--apply`; 1 for the dry run; 2 when `<name>` or `<path>` is empty or
 holds a line break, when the working directory no longer exists, when the hook is not installed,
 when it exits with another status than 0, with the hook's last line of standard error, or when
-it runs longer than 480 seconds; 128 plus the number of a SIGINT, SIGTERM or SIGHUP that stops
-it.
+it runs longer than 480 seconds; 128 plus the number of a SIGINT, SIGTERM or SIGHUP that arrives
+while the hook runs, the stop after a timeout included, also where the hook fails or runs too
+long.
 
 **Where to run it:** in a session under `agentbox` or of OpenCode or oh-my-pi, from the
 repository, or in your own terminal.
@@ -1623,13 +1626,16 @@ installed hook `~/.claude/hooks/worktree.py`, below the home of `HOME`, with `sy
 writes the JSON payload of a `WorktreeCreate` or `WorktreeRemove` event to its standard input;
 only the sweep runs git itself, and only to read. The hook runs in a session of its own, so
 that a timeout or a forwarded signal reaches the programs that it started, and its output is
-decoded with replacement characters. A missing hook, a hook that exits with another status than
-0 or runs too long, an empty `<name>` or `<path>` or one with a line break, and a working
-directory that no longer exists raise `HarnessError`; a failing hook's reason is its last line
-of standard error. Its cases run `harness worktree` in a fixture home whose hook is a stub that
-records its input, its working directory and its arguments, or that signals its caller. They run
-a stub that hangs through `request` in their own process, with a timeout of 1 s, and they read the
-two deltas of OpenCode and oh-my-pi for the section that sends an agent to the
+decoded with replacement characters. A signal while the hook runs, the stop after a timeout
+included, makes `request` return 128 + n, which `harness` exits with. Without a signal, a missing
+hook, a hook that exits with another status than 0 or runs too long, an empty `<name>` or `<path>`
+or one with a line break, and a working directory that no longer exists raise `HarnessError`; a
+failing hook's reason is its last line of standard error. Its cases run `harness worktree` in a
+fixture home whose hook is a stub that records its input, its working directory and its
+arguments, or that signals its caller. They run a stub that hangs through `request` in their own
+process, with a timeout of 1 s, and run `request` with `subprocess.Popen` or `stop` patched to
+deliver a signal through the installed handler before the hook's start or during the stop; they
+read the two deltas of OpenCode and oh-my-pi for the section that sends an agent to the
 subcommand. The sweep's cases run on a fixture repository with a worktree of each kind.
 
 ### `changelog.py`

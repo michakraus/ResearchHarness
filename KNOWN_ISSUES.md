@@ -1225,16 +1225,6 @@
 - kind: defect
 - found: 2026-11-21, the review of part G3c of the sandbox plan
 
-### K185 · The development page names six subcommands that the contract sweep skips, but the sweep skips `setup`, `update`, `test` and `worktree` too.
-
-- location: `docs/src/development.md:17`
-- evidence: the page says the sweep "runs the dry run of every subcommand except `format`,
-  `ci-protection`, `skill-triggers`, `doctor`, `changelog` and `mutate`". `harness --help` lists
-  `setup`, `update`, `test` and `worktree` as well, and `SUBCOMMANDS` of `lib/harness/sweep.py`
-  holds none of the four, so no sweep case runs the dry run of `harness worktree add`.
-- kind: docs
-- found: 2026-11-22, a critic of the branch `sandbox/part-g3b`
-
 ### K186 · The worktree hook's name patterns accept a name that ends in a newline.
 
 - location: `hooks/worktree.py:110`
@@ -1248,23 +1238,12 @@
 - kind: defect
 - found: 2026-11-22, a critic of the branch `sandbox/part-g3b`
 
-### K187 · `harness worktree` does not forward a signal that arrives between its handler and the start of the hook.
+### K189 · The `--help` description of `harness worktree` says that the frontend has no worktree hook, and then runs the installed worktree hook.
 
-- location: `lib/harness/worktree.py:102`
-- evidence: `run_hook` installs `forward` for SIGINT, SIGTERM and SIGHUP at line 102 and appends
-  the hook's process to `procs` at line 114. A signal in between is recorded in `received` but
-  goes to no process group, because `procs` is still empty. The hook then runs to its end, and
-  `harness` exits 128 + the signal's number after the hook has acted. The window is a few
-  instructions wide; no run reproduces it.
-- kind: not verified
-- found: 2026-11-22, a critic of the branch `sandbox/part-g3b`
-
-### K188 · `harness worktree` exits 2, not 128 + n, for a signal that arrives while it stops a hook after the timeout.
-
-- location: `lib/harness/worktree.py:117`
-- evidence: on `subprocess.TimeoutExpired`, `run_hook` calls `stop`, which keeps the handler
-  `forward`, so a SIGINT, SIGTERM or SIGHUP during `stop` goes on to the hook's group. The
-  `HarnessError` of the timeout at line 121 is raised before the `if received:` test at line 125,
-  so `harness` exits 2 and not 128 + the signal's number. Read from the code; no run reproduces it.
-- kind: found late
-- found: 2026-11-22, a critic of the branch `sandbox/part-g3b`
+- location: `lib/harness/worktree.py:316`
+- evidence: `register` describes the subcommand as "Run the installed worktree hook,
+  ~/.claude/hooks/worktree.py, with the payload of a WorktreeCreate or WorktreeRemove event, for
+  a frontend that has no worktree hook." The OpenCode and oh-my-pi deltas say "This frontend has
+  no `WorktreeCreate` event" for the same fact. Commit `8b78c846` has the same text.
+- kind: docs
+- found: 2026-11-22, a builder of the branch `sandbox/part-g3e`
