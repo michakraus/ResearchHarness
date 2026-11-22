@@ -143,7 +143,7 @@ def run_hook(script: pathlib.Path, payload: dict[str, str]) -> Ran:
             start_new_session=True,
         )
         procs.append(proc)
-        # A signal before the line above went to no process group; one after it goes in `forward`.
+        # A signal before the line above went to no process group; one after it goes on in `forward`.
         if missed:
             signal_group(proc, missed[0])
         try:
@@ -647,8 +647,8 @@ def timeout_cases(check: Callable[[object, str], None], f: Fixture) -> None:
 
 def window_cases(check: Callable[[object, str], None], f: Fixture) -> None:
     """A signal that arrives before the hook's process joins the list of processes, or while a
-    timeout stops the hook, still reaches the hook's process group and makes `request` return
-    128 + its number; a timeout without a signal stays a HarnessError. Each signal goes through
+    timeout stops the hook, reaches the hook's process group and makes `request` return 128 + its
+    number; a timeout without a signal is a HarnessError. Each signal goes through
     the installed handler in this process, and `signal_group` is a recorder, so that no signal
     reaches the test runner."""
     module = sys.modules[__name__]

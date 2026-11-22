@@ -16,10 +16,11 @@ usage error. `harness test --list` prints the part names. The parts are:
    `probe:kaimon-note` and `probe:registry-copies`, each on a fixture of its own.
 3. The contract sweep, `sweep`, from `lib/harness/sweep.py`, which runs the dry run of every
    subcommand except `format`, `ci-protection`, `skill-triggers`, `doctor`, `changelog`, `mutate`,
-   `setup`, `update`, `test` and `worktree` on a fixture `HOME` and research tree. The cases of `skill-triggers` run its dry run
-   and its `--apply` on a fake `claude`, the cases of `doctor` run it on the sweep's fixture with
-   stub commands, the cases of `changelog` run it on scratch repositories, and the cases of
-   `mutate` run it on a fixture repository with a stub `bin/harness`.
+   `setup`, `update`, `test` and `worktree` on a fixture `HOME` and research tree. The cases of
+   `skill-triggers` run its dry run and its `--apply` on a fake `claude`, the cases of `doctor`
+   run it on the sweep's fixture with stub commands, the cases of `changelog` run it on scratch
+   repositories, and the cases of `mutate` run it on a fixture repository with a stub
+   `bin/harness`.
 
 With no argument, `harness test` runs every part. Part names select those parts, and
 `--changed BASE` selects the parts that own a path of `git diff --name-status BASE...HEAD`; both
