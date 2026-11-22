@@ -20,7 +20,7 @@ one bullet each, in seven sections, one for each kind of part:
 | a tool that reads files or a tree | 63 |
 | a step that runs a user's script | 15 |
 | a lint cleanup | 4 |
-| a migration of tests or of text | 77 |
+| a migration of tests or of text | 80 |
 
 An entry names the class of input. Most entries also give the mechanism of the failure and the
 remedy, and a new entry names the part that found it. Two short entries of the section for a
