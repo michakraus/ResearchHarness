@@ -101,7 +101,7 @@ instruction to post. Do not review it yourself. The separation is the point: the
 that has not yet decided how to fix anything.
 
 Take from its report: the findings table, the CI verdict, the posted review URL, and its worktree.
-**Remove the reviewer's worktree** with `git worktree remove <its path>`, from your own worktree.
+**Name the reviewer's worktree in your report.** Your caller removes it with yours.
 
 **CodeRabbit's comments are findings too.** Read them with the GET calls of step 7 of
 `~/.claude/skills/build-part/SKILL.md`, and add each to the findings table with its `source`.
@@ -237,8 +237,8 @@ anywhere in a `gh` command, even inside single quotes, makes the harness run it 
 `gh` then fails with `x509: OSStatus -26276`.
 
 **Do not remove your own worktree.** Removing it ends your session. Name its path and the
-`pr<n>-fix` branch in your report; your caller runs `git worktree remove <path>` and
-`git branch -d pr<n>-fix` once the branch is pushed.
+`pr<n>-fix` branch in your report; your caller removes the worktree and deletes `pr<n>-fix` once
+the branch is pushed.
 
 ## One turn, one report
 
@@ -258,6 +258,7 @@ Verdict: pushed — CI pending / ready to merge — not merged / stopped — <re
 Review posted: <URL>
 Pushed: <sha7> to <headRefName>, or "nothing pushed"
 Worktree: <path> on pr<n>-fix — for the caller to remove
+Reviewer worktree: <path> — for the caller to remove
 CI runs: <run id — workflow, one per line>, or "no run yet", or "nothing pushed: <the reviewer's CI verdict>"
 Wait: gh run watch <run-id> -R <owner>/<repo> --exit-status --interval 60 — for the caller, one per run; a non-zero exit goes to ci-triage, because it is not the verdict
 Required checks: <the set, and where it came from — protection or ruleset>
