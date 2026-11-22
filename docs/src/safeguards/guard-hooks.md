@@ -642,11 +642,11 @@ A new branch is made in a step of its own before `git worktree add`, as
 `git branch --no-track <name> <base>` under `srt`, because `git` keeps the branch of a
 `git worktree add -b` that fails. Where a step fails, the child removes only what it made, runs
 `git worktree prune`, and exits with the first cause. Where the create made a new branch and a
-later step fails, the add included, the child then deletes it with `git branch -D <name>`. A
-`git branch` that refuses, for example because another process made the branch first, deletes
-nothing; a `git branch` that times out is not undone. An existing branch and the detached
-worktree of a sub-agent stay as they were, and a deletion that fails writes one line on standard
-error. A boxed remove renames the
+later step fails, the add included, the child then deletes it with `git branch -D <name>`,
+unless a signal ends that undo first, as the open cases below say. A `git branch` that refuses,
+for example because another process made the branch first, deletes nothing; a `git branch` that
+times out is not undone. An existing branch and the detached worktree of a sub-agent stay as they
+were, and a deletion that fails writes one line on standard error. A boxed remove renames the
 worktree into the staging directory, repairs it and removes it there, without `--force`. Where
 `git` refuses, for example a worktree with changes, or where `srt` cannot start, the child renames
 the worktree back, repairs it, and exits with the first reason; a repair after the rename back that
@@ -661,16 +661,18 @@ Every `git` of the hook, and the `srt` of a boxed `git`, starts in a session of 
 hook stops one that runs longer than its timeout, 60 seconds or 300 for a fetch, with its whole
 process group, which holds the programs that it started, such as the `git` inside `srt` or the
 `ssh` of a fetch: `SIGTERM`, so that `git` removes its lock files, then `SIGKILL` after 5 seconds
-where it has not ended. A `SIGINT`, `SIGTERM` or `SIGHUP` of the hook stops its running `git`'s
-group the same way, because a signal to the hook's own process group, as `harness worktree`
-sends it, does not reach that session; a `SIGTERM` or `SIGHUP` during the stop that a `SIGTERM`
-or `SIGHUP` began is ignored, and a `git` that the hook starts after the signal, such as the
-`git worktree prune` of a failed create, gets the default handlers of both signals. Four cases
-stay open: a `SIGKILL` of the hook leaves its `git` running; a signal that arrives after `git`
-starts and before the hook waits for it is not passed on; a signal during the stop that a
-`SIGINT` began ends that stop before its `SIGKILL`; and a caller that sends `SIGKILL` to the hook
-within those 5 seconds can end the hook before its own `SIGKILL` reaches `git`. A program that
-cannot start is refused with one line that names it.
+where it has not ended, unless a signal ends the stop first, as the open cases below say. A
+`SIGINT`, `SIGTERM` or `SIGHUP` of the hook stops its running `git`'s group the same way, because
+a signal to the hook's own process group, as `harness worktree` sends it, does not reach that
+session. A `SIGTERM` or `SIGHUP` during a stop that a `SIGTERM` or `SIGHUP` began is ignored, and
+a `git` that the hook starts after the signal, such as the `git worktree prune` of a failed
+create, gets the default handlers of both signals. Four cases stay open: a `SIGKILL` of the hook
+leaves its `git` running; a signal that arrives after `git` starts and before the hook waits for
+it is not passed on; a `SIGINT` during any stop, and any of the three signals during a stop that
+a timeout or a `SIGINT` began, ends that stop before its `SIGKILL`, and such a signal during the
+undo of a failed create can end the undo before its `git branch -D`; and a caller that sends
+`SIGKILL` to the hook within those 5 seconds can end the hook before its own `SIGKILL` reaches
+`git`. A program that cannot start is refused with one line that names it.
 
 It fails closed: on each error it exits with status 1 and gives the reason, and it creates no
 worktree. Under `AGENTBOX`, a missing or empty `AGENTBOX_BROKER`, a broker that does not answer
