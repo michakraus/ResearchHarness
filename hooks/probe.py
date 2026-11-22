@@ -2209,7 +2209,8 @@ def interrupted_state_case(hook: types.ModuleType, report: Callable[[object, str
     report(
         raised == f"SystemExit({128 + term})"
         and called == {"SIGTERM": "returned None", "SIGHUP": "returned None"},
-        f"after interrupted, SIGTERM and SIGHUP have a handler that does nothing, not SIG_IGN: {raised}, {called}",
+        f"after interrupted, SIGTERM and SIGHUP have a handler that does nothing, not SIG_IGN: "
+        f"{raised}, {called}",
     )
 
 
