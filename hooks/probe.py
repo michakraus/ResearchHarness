@@ -414,11 +414,18 @@ def manifest_cases():
         print(
             f"{'ok ' if got == expected else 'BAD'} exp {expected} got {got}  [worktree ]  manifest {deps} for {names} {compat}"
         )
-    # A git that runs longer than its timeout fails closed: exit 1 and one line that names it.
+    # A git that runs longer than its timeout fails closed: exit 1 and one line that names it. The
+    # fake git outlives its SIGTERM and its SIGKILL, which go to a recorder.
     err = io.StringIO()
     payload = '{"hook_event_name":"WorktreeCreate","cwd":"' + CWD + '","name":"x"}'
+
+    def stuck(*args: object, **kwargs: object) -> FakeGit:
+        del args, kwargs
+        return FakeGit(["git", "rev-parse"], 3, [])
+
     with (
-        mock.patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired(["git", "rev-parse"], 60)),
+        mock.patch.object(subprocess, "Popen", side_effect=stuck),
+        mock.patch.object(os, "killpg"),
         mock.patch.object(sys, "stdin", io.StringIO(payload)),
         mock.patch.dict(os.environ, WORKTREE_ENV, clear=True),
         mock.patch.object(hook, "RESEARCH", pathlib.Path(R)),
@@ -557,7 +564,8 @@ WT_SETTINGS_VALUE: dict[str, Any] = {
 WT_BOXED = [WT_SRT, "--settings", WT_PROFILE, "--", "git", *WT_OPTIONS]
 # The stub srt: it appends its arguments as one line to WT_SRT_LOG, drops its options up to `--`,
 # and runs the rest with the environment that it got, as srt 0.0.81 does. STUB_SRT_MODE breaks one
-# step: `fail-add` runs a `worktree add` and exits 3; `link-after-add` replaces the staged
+# step: `fail-add` runs a `worktree add` and exits 3; `fail-repair` exits 3 on a `worktree repair`,
+# and `fail-repair-branch` also on a `branch -D`, without running either; `link-after-add` replaces the staged
 # directory of a `worktree add` by a link to the empty `wt-empty`; `final-after-add` makes the
 # final path of a `worktree add`, with a file `found` in it; `wrong-git` writes a `.git` file that
 # names the worktree `Ssh-x` of another repository after a `worktree repair`, and points the admin
@@ -568,6 +576,8 @@ while [ "$#" -gt 0 ] && [ "$1" != -- ]; do shift; done
 shift
 case "${{STUB_SRT_MODE-}}:$*" in
 "fail-add:"*" worktree add "*) "$@"; exit 3 ;;
+"fail-repair:"*" worktree repair "* | "fail-repair-branch:"*" worktree repair "*) exit 3 ;;
+"fail-repair-branch:"*" branch -D "*) exit 3 ;;
 esac
 "$@"
 status=$?
@@ -1266,11 +1276,11 @@ def discovery_cases(report: Callable[[object, str], None]) -> None:
 
     hook = load_module("worktree_pinned", WORKTREE)
     envs: list[dict[str, str]] = []
-    real = subprocess.run
+    real = subprocess.Popen
 
-    def record(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def record(args: list[str], **kwargs: Any) -> subprocess.Popen[str]:
         envs.append(dict(kwargs.get("env") or os.environ))
-        return cast("subprocess.CompletedProcess[str]", real(args, **kwargs))
+        return real(args, **kwargs)
 
     marker.unlink(missing_ok=True)
     tree = pathlib.Path(WT_HOME, "other-tree")
@@ -1279,7 +1289,7 @@ def discovery_cases(report: Callable[[object, str], None]) -> None:
     err = io.StringIO()
     with (
         mock.patch.dict(os.environ, caller, clear=True),
-        mock.patch.object(subprocess, "run", side_effect=record),
+        mock.patch.object(subprocess, "Popen", side_effect=record),
         mock.patch.object(hook, "RESEARCH", pathlib.Path(WT_R)),
         mock.patch.object(hook, "ROOT", pathlib.Path(WT_ROOT)),
         contextlib.redirect_stderr(err),
@@ -1419,15 +1429,15 @@ def inprocess(
     """`work` in this process with the hook's ROOT, RESEARCH and SRT those of the fixture, and
     `patches`: its outcome, and the arguments of each process that the hook started."""
     seen: list[list[str]] = []
-    real = subprocess.run
+    real = subprocess.Popen
 
-    def record(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def record(args: list[str], **kwargs: Any) -> subprocess.Popen[str]:
         seen.append([str(a) for a in args])
-        return cast("subprocess.CompletedProcess[str]", real(args, **kwargs))
+        return real(args, **kwargs)
 
     with contextlib.ExitStack() as stack:
         stack.enter_context(mock.patch.dict(os.environ, WT_ENV, clear=True))
-        stack.enter_context(mock.patch.object(subprocess, "run", side_effect=record))
+        stack.enter_context(mock.patch.object(subprocess, "Popen", side_effect=record))
         stack.enter_context(mock.patch.object(hook, "RESEARCH", pathlib.Path(WT_R)))
         stack.enter_context(mock.patch.object(hook, "ROOT", pathlib.Path(WT_ROOT)))
         stack.enter_context(mock.patch.object(hook, "SRT", pathlib.Path(WT_SRT), create=True))
@@ -1930,6 +1940,498 @@ def boxed_dirty_case(report: Callable[[object, str], None]) -> None:
         )
 
 
+class FakeGit:
+    """A git that `run_git` starts in place of a real one: its `communicate` appends its timeout to
+    `waits`, raises subprocess.TimeoutExpired with `args` for each of its first `timeouts` calls,
+    and then returns no output. It starts no process; its `pid` reaches only the `os.killpg`
+    recorder of a case, never the real `os.killpg`."""
+
+    pid = 99999
+
+    def __init__(self, args: list[str], timeouts: int, waits: list[float | None]) -> None:
+        self.args = args
+        self.timeouts = timeouts
+        self.waits = waits
+        self.returncode: int | None = None
+
+    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+        self.waits.append(timeout)
+        if self.timeouts > 0:
+            self.timeouts -= 1
+            raise subprocess.TimeoutExpired(self.args, timeout or 0)
+        self.returncode = -signal.SIGTERM
+        return "", ""
+
+
+def run_git_timeout_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`run_git` in this process with `subprocess.Popen` patched to start a FakeGit and `os.killpg`
+    patched to a recorder: a git that times out, with a profile and without, gets SIGTERM to its
+    process group and, where it outlives GRACE seconds, SIGKILL; a group that is gone or that holds
+    only the unreaped child is no error; and `run_git` raises the subprocess.TimeoutExpired of the
+    git command. A program that cannot start is a Refusal that names it."""
+    profile = pathlib.Path(WT_PROFILE)
+    repo = pathlib.Path(WT_REPO)
+    grace = getattr(hook, "GRACE", None)
+    term, kill = signal.SIGTERM, signal.SIGKILL
+    for label, given, timeouts, failure, want in [
+        ("with a profile", profile, 1, None, [term]),
+        ("without a profile", None, 1, None, [term]),
+        ("that outlives the SIGTERM", None, 2, None, [term, kill]),
+        ("whose group is gone", profile, 2, ProcessLookupError, [term, kill]),
+        ("whose group holds only the unreaped child", None, 1, PermissionError, [term]),
+    ]:
+        starts: list[dict[str, Any]] = []
+        waits: list[float | None] = []
+        signals: list[tuple[int, int]] = []
+
+        def start(
+            args: list[str], timeouts: int = timeouts, waits: list[float | None] = waits, **kwargs: Any
+        ) -> FakeGit:
+            starts.append(kwargs)
+            return FakeGit([str(a) for a in args], timeouts, waits)
+
+        def killpg(
+            pid: int,
+            signum: int,
+            signals: list[tuple[int, int]] = signals,
+            failure: type[OSError] | None = failure,
+        ) -> None:
+            signals.append((pid, signum))
+            if failure is not None:
+                raise failure(errno.ESRCH if failure is ProcessLookupError else errno.EPERM, "by the probe")
+
+        with (
+            mock.patch.object(subprocess, "Popen", side_effect=start),
+            mock.patch.object(os, "killpg", side_effect=killpg),
+            mock.patch.object(hook, "SRT", pathlib.Path(WT_SRT), create=True),
+        ):
+            try:
+                hook.run_git("status", repo=repo, profile=given)
+                outcome: object = "returned"
+            except subprocess.TimeoutExpired as err:
+                outcome = err
+            except (hook.Refusal, OSError, TypeError, AttributeError) as err:
+                outcome = f"raised {err!r}"
+        command = [str(c) for c in outcome.cmd] if isinstance(outcome, subprocess.TimeoutExpired) else []
+        report(
+            isinstance(outcome, subprocess.TimeoutExpired)
+            and "git" in command
+            and len(starts) == 1
+            and starts[0].get("start_new_session") is True
+            and signals == [(FakeGit.pid, signum) for signum in want]
+            and grace == 5
+            and waits == [hook.LOCAL, *[grace] * len(want)],
+            f"run_git {label}, whose git times out: started in a session of its own, {want} to its "
+            f"process group, GRACE (5) seconds after each, and the git command's TimeoutExpired: {outcome!r}, "
+            f"starts {starts}, signals {signals}, waits {waits}",
+        )
+    for given, program, error in [
+        (profile, WT_SRT, FileNotFoundError(errno.ENOENT, "No such file or directory", WT_SRT)),
+        (None, "git", PermissionError(errno.EACCES, "Permission denied")),
+    ]:
+        with (
+            mock.patch.object(subprocess, "Popen", side_effect=error),
+            mock.patch.object(hook, "SRT", pathlib.Path(WT_SRT), create=True),
+        ):
+            try:
+                hook.run_git("status", repo=repo, profile=given)
+                said = "returned"
+            except hook.Refusal as err:
+                said = f"refused: {err}"
+            except OSError as err:
+                said = f"passed through: {err!r}"
+        report(
+            said.startswith("refused: ") and program in said,
+            f"run_git whose {program} cannot start with {type(error).__name__}: a Refusal that names "
+            f"{program}: {said}",
+        )
+
+
+def boxed_failure_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """A boxed remove in this process through `main` whose stub srt is gone after the rename into the
+    staging directory and back before the rename back: exit 1 with one `worktree hook:` line that
+    names srt, and the worktree back at its path; a boxed remove whose `git worktree remove` refuses
+    and whose repair after the rename back has no srt: the refusal of the remove, and one stderr
+    line on the repair; a boxed create that fails while the srt of its prune cannot start: `undo`
+    raises nothing and writes one line that names the prune."""
+    profile = pathlib.Path(WT_PROFILE)
+    srt = pathlib.Path(WT_SRT)
+    aside = srt.with_name("srt-gone")
+    stage = pathlib.Path(WT_STAGE)
+    real_move, real_discard = hook.move, hook.discard
+
+    def restore() -> None:
+        if aside.exists(follow_symlinks=False) and not srt.exists(follow_symlinks=False):
+            aside.rename(srt)
+
+    def hooked(text: str) -> list[str]:
+        return [line for line in text.splitlines() if line.startswith("worktree hook: ")]
+
+    def unstage(path: pathlib.Path) -> None:
+        """Move the worktree `path` back from the staging directory, where a case left it there,
+        and repair it, so that the later cases find the staging directory empty."""
+        staged = stage / path.name
+        if staged.is_dir() and not path.exists(follow_symlinks=False):
+            staged.rename(path)
+        if path.is_dir():
+            fixture_git("worktree", "repair", str(path))
+
+    gone = pathlib.Path(WT_ROOT, "Repo-gone")
+    inprocess(hook, lambda: hook.create(create("gone"), profile=profile))
+
+    def vanish(source: pathlib.Path, target: pathlib.Path) -> None:
+        real_move(source, target)
+        if target.parent == stage:
+            srt.rename(aside)
+        else:
+            restore()
+
+    err = io.StringIO()
+    try:
+        outcome, _ = inprocess(
+            hook,
+            lambda: hook.main(["--boxed", WT_PROFILE]),
+            mock.patch.object(hook, "move", vanish),
+            mock.patch.object(sys, "stdin", io.StringIO(json.dumps(remove("gone")))),
+            contextlib.redirect_stderr(err),
+        )
+    finally:
+        restore()
+    lines = hooked(err.getvalue())
+    report(
+        outcome == "done: 1"
+        and len(lines) == 1
+        and WT_SRT in lines[0]
+        and gone.is_dir()
+        and listed(gone)
+        and linked(gone)
+        and stage_empty(),
+        f"a boxed remove whose srt is gone after the rename: exits 1 with one line that names srt, and "
+        f"the worktree is back at its path, registered: {outcome}, {err.getvalue()!r}, "
+        f"stage {stage_state(stage)}",
+    )
+    unstage(gone)
+    inprocess(hook, lambda: hook.remove(remove("gone"), profile=profile))
+
+    kept = pathlib.Path(WT_ROOT, "Repo-norepair")
+    inprocess(hook, lambda: hook.create(create("norepair"), profile=profile))
+    if kept.is_dir():
+        (kept / "change.txt").write_text("a change\n", encoding="utf-8")
+
+    def back_gone(source: pathlib.Path, target: pathlib.Path) -> None:
+        real_move(source, target)
+        if source.parent == stage:
+            srt.rename(aside)
+
+    err = io.StringIO()
+    try:
+        outcome, _ = inprocess(
+            hook,
+            lambda: hook.remove(remove("norepair"), profile=profile),
+            mock.patch.object(hook, "move", back_gone),
+            contextlib.redirect_stderr(err),
+        )
+    finally:
+        restore()
+    lines = hooked(err.getvalue())
+    report(
+        outcome.startswith("refused: ")
+        and "worktree remove" in outcome
+        and len(lines) == 1
+        and "worktree repair" in lines[0]
+        and (kept / "change.txt").is_file()
+        and stage_empty(),
+        f"a boxed remove whose git worktree remove refuses and whose repair after the rename back has no "
+        f"srt: the refusal of the remove, and one line on the repair: {outcome}, {err.getvalue()!r}",
+    )
+    unstage(kept)
+    if kept.is_dir():
+        (kept / "change.txt").unlink(missing_ok=True)
+        inprocess(hook, lambda: hook.remove(remove("norepair"), profile=profile))
+
+    def discard_then_gone(path: pathlib.Path) -> None:
+        real_discard(path)
+        srt.rename(aside)
+
+    err = io.StringIO()
+    try:
+        outcome, _ = inprocess(
+            hook,
+            lambda: hook.create(create("agent-0c"), profile=profile),
+            mock.patch.dict(os.environ, {"STUB_SRT_MODE": "fail-repair"}),
+            mock.patch.object(hook, "discard", discard_then_gone),
+            contextlib.redirect_stderr(err),
+        )
+    finally:
+        restore()
+    prunes = [line for line in err.getvalue().splitlines() if "worktree prune" in line]
+    report(
+        outcome.startswith("refused: ")
+        and "worktree repair" in outcome
+        and len(prunes) == 1
+        and not pathlib.Path(WT_ROOT, "Repo-agent-0c").exists(follow_symlinks=False)
+        and stage_empty(),
+        f"a boxed create that fails while the srt of its prune cannot start: the refusal of the repair, "
+        f"and one line that names the prune: {outcome}, {err.getvalue()!r}",
+    )
+    fixture_git("worktree", "prune")
+
+
+def fixture_git(*args: str) -> subprocess.CompletedProcess[str]:
+    """The real git with `args` in `Repo`, outside the hook."""
+    return subprocess.run(
+        ["git", "-C", WT_REPO, *args],  # noqa: S607 -- the `git` on PATH
+        capture_output=True,
+        text=True,
+        env=WORKTREE_ENV,
+        timeout=60,
+        check=False,
+    )
+
+
+def boxed_branch_cases(report: Callable[[object, str], None]) -> None:
+    """A boxed create whose stub srt fails `git worktree repair`: with a new name, the branch that it
+    made is gone, deleted under srt; with the name of an existing branch, that branch stays at its
+    commit; with `agent-0a`, no branch is added; and with a new name where the stub also fails
+    `git branch -D`, one stderr line names the branch and the refusal is the repair's."""
+
+    def commit(name: str) -> str | None:
+        proc = fixture_git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}")
+        return proc.stdout.strip() if proc.returncode == 0 else None
+
+    def heads() -> list[str]:
+        return fixture_git("for-each-ref", "--format=%(refname)", "refs/heads").stdout.split()
+
+    def failed(proc: subprocess.CompletedProcess[str] | None, name: str) -> bool:
+        return (
+            proc is not None
+            and proc.returncode == 1
+            and "worktree repair" in last(proc)
+            and not pathlib.Path(WT_ROOT, f"Repo-{name}").exists(follow_symlinks=False)
+            and stage_empty()
+        )
+
+    proc, _, boxed = boxed_run(create("newbr"), "fail-repair")
+    deletes = [line for line in boxed if " branch -D " in line]
+    report(
+        failed(proc, "newbr")
+        and commit("newbr") is None
+        and len(deletes) == 1
+        and via_srt(deletes[0])
+        and deletes[0].endswith(" branch -D newbr"),
+        f"a boxed create of a new branch whose repair fails deletes the branch under srt: {said(proc)}, "
+        f"{deletes}, branch {commit('newbr')}",
+    )
+    fixture_git("branch", "kept", "main")
+    before = commit("kept")
+    proc, _, boxed = boxed_run(create("kept"), "fail-repair")
+    report(
+        failed(proc, "kept")
+        and before is not None
+        and commit("kept") == before
+        and not any(" branch -D " in line for line in boxed),
+        f"a boxed create of an existing branch whose repair fails leaves the branch at its commit: "
+        f"{said(proc)}, {before} -> {commit('kept')}",
+    )
+    fixture_git("branch", "-D", "kept")
+    listing = heads()
+    proc, _, boxed = boxed_run(create("agent-0a"), "fail-repair")
+    report(
+        failed(proc, "agent-0a") and heads() == listing and not any(" branch -D " in line for line in boxed),
+        f"a boxed create of a detached agent worktree whose repair fails adds no branch: {said(proc)}, "
+        f"{listing} -> {heads()}",
+    )
+    proc, _, _ = boxed_run(create("newbr2"), "fail-repair-branch")
+    lines = [] if proc is None else proc.stderr.splitlines()
+    named = [
+        line
+        for line in lines
+        if line.startswith("worktree hook: ") and "newbr2" in line.replace("Repo-newbr2", "")
+    ]
+    report(
+        failed(proc, "newbr2") and len(named) == 1 and "branch -D newbr2" in named[0],
+        f"a boxed create whose repair and branch deletion fail: one line that names the branch, and the "
+        f"refusal of the repair: {said(proc)}",
+    )
+    if commit("newbr2") is not None:
+        fixture_git("branch", "-D", "newbr2")
+
+
+def name_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """A create whose name ends in a newline, `agent-ab` or `x`, refuses before any git runs;
+    `add_arguments` does not take `agent-ab` and a newline as a sub-agent's name; and
+    `serve_arguments` refuses a `--parent` of a digit that is not ASCII with the usage line."""
+    for name in ("agent-ab\n", "x\n"):
+        outcome, seen = inprocess(hook, lambda name=name: hook.create(create(name)))
+        report(
+            outcome.startswith("refused: ") and "worktree name" in outcome and not seen,
+            f"a create whose name is {name!r} refuses before any git runs: {outcome}, {seen}",
+        )
+
+    def answer(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        return subprocess.CompletedProcess(list(args), 1, "", "")
+
+    with (
+        mock.patch.object(hook, "run_git", side_effect=answer),
+        mock.patch.object(hook, "base_ref", return_value="origin/main"),
+    ):
+        got = hook.add_arguments(pathlib.Path(WT_REPO), "agent-ab\n", pathlib.Path("/t"), None)
+    report(
+        "--detach" not in got,
+        f"add_arguments takes 'agent-ab\\n' as no sub-agent's name: {got}",
+    )
+    for digit in ("²", "٣"):
+        try:
+            value = hook.serve_arguments(["--serve", "/s", "--parent", digit, "--settings", "/f"])
+            outcome = f"returned {value}"
+        except hook.Refusal as err:
+            outcome = f"refused: {err}"
+        except ValueError as err:
+            outcome = f"raised {err!r}"
+        report(
+            outcome == f"refused: {hook.USAGE}",
+            f"serve_arguments refuses --parent {digit!r} with the usage line: {outcome}",
+        )
+
+
+class FakeListener:
+    """A listening socket for a broker in this process: `bind` calls `seen` and writes an empty file
+    at the socket's path, and `accept` raises TimeoutError, as when no client comes."""
+
+    def __init__(self, seen: Callable[[], None]) -> None:
+        self.seen = seen
+
+    def __enter__(self) -> FakeListener:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        del args
+
+    def bind(self, address: str) -> None:
+        self.seen()
+        pathlib.Path(address).write_bytes(b"")
+
+    def listen(self) -> None:
+        pass
+
+    def settimeout(self, value: float) -> None:
+        del value
+
+    def accept(self) -> tuple[socket.socket, object]:
+        raise TimeoutError
+
+
+def broker_profile_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`main` with `--serve` in this process, `os.getppid` patched to the probe's process ID: with a
+    directory at the profile's path, it exits 1 with one `worktree hook:` line that names the
+    profile, no traceback, and the directory stands; after a normal end, with a listener that
+    binds no socket (FakeListener) and a parent that ends after one look, the profile is gone."""
+    parent = os.getpid()
+    stage = pathlib.Path(WT_STAGES, str(parent))
+    own = stage.parent / f"{stage.name}.json"
+    socket_path = pathlib.Path(WT_SOCKETS, "profile.sock")
+    args = ["--serve", str(socket_path), "--parent", str(parent), "--settings", WT_SETTINGS]
+    handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGHUP)}
+    own.mkdir(parents=True)
+    err = io.StringIO()
+    with (
+        mock.patch.object(hook, "STAGES", pathlib.Path(WT_STAGES), create=True),
+        mock.patch.object(os, "getppid", return_value=parent),
+        contextlib.redirect_stderr(err),
+    ):
+        try:
+            code: object = hook.main(args)
+        except (OSError, hook.Refusal, hook.HarnessError) as raised:
+            code = repr(raised)
+    lines = err.getvalue().splitlines()
+    report(
+        code == 1
+        and len(lines) == 1
+        and lines[0].startswith("worktree hook: ")
+        and str(own) in lines[0]
+        and "Traceback" not in err.getvalue()
+        and own.is_dir(),
+        f"a broker with a directory at its profile's path exits 1 with one line that names the profile, "
+        f"and the directory stands: {code}, {err.getvalue()!r}, directory {own.is_dir()}",
+    )
+    own.rmdir()
+    with contextlib.suppress(OSError):
+        stage.rmdir()
+
+    looks = iter([parent, parent])
+    written: list[object] = []
+
+    def listener(family: int, kind: int) -> FakeListener:
+        del family, kind
+        return FakeListener(lambda: written.append(profile_state(own)))
+
+    fake = types.SimpleNamespace(socket=listener, AF_UNIX=socket.AF_UNIX, SOCK_STREAM=socket.SOCK_STREAM)
+    err = io.StringIO()
+    try:
+        with (
+            mock.patch.object(hook, "STAGES", pathlib.Path(WT_STAGES), create=True),
+            mock.patch.object(hook, "socket", fake),
+            mock.patch.object(os, "getppid", side_effect=lambda: next(looks, 1)),
+            contextlib.redirect_stderr(err),
+        ):
+            try:
+                code = hook.main(args)
+            except (OSError, hook.Refusal, hook.HarnessError) as raised:
+                code = repr(raised)
+    finally:
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
+    report(
+        code == 0
+        and written == [(0o600, profiled(stage))]
+        and not own.exists(follow_symlinks=False)
+        and not stage.exists(follow_symlinks=False)
+        and not socket_path.exists(follow_symlinks=False),
+        f"a broker that ends after one look at its parent removes the profile that it wrote, its staging "
+        f"directory and its socket: {code}, {written}, {err.getvalue()!r}",
+    )
+
+    def swap() -> None:
+        own.unlink()
+        own.mkdir()
+
+    def swapped(family: int, kind: int) -> Listener:
+        del family, kind
+        return Listener(swap)
+
+    err = io.StringIO()
+    try:
+        with (
+            mock.patch.object(hook, "STAGES", pathlib.Path(WT_STAGES), create=True),
+            mock.patch.object(hook, "socket", types.SimpleNamespace(**{**vars(fake), "socket": swapped})),
+            mock.patch.object(os, "getppid", return_value=parent),
+            contextlib.redirect_stderr(err),
+        ):
+            try:
+                code = hook.main(args)
+            except (OSError, hook.Refusal, hook.HarnessError) as raised:
+                code = repr(raised)
+    finally:
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
+    lines = err.getvalue().splitlines()
+    report(
+        code == 1
+        and len(lines) == 2
+        and str(own) in lines[0]
+        and "cannot remove its profile" in lines[0]
+        and "cannot bind" in lines[1]
+        and own.is_dir(),
+        f"a broker whose profile becomes a directory and whose bind is refused exits 1 with one line on "
+        f"the profile and the bind's refusal last: {code}, {err.getvalue()!r}",
+    )
+    with contextlib.suppress(OSError):
+        own.rmdir()
+    with contextlib.suppress(OSError):
+        stage.rmdir()
+
+
 class Listener:
     """A listening socket whose `bind` calls `seen` and then raises PermissionError, as a session's
     sandbox refuses an AF_UNIX bind."""
@@ -2337,17 +2839,17 @@ def worktree_git_cases() -> tuple[int, int]:
     hook = load_module("worktree_recorded", WORKTREE)
     seen: list[list[str]] = []
     protocols: list[str | None] = []
-    real = subprocess.run
+    real = subprocess.Popen
 
-    def record(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def record(args: list[str], **kwargs: Any) -> subprocess.Popen[str]:
         seen.append([str(a) for a in args])
         protocols.append((kwargs.get("env") or os.environ).get("GIT_ALLOW_PROTOCOL"))
-        return cast("subprocess.CompletedProcess[str]", real(args, **kwargs))
+        return real(args, **kwargs)
 
     err = io.StringIO()
     with (
         mock.patch.dict(os.environ, {**WT_ENV, "GIT_ALLOW_PROTOCOL": "file:https:ssh"}, clear=True),
-        mock.patch.object(subprocess, "run", side_effect=record),
+        mock.patch.object(subprocess, "Popen", side_effect=record),
         mock.patch.object(hook, "RESEARCH", pathlib.Path(WT_R)),
         mock.patch.object(hook, "ROOT", pathlib.Path(WT_ROOT)),
         contextlib.redirect_stderr(err),
@@ -2467,6 +2969,11 @@ def worktree_git_cases() -> tuple[int, int]:
     )
     boxed_cases(hook, report)
     broker_start_cases(hook, report)
+    run_git_timeout_cases(hook, report)
+    boxed_failure_cases(hook, report)
+    boxed_branch_cases(report)
+    name_cases(hook, report)
+    broker_profile_cases(hook, report)
 
     if verdict == "skip":
         report(

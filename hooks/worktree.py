@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Create and remove a Claude Code worktree at `~/Research/.worktrees/<Repository>-<slug>`.
+"""Create and remove a worktree of Claude Code, and through `harness worktree` of OpenCode and
+oh-my-pi, at `~/Research/.worktrees/<Repository>-<slug>`.
 
 One script for two hook events, told apart by `hook_event_name`:
 
@@ -70,9 +71,15 @@ git reads it, so a git outside srt would run a config that the box chose with th
 srt denies the box's writes to `.githooks`, so a boxed create adds the worktree in the staging
 directory, which must lie on the device of ROOT, renames it to ROOT without git, runs `git worktree
 repair` and checks that the repaired `.git` file names the repository (`staged_add`); a failed step
-removes what the child made and runs `git worktree prune`. A boxed remove renames the worktree into
-the staging directory, repairs and removes it there, and renames it back where git refuses
-(`staged_remove`). Without `--boxed` git runs as `git …`, outside srt.
+removes what the child made, runs `git worktree prune`, and deletes with `git branch -D` a branch
+that the create made. A boxed remove renames the worktree into the staging directory, repairs and
+removes it there, and renames it back where git refuses or cannot start (`staged_remove`). Without
+`--boxed` git runs as `git …`, outside srt.
+
+Every git, and the srt of a boxed git, starts in a session of its own (`run_git`). One that
+outlives its timeout is stopped with its process group: SIGTERM, then SIGKILL where it has not
+ended after GRACE seconds, so that no program that it started, such as the git inside srt or the
+ssh of a fetch, outlives the hook.
 
 A worktree made with `--relative-paths`, or in a repository or git config with
 `worktree.useRelativePaths=true`, is refused, even one this hook made itself: `main_checkout`
@@ -116,6 +123,8 @@ AGENT = re.compile(r"^agent-[0-9a-f]+$")
 # Seconds that a local git command may take, and a fetch, which reaches the network.
 LOCAL = 60
 NETWORK = 300
+# Seconds between the SIGTERM and the SIGKILL to the process group of a git past its timeout.
+GRACE = 5
 # The runs of a fetch that another fetch of the same repository can make fail with git's LOCKED,
 # and the seconds between two runs.
 FETCHES = 3
@@ -228,19 +237,45 @@ def run_git(
     take as a repository would make it walk up to a parent's, and a directory with a HEAD, `objects`
     and `refs` would make it take that directory as a bare repository. With a `profile`, the boxed
     child's, git runs as `SRT --settings <profile> -- git …`, inside srt, with the same `cwd`,
-    environment and timeout."""
+    environment and timeout. git, or the srt of a boxed git, starts in a session of its own: where
+    it outlives `timeout`, `stop_group` stops its process group, the programs that it started
+    included, and the subprocess.TimeoutExpired of the git command is raised. A program that cannot
+    start is a Refusal that names it."""
     env = {key: value for key, value in os.environ.items() if key not in UNSET}
     boxed = [str(SRT), "--settings", str(profile), "--"] if profile is not None else []
-    return subprocess.run(
-        [*boxed, "git", *OPTIONS, *args],
-        cwd=repo if cwd is None else cwd,
-        env={**env, "GIT_DIR": str(repo / ".git"), "GIT_ALLOW_PROTOCOL": PROTOCOLS},
-        capture_output=True,
-        text=True,
-        errors="replace",
-        check=False,
-        timeout=timeout,
-    )
+    command = [*boxed, "git", *OPTIONS, *args]
+    try:
+        proc = subprocess.Popen(
+            command,
+            cwd=repo if cwd is None else cwd,
+            env={**env, "GIT_DIR": str(repo / ".git"), "GIT_ALLOW_PROTOCOL": PROTOCOLS},
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            start_new_session=True,
+        )
+    except OSError as err:
+        raise Refusal(f"{command[0]} cannot start: {err}") from None
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        stop_group(proc)
+        raise
+    return subprocess.CompletedProcess(command, proc.returncode, stdout, stderr)
+
+
+def stop_group(proc: subprocess.Popen[str]) -> None:
+    """Stop the process group of `proc`, a git or the srt of a boxed git, which holds every program
+    that it started: SIGTERM, so that git removes its lock files, then SIGKILL where `proc` has not
+    ended after GRACE seconds. A group that is gone raises ProcessLookupError, and on macOS a group
+    that holds only the unreaped `proc` raises PermissionError; neither has a program left to stop."""
+    for signum in (signal.SIGTERM, signal.SIGKILL):
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(proc.pid, signum)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.communicate(timeout=GRACE)
+            return
 
 
 def git(*args: str, repo: Path, timeout: int = LOCAL, profile: Path | None = None) -> str:
@@ -389,9 +424,9 @@ def one_line(path: Path) -> str:
     return text
 
 
-def slug(name):
+def slug(name: str) -> str:
     segments = name.split("/")
-    if not name or any(s in ("", ".", "..") or not SEGMENT.match(s) for s in segments):
+    if not name or any(s in ("", ".", "..") or not SEGMENT.fullmatch(s) for s in segments):
         raise Refusal(
             f"worktree name {name!r}: each `/`-separated segment must be letters, digits, `.`, `_` or `-`"
         )
@@ -462,7 +497,7 @@ def add_arguments(repo: Path, name: str, target: Path, profile: Path | None) -> 
     """The `git worktree add` that makes the worktree `name` at `target`: detached at the base for
     a sub-agent's `agent-<hex>`, the existing branch `name`, or a new branch `name` from the base,
     with no upstream."""
-    if AGENT.match(name):
+    if AGENT.fullmatch(name):
         return ["worktree", "add", "--detach", str(target), base_ref(repo, profile)]
     branch = run_git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}", repo=repo, profile=profile)
     if branch.returncode == 0:
@@ -536,8 +571,10 @@ def staged_add(repo: Path, name: str, final: Path, profile: Path) -> None:
     add` there under srt, a rename to `final` without git, `git worktree repair` under srt, and a
     test that the repaired `.git` file names `repo`. A failed step removes what this child made,
     the staged directory or, after its rename, `final`, and nothing that it found, runs `git
-    worktree prune` under srt, and raises the step's refusal."""
+    worktree prune` under srt, deletes the branch `name` where this `git worktree add` made it with
+    `-b`, and raises the step's refusal."""
     made: Path | None = None
+    branch: str | None = None
     done = False
     try:
         stage = stage_of(profile)
@@ -545,7 +582,10 @@ def staged_add(repo: Path, name: str, final: Path, profile: Path) -> None:
         if staged.exists(follow_symlinks=False):
             raise Refusal(f"{staged} exists; the staging directory holds no worktree between requests")
         made = staged
-        git(*add_arguments(repo, name, staged, profile), repo=repo, profile=profile)
+        arguments = add_arguments(repo, name, staged, profile)
+        git(*arguments, repo=repo, profile=profile)
+        if arguments[2:4] == ["--no-track", "-b"]:
+            branch = name
         move(staged, final)
         made = final
         moved(final)
@@ -560,13 +600,14 @@ def staged_add(repo: Path, name: str, final: Path, profile: Path) -> None:
         done = True
     finally:
         if not done:
-            undo(repo, made, profile)
+            undo(repo, made, profile, branch)
 
 
-def undo(repo: Path, made: Path | None, profile: Path) -> None:
-    """Remove `made`, where given, then run `git worktree prune` under srt. A failed removal, or a
-    prune that cannot start or times out, writes one stderr line that names `made` or the
-    repository; the prune's own stderr passes through. Raises nothing: the earlier step refuses."""
+def undo(repo: Path, made: Path | None, profile: Path, branch: str | None = None) -> None:
+    """Remove `made`, where given, run `git worktree prune` under srt, and then, where given, delete
+    `branch` with `git branch -D` under srt. A failed removal, a prune that cannot start or times
+    out, and a deletion that fails each write one stderr line that names `made`, the repository or
+    the branch; the prune's own stderr passes through. Raises nothing: the earlier step refuses."""
     if made is not None:
         try:
             discard(made)
@@ -574,10 +615,25 @@ def undo(repo: Path, made: Path | None, profile: Path) -> None:
             sys.stderr.write(f"worktree hook: {made} cannot be removed: {err}\n")
     try:
         proc = run_git("worktree", "prune", repo=repo, profile=profile)
-    except (OSError, subprocess.TimeoutExpired) as err:
+    except (Refusal, subprocess.TimeoutExpired) as err:
         sys.stderr.write(f"worktree hook: `git worktree prune` in {repo} failed: {err}\n")
+    else:
+        sys.stderr.write(proc.stderr)
+    if branch is None:
         return
-    sys.stderr.write(proc.stderr)
+    try:
+        proc = run_git("branch", "-D", branch, repo=repo, profile=profile)
+    except (Refusal, subprocess.TimeoutExpired) as err:
+        failure = str(err)
+    else:
+        if proc.returncode == 0:
+            return
+        said = " ".join(proc.stderr.split())
+        failure = f"exited {proc.returncode}" + (f": {said}" if said else "")
+    sys.stderr.write(
+        f"worktree hook: `git branch -D {branch}` in {repo}, of the branch that this create made, "
+        f"failed: {failure}\n"
+    )
 
 
 def copy_manifest(repo, path):
@@ -752,8 +808,10 @@ def deletable(tree: Path) -> None:
 def staged_remove(repo: Path, path: Path, profile: Path) -> None:
     """Remove the worktree `path` through the staging directory of `profile`: a rename there without
     git, then `git worktree repair` and `git worktree remove`, without `--force`, under srt. Where
-    a later step refuses or git times out, the worktree is renamed back and repaired, and that error
-    is raised; where the rename back fails, the refusal names the staged path."""
+    a later step refuses, srt or git cannot start included, or git times out, the worktree is
+    renamed back and repaired, and that error is raised; a repair after the rename back that
+    refuses or times out writes one stderr line and does not replace it. Where the rename back
+    fails, the refusal names the staged path."""
     stage = stage_of(profile)
     staged = stage / path.name
     move(path, staged)
@@ -766,7 +824,12 @@ def staged_remove(repo: Path, path: Path, profile: Path) -> None:
             move(staged, path)
         except Refusal as err:
             raise Refusal(f"the worktree stays at {staged}, since it cannot be moved back: {err}") from None
-        sys.stderr.write(run_git("worktree", "repair", str(path), repo=repo, profile=profile).stderr)
+        try:
+            sys.stderr.write(run_git("worktree", "repair", str(path), repo=repo, profile=profile).stderr)
+        except (Refusal, subprocess.TimeoutExpired) as err:
+            sys.stderr.write(
+                f"worktree hook: `git worktree repair {path}` after the move back failed: {err}\n"
+            )
         raise
 
 
@@ -837,8 +900,10 @@ def serve(path: Path, parent: int, settings: Path) -> None:
     """The broker: read the srt settings file `settings` (`allowed_writes`), make its staging
     directory and profile (`staged_profile`), bind `path` with mode 600, replacing a stale socket
     and refusing any other file there, and answer each connection in turn (`answer`) while `parent`
-    is this process's parent; then remove the socket, the profile and the staging directory, the
-    last only where it is empty. SIGTERM and SIGHUP end it the same way."""
+    is this process's parent; then remove the socket, the profile where `staged_profile` wrote it,
+    and the staging directory, the last only where it is empty. A profile that cannot be removed
+    writes one stderr line, and an error in flight stays the error. SIGTERM and SIGHUP end it the
+    same way."""
     if os.getppid() != parent:
         raise Refusal(f"the parent of the broker is {os.getppid()}, not {parent}")
     value = load(settings)
@@ -853,8 +918,10 @@ def serve(path: Path, parent: int, settings: Path) -> None:
         path.unlink()
     stage = STAGES / str(parent)
     profile = stage.parent / f"{stage.name}.json"
+    written = False
     try:
         staged_profile(value, writes, stage, profile)
+        written = True
         for signum in (signal.SIGTERM, signal.SIGHUP):
             signal.signal(signum, ended)
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
@@ -879,9 +946,19 @@ def serve(path: Path, parent: int, settings: Path) -> None:
             finally:
                 path.unlink(missing_ok=True)
     finally:
-        profile.unlink(missing_ok=True)
+        if written:
+            remove_profile(profile)
         with contextlib.suppress(OSError):
             stage.rmdir()
+
+
+def remove_profile(profile: Path) -> None:
+    """Remove the broker's `profile`; where that fails, as for a directory at its path, write one
+    stderr line instead of raising, so that an error in flight stays the error."""
+    try:
+        profile.unlink(missing_ok=True)
+    except OSError as err:
+        sys.stderr.write(f"worktree hook: the broker cannot remove its profile {profile}: {err}\n")
 
 
 def allowed_writes(value: dict[str, JsonValue], settings: Path) -> list[str]:
@@ -1013,7 +1090,9 @@ def serve_arguments(args: Sequence[str]) -> tuple[Path, int, Path]:
     """The socket, the parent's process ID and the settings file of `--serve <socket> --parent
     <pid> --settings <file>`."""
     match list(args):
-        case ["--serve", path, "--parent", parent, "--settings", settings] if parent.isdigit():
+        case ["--serve", path, "--parent", parent, "--settings", settings] if (
+            parent.isascii() and parent.isdigit()
+        ):
             return Path(path), int(parent), Path(settings)
         case _:
             raise Refusal(USAGE)
