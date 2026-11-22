@@ -545,8 +545,8 @@ directory as a bare repository, whose config the hook does not check.
 
 **The hook checks the repository's git config before any other `git`.** A program inside a
 sandbox can rename a directory of its own into place as `.git`, with a `config` that it chose,
-and the `git` of this hook, which runs outside it, reads that file, where a key can run a
-command. So the hook reads it with
+and the `git` of this hook reads that file, where a key can run a command. Without `agentbox`
+that `git` runs outside the sandbox. So the hook reads it with
 `git config --file <repository>/.git/config --no-includes --null --list` and refuses the
 repository when git cannot read it or when it holds a key outside this list; keys compare
 lowercased, and a key splits at its first and last dot:
@@ -569,11 +569,13 @@ URL is a local path is refused too: remove it with `git remote remove <name>`, o
 
 **Under `agentbox`, a broker outside the sandbox runs the `git` work.** `srt` denies writes to
 every `.githooks`, so a `git worktree add` inside it fails. `agentbox` starts the broker
-`worktree.py --serve <socket> --parent <pid>` outside `srt`, with its socket in
-`~/.local/state/research-harness/broker/`, and exports the socket's path as `AGENTBOX_BROKER`.
+`worktree.py --serve <socket> --parent <pid> --settings <file>` outside `srt`, with its socket in
+`~/.local/state/research-harness/broker/` and `<file>` the `srt` settings file of the frontend,
+and exports the socket's path as `AGENTBOX_BROKER`.
 With `AGENTBOX` set, the hook runs no `git`: it sends its payload to that socket as one JSON line,
-and the broker runs the create or the remove above in a process of its own, with
-`GIT_TERMINAL_PROMPT=0`, and replies with the path or the error. The broker answers a request
+and the broker runs the create or the remove above in a process of its own,
+`worktree.py --boxed <profile>`, with `GIT_TERMINAL_PROMPT=0`, and replies with the path or the
+error. The broker answers a request
 larger than 64 KiB, one that is no JSON object, one of another event, and one whose process
 cannot start with an error. An idle broker exits and removes its socket within 5 seconds after
 its parent ends. When the parent ends during a request, the broker does not stop the request: it
@@ -581,6 +583,44 @@ reads the request (at most `LOCAL`, 60 s), runs the create or remove to its end 
 (400 s), then looks at its parent and exits without taking another connection. `SIGTERM` and
 `SIGHUP` still end it at once. The broker covers the worktrees of the hook only: a `git pull`,
 `git switch` or `git rebase` inside `agentbox` that changes `.githooks/` still fails.
+
+**The broker's `git` runs inside `srt`.** A program in the box can rename a repository's `.git`
+away and put another in its place between the config check and the read of `git` itself, so the
+check alone does not hold for a `git` outside the sandbox. At its start the broker reads
+`<file>`, a JSON object whose `filesystem.allowWrite` must be a list of strings, and makes its
+staging directory `~/.local/state/research-harness/worktree-stage/<pid>` with mode 700, `<pid>`
+the process ID of `agentbox`. A link or a file of that name refuses the start. A stale directory
+of that name is removed where it is empty, and is never deleted where it holds anything: the
+broker moves it aside to `worktree-stage/<pid>.stale-<ns>`, a path that must not exist yet, and
+names both paths in `broker.log`. Such a directory holds a worktree that an earlier broker with
+the same process ID left there. Move the worktree back to its path below `~/Research/.worktrees`
+and run `git worktree repair <path>` from the repository's main checkout, before any later create
+in that repository. A failed boxed create runs `git worktree prune`, and so does `git gc` once the
+registration expires; a prune drops the registration of a worktree whose path is gone. After a
+prune only the files and the branch remain: run `git worktree add <path> <branch>` at a fresh path
+and copy the files into it. The broker writes the profile `worktree-stage/<pid>.json` with mode
+600: `<file>` with the staging directory added to `filesystem.allowWrite`. It removes both when it
+exits, the staging directory only when it is empty. Each child `worktree.py --boxed <profile>`
+runs every `git`, the config check included, as `~/.local/bin/srt --settings <profile> -- git …`,
+so a config that the box chose runs with the box's own rights and the staging directory, not on
+the host. A child refuses a request where `~/.local/bin/srt` is not an executable file.
+
+A boxed create adds the worktree in the staging directory, because the box may not write
+`.githooks` below `~/Research`. The staging directory and `~/Research/.worktrees` must lie on one
+device, so that a rename moves the worktree; otherwise the create is refused, and nothing is
+copied. `~/Research/.worktrees` must be a directory and no link. The child then renames the
+staged worktree to its final path without `git`, after it has checked that the staged path is a
+directory and no link and that the final path does not exist. It runs `git worktree repair` on
+the final path, and refuses a worktree whose repaired `.git` file does not name the repository.
+Where a step fails, the child removes only what it made, runs `git worktree prune`, and exits
+with the first cause. A boxed remove renames the worktree into the staging directory, repairs it
+and removes it there, without `--force`. Where `git` refuses, for example a worktree with changes,
+the child renames the worktree back, repairs it, and exits with the reason of `git`.
+
+`git` writes the files of the new worktree under the profile, so a config of the box can put any
+file into it, `.githooks/` included. That is the box's own power over a worktree of a branch
+that it made. Do not run `git` from a plain terminal in an agent's worktree. Without `agentbox`,
+in the Code tab, in `claudex` and in a plain session, the hook's `git` runs outside `srt`.
 
 It fails closed: on each error it exits with status 1 and gives the reason, and it creates no
 worktree. Under `AGENTBOX`, a missing or empty `AGENTBOX_BROKER`, a broker that does not answer

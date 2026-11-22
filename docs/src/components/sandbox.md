@@ -265,10 +265,12 @@ makes `~/.local/state/research-harness/broker` with mode 700, removes a stale so
 
 ```sh
 ~/.local/share/research-harness/python/bin/python ~/.claude/hooks/worktree.py \
-    --serve ~/.local/state/research-harness/broker/<pid>.sock --parent <pid>
+    --serve ~/.local/state/research-harness/broker/<pid>.sock --parent <pid> \
+    --settings ~/.config/research-harness/sandbox/<policy name>.json
 ```
 
-with its standard output and standard error in `<run directory>/broker.log`. `<pid>` is the
+with its standard output and standard error in `<run directory>/broker.log`. The broker runs
+each `git` of the hook under `srt` with that settings file. `<pid>` is the
 process ID of `agentbox`, which `exec` hands on to `srt`, so the broker exits when `srt` ends. Once
 the socket exists, within 5 seconds, `agentbox` exports its path as `AGENTBOX_BROKER`. Where the
 interpreter is not an executable file, the hook is not a readable file, the directory cannot be
