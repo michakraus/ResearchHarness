@@ -70,11 +70,12 @@ check included: a program in the box can swap the `.git` that the check read for
 git reads it, so a git outside srt would run a config that the box chose with the host's rights.
 srt denies the box's writes to `.githooks`, so a boxed create adds the worktree in the staging
 directory, which must lie on the device of ROOT, renames it to ROOT without git, runs `git worktree
-repair` and checks that the repaired `.git` file names the repository (`staged_add`); a failed step
-removes what the child made, runs `git worktree prune`, and deletes with `git branch -D` a branch
-that the create made. A boxed remove renames the worktree into the staging directory, repairs and
-removes it there, and renames it back where git refuses or cannot start (`staged_remove`). Without
-`--boxed` git runs as `git …`, outside srt.
+repair` and checks that the repaired `.git` file names the repository (`staged_add`). It makes a
+new branch in a step of its own, `git branch --no-track <name> <base>`, before `git worktree add`;
+a failed step, the add included, removes what the child made, runs `git worktree prune`, and
+deletes with `git branch -D` a branch that the create made. A boxed remove renames the worktree
+into the staging directory, repairs and removes it there, and renames it back where git refuses
+or cannot start (`staged_remove`). Without `--boxed` git runs as `git …`, outside srt.
 
 Every git, and the srt of a boxed git, starts in a session of its own (`run_git`). One that
 outlives its timeout is stopped with its process group, which holds the programs that it started,
@@ -575,10 +576,13 @@ def discard(path: Path) -> None:
 def staged_add(repo: Path, name: str, final: Path, profile: Path) -> None:
     """Make the worktree `name` at `final` through the staging directory of `profile`: `git worktree
     add` there under srt, a rename to `final` without git, `git worktree repair` under srt, and a
-    test that the repaired `.git` file names `repo`. A failed step removes what this child made,
-    the staged directory or, after its rename, `final`, and nothing that it found, runs `git
-    worktree prune` under srt, deletes the branch `name` where this `git worktree add` made it with
-    `-b`, and raises the step's refusal."""
+    test that the repaired `.git` file names `repo`. A new branch `name` is made in a step of its
+    own before the add, `git branch --no-track <name> <base>` under srt, since git keeps the branch
+    of a `git worktree add -b` that fails. A failed step removes what this child made, the staged
+    directory or, after its rename, `final`, and nothing that it found, runs `git worktree prune`
+    under srt, deletes the branch `name` where this child's `git branch` made it, the add's failure
+    included, and raises the step's refusal. A `git branch` that refuses deletes nothing; one that
+    times out is not undone."""
     made: Path | None = None
     branch: str | None = None
     done = False
@@ -589,9 +593,12 @@ def staged_add(repo: Path, name: str, final: Path, profile: Path) -> None:
             raise Refusal(f"{staged} exists; the staging directory holds no worktree between requests")
         made = staged
         arguments = add_arguments(repo, name, staged, profile)
-        git(*arguments, repo=repo, profile=profile)
         if arguments[2:4] == ["--no-track", "-b"]:
+            git("branch", "--no-track", name, arguments[-1], repo=repo, profile=profile)
             branch = name
+            git("worktree", "add", str(staged), name, repo=repo, profile=profile)
+        else:
+            git(*arguments, repo=repo, profile=profile)
         move(staged, final)
         made = final
         moved(final)
@@ -1136,8 +1143,12 @@ def main(args: Sequence[str] = ()) -> int:
 
 
 def interrupted(signum: int, frame: FrameType | None) -> None:
-    """The SIGTERM and SIGHUP handler of the hook: raise SystemExit with status 128 + `signum`."""
+    """The SIGTERM and SIGHUP handler of the hook: ignore both signals from here on, so that a second
+    one does not end the group stop of `run_git` before its SIGKILL, and raise SystemExit with
+    status 128 + `signum`. `main` restores the handlers of before."""
     del frame
+    for each in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(each, signal.SIG_IGN)
     raise SystemExit(128 + signum)
 
 

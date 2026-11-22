@@ -1835,7 +1835,7 @@ def boxed_step_cases(report: Callable[[object, str], None]) -> None:
     """A boxed create where srt is no executable file, which starts no git; and one per step that the
     stub srt breaks (STUB_SRT): each exits 1 with a line that names its cause, leaves no worktree
     at the final path and nothing in the staging directory, and runs a `worktree prune` under
-    srt."""
+    srt; where the `worktree add` fails, the branch that the create made is deleted under srt."""
     srt = pathlib.Path(WT_SRT)
     aside = srt.with_name("srt-aside")
     for label in ("a file that is not executable", "a directory"):
@@ -1893,6 +1893,16 @@ def boxed_step_cases(report: Callable[[object, str], None]) -> None:
             left = path.is_dir() and not path.is_symlink() and [p.name for p in path.iterdir()] == ["found"]
         else:
             left = not path.exists(follow_symlinks=False)
+        if mode == "fail-add":
+            deletes = [line for line in boxed if " branch -D " in line]
+            report(
+                fixture_git("rev-parse", "--verify", "--quiet", f"refs/heads/{name}").returncode == 1
+                and len(deletes) == 1
+                and via_srt(deletes[0])
+                and deletes[0].endswith(f" branch -D {name}"),
+                f"a boxed create of a new branch whose worktree add fails deletes the branch under srt: "
+                f"{said(proc)}, {deletes}",
+            )
         report(
             proc is not None
             and proc.returncode == 1
@@ -1981,14 +1991,14 @@ def run_git_timeout_cases(hook: types.ModuleType, report: Callable[[object, str]
         ("whose group is gone", profile, 2, ProcessLookupError, [term, kill]),
         ("whose group holds only the unreaped child", None, 1, PermissionError, [term]),
     ]:
-        starts: list[dict[str, Any]] = []
+        starts: list[object] = []
         waits: list[float | None] = []
         signals: list[tuple[int, int]] = []
 
         def start(
             args: list[str], timeouts: int = timeouts, waits: list[float | None] = waits, **kwargs: Any
         ) -> FakeGit:
-            starts.append(kwargs)
+            starts.append(kwargs.get("start_new_session"))
             return FakeGit([str(a) for a in args], timeouts, waits)
 
         def killpg(
@@ -2017,14 +2027,13 @@ def run_git_timeout_cases(hook: types.ModuleType, report: Callable[[object, str]
         report(
             isinstance(outcome, subprocess.TimeoutExpired)
             and "git" in command
-            and len(starts) == 1
-            and starts[0].get("start_new_session") is True
+            and starts == [True]
             and signals == [(FakeGit.pid, signum) for signum in want]
             and grace == 5
             and waits == [hook.LOCAL, *[grace] * len(want)],
             f"run_git {label}, whose git times out: started in a session of its own, {want} to its "
             f"process group, GRACE (5) seconds after each, and the git command's TimeoutExpired: "
-            f"{outcome!r}, starts {starts}, signals {signals}, waits {waits}",
+            f"{outcome!r}, start_new_session {starts}, signals {signals}, waits {waits}",
         )
     for given, program, error in [
         (profile, WT_SRT, FileNotFoundError(errno.ENOENT, "No such file or directory", WT_SRT)),
@@ -2064,12 +2073,37 @@ class InterruptedGit(FakeGit):
         return "", ""
 
 
+class TwiceSignalledGit(InterruptedGit):
+    """An InterruptedGit whose second `communicate`, the wait of the group stop after its SIGTERM,
+    calls `again`, as a second signal, and then raises subprocess.TimeoutExpired, as a git that
+    outlives the SIGTERM; its third call returns no output."""
+
+    def __init__(
+        self,
+        args: list[str],
+        waits: list[float | None],
+        interrupt: Callable[[], None],
+        again: Callable[[], None],
+    ) -> None:
+        super().__init__(args, waits, interrupt)
+        self.again = again
+
+    def communicate(self, timeout: float | None = None) -> tuple[str, str]:
+        if len(self.waits) == 1:
+            self.waits.append(timeout)
+            self.again()
+            raise subprocess.TimeoutExpired(self.args, timeout or 0)
+        return super().communicate(timeout)
+
+
 def run_git_signal_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
     """A signal while the hook waits for git, with `subprocess.Popen` patched to start an
     InterruptedGit and `os.killpg` to a recorder: a KeyboardInterrupt in `run_git` stops git's
     process group and passes on; `main` on a create, for SIGTERM and for SIGHUP, whose git calls
     the handler of that signal, stops the group, raises SystemExit with 128 + the signal's
-    number, and leaves the handlers as they were before it."""
+    number, and leaves the handlers as they were before it. A SIGHUP after the SIGTERM, or a
+    SIGTERM after the SIGHUP, while the group stop waits for a git that outlives its SIGTERM
+    (TwiceSignalledGit), does not end the stop before its SIGKILL."""
     repo = pathlib.Path(WT_REPO)
 
     def interrupt() -> None:
@@ -2083,27 +2117,38 @@ def run_git_signal_cases(hook: types.ModuleType, report: Callable[[object, str],
 
         return call
 
-    runs: list[tuple[str, Callable[[], object], Callable[[], None], int | None]] = [
-        ("KeyboardInterrupt", lambda: hook.run_git("status", repo=repo), interrupt, None),
+    term, hup, kill = signal.SIGTERM, signal.SIGHUP, signal.SIGKILL
+    runs: list[
+        tuple[str, Callable[[], object], Callable[[], None], Callable[[], None] | None, int | None]
+    ] = [
+        ("KeyboardInterrupt", lambda: hook.run_git("status", repo=repo), interrupt, None, None),
+        *[(signum.name, hook.main, handler_of(signum), None, 128 + signum) for signum in (term, hup)],
         *[
             (
-                signum.name,
+                f"{first.name} and then a {second.name} within GRACE",
                 hook.main,
-                handler_of(signum),
-                128 + signum,
+                handler_of(first),
+                handler_of(second),
+                128 + first,
             )
-            for signum in (signal.SIGTERM, signal.SIGHUP)
+            for first, second in ((term, hup), (hup, term))
         ],
     ]
-    for label, work, call, code in runs:
+    for label, work, call, again, code in runs:
         signals: list[tuple[int, int]] = []
         waits: list[float | None] = []
-        before = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)}
+        before = {s: signal.getsignal(s) for s in (term, hup)}
 
         def start(
-            args: list[str], waits: list[float | None] = waits, call: Callable[[], None] = call, **_: Any
+            args: list[str],
+            waits: list[float | None] = waits,
+            call: Callable[[], None] = call,
+            again: Callable[[], None] | None = again,
+            **_: Any,
         ) -> InterruptedGit:
-            return InterruptedGit([str(a) for a in args], waits, call)
+            if again is None:
+                return InterruptedGit([str(a) for a in args], waits, call)
+            return TwiceSignalledGit([str(a) for a in args], waits, call, again)
 
         def killpg(pid: int, signum: int, signals: list[tuple[int, int]] = signals) -> None:
             signals.append((pid, signum))
@@ -2124,12 +2169,13 @@ def run_git_signal_cases(hook: types.ModuleType, report: Callable[[object, str],
                 outcome = "KeyboardInterrupt"
             except SystemExit as raised:
                 outcome = raised.code
-        after = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGHUP)}
+        after = {s: signal.getsignal(s) for s in (term, hup)}
         want = "KeyboardInterrupt" if code is None else code
+        stops = [(FakeGit.pid, term)] if again is None else [(FakeGit.pid, term), (FakeGit.pid, kill)]
         report(
-            outcome == want and signals[:1] == [(FakeGit.pid, signal.SIGTERM)] and after == before,
-            f"a {label} while the hook waits for git stops git's process group and ends with {want}, "
-            f"and the signal handlers are those of before: {outcome}, {signals}, "
+            outcome == want and signals[: len(stops)] == stops and after == before,
+            f"a {label} while the hook waits for git stops git's process group with {stops} and ends "
+            f"with {want}, and the signal handlers are those of before: {outcome}, {signals}, "
             f"{'kept' if after == before else (before, after)}",
         )
 
@@ -2163,14 +2209,6 @@ def unstage(path: pathlib.Path) -> None:
         staged.rename(path)
     if path.is_dir():
         fixture_git("worktree", "repair", str(path))
-
-
-def boxed_failure_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
-    """The failures of a boxed create and remove in this process whose stub srt cannot start at
-    one step: `boxed_gone_case`, `boxed_norepair_case` and `boxed_prune_case`."""
-    boxed_gone_case(hook, report)
-    boxed_norepair_case(hook, report)
-    boxed_prune_case(hook, report)
 
 
 def boxed_gone_case(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
@@ -2348,8 +2386,9 @@ def failure_unit_cases(hook: types.ModuleType, report: Callable[[object, str], N
 
 def fixture_git(*args: str) -> subprocess.CompletedProcess[str]:
     """The real git with `args` in `Repo`, outside the hook."""
+    git = shutil.which("git") or "git"
     return subprocess.run(
-        ["git", "-C", WT_REPO, *args],  # noqa: S607 -- the `git` on PATH
+        [git, "-C", WT_REPO, *args],
         capture_output=True,
         text=True,
         env=WORKTREE_ENV,
@@ -2411,12 +2450,8 @@ def boxed_branch_cases(report: Callable[[object, str], None]) -> None:
         f"{listing} -> {heads()}",
     )
     proc, _, _ = boxed_run(create("newbr2"), "fail-repair-branch")
-    lines = [] if proc is None else proc.stderr.splitlines()
-    named = [
-        line
-        for line in lines
-        if line.startswith("worktree hook: ") and "newbr2" in line.replace("Repo-newbr2", "")
-    ]
+    lines = [] if proc is None else hooked(proc.stderr)
+    named = [line for line in lines if "newbr2" in line.replace("Repo-newbr2", "")]
     report(
         failed(proc, "newbr2") and len(named) == 1 and "branch -D newbr2" in named[0],
         f"a boxed create whose repair and branch deletion fail: one line that names the branch, and the "
@@ -2424,6 +2459,76 @@ def boxed_branch_cases(report: Callable[[object, str], None]) -> None:
     )
     if commit("newbr2") is not None:
         fixture_git("branch", "-D", "newbr2")
+
+
+def boxed_base_case(report: Callable[[object, str], None]) -> None:
+    """A boxed create of a new name while the main checkout's HEAD is a commit other than the base:
+    the new branch is at the base, `origin/main`, and has no upstream."""
+    identity = ("-c", "user.name=probe", "-c", "user.email=probe@example.org")
+    aside = fixture_git(*identity, "commit-tree", "main^{tree}", "-p", "main", "-m", "aside").stdout.strip()
+    fixture_git("update-ref", "--no-deref", "HEAD", aside)
+    try:
+        proc, _, _ = boxed_run(create("based"))
+    finally:
+        fixture_git("symbolic-ref", "HEAD", "refs/heads/main")
+    branch = fixture_git("rev-parse", "--verify", "--quiet", "refs/heads/based").stdout.strip()
+    base = fixture_git("rev-parse", "--verify", "--quiet", "refs/remotes/origin/main").stdout.strip()
+    upstream = fixture_git("rev-parse", "--abbrev-ref", "based@{upstream}")
+    report(
+        proc is not None
+        and proc.returncode == 0
+        and aside
+        and base
+        and aside != base
+        and branch == base
+        and upstream.returncode != 0,
+        f"a boxed create of a new branch while the main checkout's HEAD is {aside} makes the branch at "
+        f"the base {base}, with no upstream: {said(proc)}, branch {branch}, upstream "
+        f"{upstream.stdout.strip() or upstream.returncode}",
+    )
+    if proc is not None and proc.returncode == 0:
+        boxed_run(remove("based"))
+    fixture_git("branch", "-D", "based")
+
+
+def boxed_racer_case(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """A boxed create of a new name in this process where another process makes the branch after
+    `add_arguments` found none, as a racer would: the create refuses with the line of `git branch`,
+    the racer's branch stays at its commit, and no `git branch -D` runs."""
+    real_arguments = hook.add_arguments
+    raced: list[str] = []
+
+    def racing(
+        repo: pathlib.Path, name: str, target: pathlib.Path, profile: pathlib.Path | None
+    ) -> list[str]:
+        got = real_arguments(repo, name, target, profile)
+        proc = fixture_git("branch", name, "main")
+        raced.append(f"exit {proc.returncode} {proc.stderr.strip()}")
+        return got
+
+    outcome, seen = inprocess(
+        hook,
+        lambda: hook.create(create("lateracer"), profile=pathlib.Path(WT_PROFILE)),
+        mock.patch.object(hook, "add_arguments", racing),
+    )
+    left = fixture_git("rev-parse", "--verify", "--quiet", "refs/heads/lateracer")
+    main = fixture_git("rev-parse", "--verify", "--quiet", "refs/heads/main")
+    deletes = [a for a in seen if a[len(WT_BOXED) : len(WT_BOXED) + 2] == ["branch", "-D"]]
+    report(
+        raced == ["exit 0 "]
+        and outcome.startswith("refused: ")
+        and "`git branch " in outcome
+        and left.returncode == 0
+        and left.stdout == main.stdout
+        and not deletes
+        and not pathlib.Path(WT_ROOT, "Repo-lateracer").exists(follow_symlinks=False)
+        and stage_empty(),
+        f"a boxed create whose new branch another process makes first refuses with the line of git "
+        f"branch, and the racer's branch stays: racer {raced}, {outcome}, {left.stdout.strip()} at main "
+        f"{main.stdout.strip()}, {deletes}",
+    )
+    if left.returncode == 0:
+        fixture_git("branch", "-D", "lateracer")
 
 
 def name_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
@@ -2903,8 +3008,9 @@ def worktree_git_cases() -> tuple[int, int]:
     refusals under `AGENTBOX`; the boxed child (`boxed_cases`); the broker's settings file, staging
     directory and profile (`broker_start_cases`); the stop of a git past its timeout
     (`run_git_timeout_cases`) and on a signal to the hook (`run_git_signal_cases`); the failures
-    of a boxed remove and of `undo` (`boxed_failure_cases`, `failure_unit_cases`); the branch of a
-    failed boxed create (`boxed_branch_cases`); names that end in a newline and parents of a digit
+    of a boxed remove and of `undo` whose srt cannot start at one step (`boxed_gone_case`,
+    `boxed_norepair_case`, `boxed_prune_case`) or whose git fails (`failure_unit_cases`); the branch
+    of a boxed create (`boxed_branch_cases`, `boxed_base_case`, `boxed_racer_case`); names that end in a newline and parents of a digit
     that is not ASCII (`name_cases`); the broker's profile at its end (`broker_profile_cases`); the life of a
     broker; and the options of every git that the hook starts, recorded in this process: (number of
     cases, number wrong)."""
@@ -3149,9 +3255,13 @@ def worktree_git_cases() -> tuple[int, int]:
     broker_start_cases(hook, report)
     run_git_timeout_cases(hook, report)
     run_git_signal_cases(hook, report)
-    boxed_failure_cases(hook, report)
+    boxed_gone_case(hook, report)
+    boxed_norepair_case(hook, report)
+    boxed_prune_case(hook, report)
     failure_unit_cases(hook, report)
     boxed_branch_cases(report)
+    boxed_base_case(report)
+    boxed_racer_case(hook, report)
     name_cases(hook, report)
     broker_profile_cases(hook, report)
 

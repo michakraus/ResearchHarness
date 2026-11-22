@@ -637,10 +637,15 @@ copied. `~/Research/.worktrees` must be a directory and no link. The child then 
 staged worktree to its final path without `git`, after it has checked that the staged path is a
 directory and no link and that the final path does not exist. It runs `git worktree repair` on
 the final path, and refuses a worktree whose repaired `.git` file does not name the repository.
-Where a step fails, the child removes only what it made, runs `git worktree prune`, and exits
-with the first cause. Where the create made a new branch, the child then deletes it with
-`git branch -D <name>`; an existing branch and the detached worktree of a sub-agent stay as they
-were, and a deletion that fails writes one line on standard error. A boxed remove renames the
+A new branch is made in a step of its own before `git worktree add`, as
+`git branch --no-track <name> <base>` under `srt`, because `git` keeps the branch of a
+`git worktree add -b` that fails. Where a step fails, the child removes only what it made, runs
+`git worktree prune`, and exits with the first cause. Where the create made a new branch and a
+later step fails, the add included, the child then deletes it with `git branch -D <name>`. A
+`git branch` that refuses, for example because another process made the branch first, deletes
+nothing; a `git branch` that times out is not undone. An existing branch and the detached
+worktree of a sub-agent stay as they were, and a deletion that fails writes one line on standard
+error. A boxed remove renames the
 worktree into the staging directory, repairs it and removes it there, without `--force`. Where
 `git` refuses, for example a worktree with changes, or where `srt` cannot start, the child renames
 the worktree back, repairs it, and exits with the first reason; a repair after the rename back that
@@ -657,7 +662,8 @@ process group, which holds the programs that it started, such as the `git` insid
 `ssh` of a fetch: `SIGTERM`, so that `git` removes its lock files, then `SIGKILL` after 5 seconds
 where it has not ended. A `SIGINT`, `SIGTERM` or `SIGHUP` of the hook stops its running `git`'s
 group the same way, because a signal to the hook's own process group, as `harness worktree`
-sends it, does not reach that session. Three cases stay open: a `SIGKILL` of the hook leaves its
+sends it, does not reach that session; a second `SIGTERM` or `SIGHUP` during that stop is
+ignored. Three cases stay open: a `SIGKILL` of the hook leaves its
 `git` running; a signal that arrives after `git` starts and before the hook waits for it is not
 passed on; and a caller that sends `SIGKILL` to the hook within those 5 seconds can end the hook
 before its own `SIGKILL` reaches `git`. A program that cannot start is refused with one line that
