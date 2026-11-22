@@ -1245,7 +1245,7 @@
   `setup`, `update`, `test` and `worktree` as well, and `SUBCOMMANDS` of `lib/harness/sweep.py`
   holds none of the four, so no sweep case runs the dry run of `harness worktree add`.
 - kind: docs
-- found: 2026-11-22, a critic of the pull request that adds `harness worktree`
+- found: 2026-11-22, a critic of the branch `sandbox/part-g3b`
 
 ### K185 · The worktree hook's name patterns accept a name that ends in a newline.
 
@@ -1258,4 +1258,4 @@
   `"agent-ab\n"` therefore passes both checks; `harness worktree add` refuses such a name before
   it runs the hook. `fullmatch` or `\Z` closes it.
 - kind: defect
-- found: 2026-11-22, a critic of the pull request that adds `harness worktree`
+- found: 2026-11-22, a critic of the branch `sandbox/part-g3b`
