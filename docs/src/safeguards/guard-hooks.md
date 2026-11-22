@@ -541,15 +541,16 @@ refused with the route for a side session of Claude Desktop, which sends the ses
 `~/Research/.worktrees/<Repository>-<slug>` on the branch `name`, from `origin/HEAD`, or from
 `origin/main` if `origin/HEAD` is not set. It prints the path on standard output. An existing
 branch is checked out, and an existing worktree of the repository is printed as it is. A name
-`agent-<hex>`, from a sub-agent, gets a detached worktree with no branch. The hook copies the main
-checkout's `Manifest.toml` into the new worktree when the manifest holds every package of the
-worktree's `[deps]` at a version inside its `[compat]`. Otherwise it copies none and says why on
-standard error, because Julia does not check `[compat]` at `using`, and a stale manifest loads
-old dependencies. On `WorktreeRemove` it runs `git worktree remove` without `--force`, so git
-refuses a worktree with changes, and the branch stays. Before that it makes and removes one file in
-each `.githooks` and `.claude` of the worktree, and refuses where it cannot: in a sandbox, git
-would delete the worktree's record and leave the directory. The settings template gives both
-events 480 seconds, more than a fetch (300) and the broker's answer (420) take.
+`agent-<hex>`, from a sub-agent, gets a detached worktree with no branch. A name that begins with
+`-` is refused before any `git` runs, because `git` reads such a name as an option. The hook
+copies the main checkout's `Manifest.toml` into the new worktree when the manifest holds every
+package of the worktree's `[deps]` at a version inside its `[compat]`. Otherwise it copies none
+and says why on standard error, because Julia does not check `[compat]` at `using`, and a stale
+manifest loads old dependencies. On `WorktreeRemove` it runs `git worktree remove` without
+`--force`, so git refuses a worktree with changes, and the branch stays. Before that it makes and
+removes one file in each `.githooks` and `.claude` of the worktree, and refuses where it cannot: in
+a sandbox, git would delete the worktree's record and leave the directory. The settings template
+gives both events 480 seconds, more than a fetch (300) and the broker's answer (420) take.
 
 **The hook finds the repository by reading files, before any `git` runs.** The directory, `cwd`
 or the worktree to remove, must lie below `~/Research`. The first `.git` above it must be a
@@ -663,11 +664,12 @@ process group, which holds the programs that it started, such as the `git` insid
 where it has not ended. A `SIGINT`, `SIGTERM` or `SIGHUP` of the hook stops its running `git`'s
 group the same way, because a signal to the hook's own process group, as `harness worktree`
 sends it, does not reach that session; a second `SIGTERM` or `SIGHUP` during that stop is
-ignored. Three cases stay open: a `SIGKILL` of the hook leaves its
-`git` running; a signal that arrives after `git` starts and before the hook waits for it is not
-passed on; and a caller that sends `SIGKILL` to the hook within those 5 seconds can end the hook
-before its own `SIGKILL` reaches `git`. A program that cannot start is refused with one line that
-names it.
+ignored, and a `git` that the hook starts after the signal, such as the `git worktree prune` of a
+failed create, gets the default handlers of both signals. Three cases stay open: a `SIGKILL` of
+the hook leaves its `git` running; a signal that arrives after `git` starts and before the hook
+waits for it is not passed on; and a caller that sends `SIGKILL` to the hook within those 5
+seconds can end the hook before its own `SIGKILL` reaches `git`. A program that cannot start is
+refused with one line that names it.
 
 It fails closed: on each error it exits with status 1 and gives the reason, and it creates no
 worktree. Under `AGENTBOX`, a missing or empty `AGENTBOX_BROKER`, a broker that does not answer

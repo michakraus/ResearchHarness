@@ -432,6 +432,10 @@ def one_line(path: Path) -> str:
 
 
 def slug(name: str) -> str:
+    """The directory name of the worktree `name`, its segments joined with `-`. A name that begins
+    with `-` is refused: git reads such a name, passed as an argument, as an option."""
+    if name.startswith("-"):
+        raise Refusal(f"worktree name {name!r} begins with `-`, which git reads as an option")
     segments = name.split("/")
     if not name or any(s in ("", ".", "..") or not SEGMENT.fullmatch(s) for s in segments):
         raise Refusal(
@@ -1143,13 +1147,20 @@ def main(args: Sequence[str] = ()) -> int:
 
 
 def interrupted(signum: int, frame: FrameType | None) -> None:
-    """The SIGTERM and SIGHUP handler of the hook: ignore both signals from here on, so that a second
-    one does not end the group stop of `run_git` before its SIGKILL, and raise SystemExit with
-    status 128 + `signum`. `main` restores the handlers of before."""
+    """The SIGTERM and SIGHUP handler of the hook: set both signals to `ignored` from here on, so
+    that a second one does not end the group stop of `run_git` before its SIGKILL, and raise
+    SystemExit with status 128 + `signum`. A handler of Python, unlike SIG_IGN, is reset to the
+    default by `exec`, so a git that the hook starts after the signal ends on a SIGTERM or SIGHUP.
+    `main` restores the handlers of before."""
     del frame
     for each in (signal.SIGTERM, signal.SIGHUP):
-        signal.signal(each, signal.SIG_IGN)
+        signal.signal(each, ignored)
     raise SystemExit(128 + signum)
+
+
+def ignored(signum: int, frame: FrameType | None) -> None:
+    """The handler that `interrupted` installs: it does nothing."""
+    del signum, frame
 
 
 def handle(args: Sequence[str]) -> int:

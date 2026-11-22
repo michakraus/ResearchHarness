@@ -4,12 +4,14 @@
   `SIGTERM` to the group and `SIGKILL` 5 seconds later where it has not ended, so the stop reaches
   the `git` inside `srt` and the `ssh` of a fetch, not only `srt` or `git`. A `SIGINT`, `SIGTERM`
   or `SIGHUP` of the hook, such as `harness worktree` passes on, stops that group the same way
-  before the hook ends, and a second `SIGTERM` or `SIGHUP` does not cut that stop short. A
-  program that cannot start is a one-line refusal, not a traceback, and a boxed remove whose
+  before the hook ends, and a second `SIGTERM` or `SIGHUP` does not cut that stop short, while a
+  `git` that the hook starts after the signal keeps the default handlers of both. A program that
+  cannot start is a one-line refusal, not a traceback, and a boxed remove whose
   `srt` cannot start puts the worktree back at its path. A broker that refuses to start because
   of a directory at its profile's path now exits with that refusal, not with a traceback, and
   leaves the directory. A boxed create now makes a new branch with `git branch --no-track` before
   its `git worktree add`, and deletes it with `git branch -D` where a later step fails, the add
   included; a branch that another process made first, an existing branch and a sub-agent's
-  detached worktree lose nothing. A worktree name that ends in a newline is refused (K186), and
-  `--serve … --parent` takes ASCII digits only (K184).
+  detached worktree lose nothing. A worktree name that ends in a newline is refused (K186), and so
+  is one that begins with `-`, which `git` read as an option: a name `-m` renamed the main
+  checkout's branch. `--serve … --parent` takes ASCII digits only (K184).

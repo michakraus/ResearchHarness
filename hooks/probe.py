@@ -2180,6 +2180,78 @@ def run_git_signal_cases(hook: types.ModuleType, report: Callable[[object, str],
         )
 
 
+def interrupted_state_case(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """After `interrupted` raised SystemExit for a SIGTERM, the handler of SIGTERM and of SIGHUP is
+    each a callable other than SIG_IGN that returns None and raises nothing when called; the
+    handlers of before are restored."""
+    term, hup = signal.SIGTERM, signal.SIGHUP
+    before = {s: signal.getsignal(s) for s in (term, hup)}
+    called: dict[str, str] = {}
+    try:
+        try:
+            hook.interrupted(term, None)
+            raised = "returned"
+        except SystemExit as err:
+            raised = f"SystemExit({err.code})"
+        for s in (term, hup):
+            handler = signal.getsignal(s)
+            if handler is signal.SIG_IGN or not callable(handler):
+                called[s.name] = f"{handler!r}"
+                continue
+            try:
+                called[s.name] = f"returned {handler(s, None)!r}"
+            except BaseException as err:  # noqa: BLE001 - the case reports any exception of the handler
+                called[s.name] = f"raised {err!r}"
+    finally:
+        for s, handler in before.items():
+            if handler is not None:
+                signal.signal(s, handler)
+    report(
+        raised == f"SystemExit({128 + term})"
+        and called == {"SIGTERM": "returned None", "SIGHUP": "returned None"},
+        f"after interrupted, SIGTERM and SIGHUP have a handler that does nothing, not SIG_IGN: {raised}, {called}",
+    )
+
+
+def interrupted_child_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """After `interrupted` raised SystemExit, a git that `run_git` starts, as undo's prune while that
+    SystemExit unwinds, has the default handlers: a stub srt that sends itself SIGTERM and then
+    SIGHUP ends on the SIGTERM, and one that sends SIGHUP first ends on the SIGHUP. The stub runs in
+    a session of its own, so its signals do not reach the probe."""
+    term, hup = signal.SIGTERM, signal.SIGHUP
+    stub = pathlib.Path(WT_HOME, ".local", "bin", "srt-signalled")
+    for first, second in ((term, hup), (hup, term)):
+        stub.write_text(
+            f"#!/bin/sh\nkill -{first.name[3:]} $$\nkill -{second.name[3:]} $$\necho alive\n",
+            encoding="utf-8",
+        )
+        stub.chmod(0o755)
+        before = {s: signal.getsignal(s) for s in (term, hup)}
+        outcome = "no SystemExit"
+        try:
+            try:
+                hook.interrupted(term, None)
+            except SystemExit:
+                with mock.patch.object(hook, "SRT", stub, create=True):
+                    proc = hook.run_git(
+                        "worktree", "prune", repo=pathlib.Path(WT_REPO), profile=pathlib.Path(WT_PROFILE)
+                    )
+                outcome = f"exit {proc.returncode}, stdout {proc.stdout!r}"
+                good = proc.returncode == -first and "alive" not in proc.stdout
+            else:
+                good = False
+        finally:
+            for s, handler in before.items():
+                if handler is not None:
+                    signal.signal(s, handler)
+        report(
+            good,
+            f"a git that the hook starts after interrupted ends on its own {first.name} and then "
+            f"{second.name} with the default handler: {outcome}",
+        )
+    stub.unlink()
+
+
 # Where a case moves the stub srt WT_SRT aside, so that it cannot start.
 WT_SRT_GONE = WT_SRT + "-gone"
 
@@ -2531,11 +2603,30 @@ def boxed_racer_case(hook: types.ModuleType, report: Callable[[object, str], Non
         fixture_git("branch", "-D", "lateracer")
 
 
+def boxed_dash_case(report: Callable[[object, str], None]) -> None:
+    """A boxed create of the name `-f`, which git would read as an option: exit 1, no git under srt
+    that makes a branch or adds a worktree, and the branches and HEAD of the fixture as before."""
+
+    def refs() -> tuple[str, str]:
+        listing = fixture_git("for-each-ref", "--format=%(refname) %(objectname)", "refs/heads").stdout
+        return listing, fixture_git("symbolic-ref", "HEAD").stdout
+
+    before = refs()
+    proc, _, boxed = boxed_run(create("-f"))
+    made = [line for line in boxed if "branch" in line or "worktree add" in line]
+    report(
+        proc is not None and proc.returncode == 1 and not made and refs() == before,
+        f"a boxed create of the name '-f' refuses before git makes a branch or a worktree: {said(proc)}, "
+        f"{made}, refs {'kept' if refs() == before else (before, refs())}",
+    )
+
+
 def name_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
-    """A create whose name ends in a newline, `agent-ab` or `x`, refuses before any git runs;
-    `add_arguments` does not take `agent-ab` and a newline as a sub-agent's name; and
-    `serve_arguments` refuses a `--parent` of a digit that is not ASCII with the usage line."""
-    for name in ("agent-ab\n", "x\n"):
+    """A create whose name ends in a newline, `agent-ab` or `x`, or begins with `-`, `-f`, `-m` or
+    `--force`, refuses before any git runs; `add_arguments` does not take `agent-ab` and a newline
+    as a sub-agent's name; and `serve_arguments` refuses a `--parent` of a digit that is not ASCII
+    with the usage line."""
+    for name in ("agent-ab\n", "x\n", "-f", "-m", "--force"):
         outcome, seen = inprocess(hook, lambda name=name: hook.create(create(name)))
         report(
             outcome.startswith("refused: ") and "worktree name" in outcome and not seen,
@@ -3255,6 +3346,8 @@ def worktree_git_cases() -> tuple[int, int]:
     broker_start_cases(hook, report)
     run_git_timeout_cases(hook, report)
     run_git_signal_cases(hook, report)
+    interrupted_state_case(hook, report)
+    interrupted_child_cases(hook, report)
     boxed_gone_case(hook, report)
     boxed_norepair_case(hook, report)
     boxed_prune_case(hook, report)
@@ -3262,6 +3355,7 @@ def worktree_git_cases() -> tuple[int, int]:
     boxed_branch_cases(report)
     boxed_base_case(report)
     boxed_racer_case(hook, report)
+    boxed_dash_case(report)
     name_cases(hook, report)
     broker_profile_cases(hook, report)
 

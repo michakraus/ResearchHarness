@@ -956,7 +956,7 @@
 
 ### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
 
-- location: `hooks/probe.py:4864`
+- location: `hooks/probe.py:4958`
 - evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
   reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
   calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
@@ -1090,7 +1090,7 @@
 
 ### K172 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte.
 
-- location: `hooks/worktree.py:784`
+- location: `hooks/worktree.py:788`
 - evidence: `remove` calls `Path(where).resolve()` on the payload's `worktree_path`, which raises
   `ValueError: lstat: embedded null character in path`, and `handle` does not catch it:
   `printf '%s' '{"hook_event_name":"WorktreeRemove","worktree_path":"/a\u0000b"}' | python3.14
@@ -1102,17 +1102,17 @@
 ### K174 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
 
 - location: `hooks/probe.py:823`
-- evidence: `hooks/probe.py:823-839` defines `unix_bind` and `bind_verdict`, and `:3032-3043`
+- evidence: `hooks/probe.py:823-839` defines `unix_bind` and `bind_verdict`, and `:3123-3134`
   repeats the body of `bind_verdict_cases`, the same code as `lib/harness/sandbox.py:1982-2016`,
   about 30 lines. `hooks/probe.py` already puts `REPO/lib` on `sys.path` and imports `harness` in
-  other groups (`from harness import install_cases`, `:5270`), so it can import them. Each copy
+  other groups (`from harness import install_cases`, `:5364`), so it can import them. Each copy
   has its own mutants: the three mutants of the three-way decision run twice.
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
 
 ### K175 · The worktree hook's `git fetch` reads a legacy `.git/remotes/<name>` or `.git/branches/<name>` file, whose URL the config check does not see.
 
-- location: `hooks/worktree.py:494`
+- location: `hooks/worktree.py:498`
 - evidence: `checked_config` reads only `.git/config`, and `remote_url` tests only the URLs there.
   A repository whose config has no `remote.origin` and whose `.git/remotes/origin` holds
   `URL: ext::sh -c touch% <marker>` passes the check, and git 2.54.0 reads that file for the
