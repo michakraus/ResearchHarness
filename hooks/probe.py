@@ -2023,8 +2023,8 @@ def run_git_timeout_cases(hook: types.ModuleType, report: Callable[[object, str]
             and grace == 5
             and waits == [hook.LOCAL, *[grace] * len(want)],
             f"run_git {label}, whose git times out: started in a session of its own, {want} to its "
-            f"process group, GRACE (5) seconds after each, and the git command's TimeoutExpired: {outcome!r}, "
-            f"starts {starts}, signals {signals}, waits {waits}",
+            f"process group, GRACE (5) seconds after each, and the git command's TimeoutExpired: "
+            f"{outcome!r}, starts {starts}, signals {signals}, waits {waits}",
         )
     for given, program, error in [
         (profile, WT_SRT, FileNotFoundError(errno.ENOENT, "No such file or directory", WT_SRT)),
@@ -2048,44 +2048,61 @@ def run_git_timeout_cases(hook: types.ModuleType, report: Callable[[object, str]
         )
 
 
+# Where a case moves the stub srt WT_SRT aside, so that it cannot start.
+WT_SRT_GONE = WT_SRT + "-gone"
+
+
+def srt_away() -> None:
+    """Move the stub srt aside to WT_SRT_GONE."""
+    pathlib.Path(WT_SRT).rename(WT_SRT_GONE)
+
+
+def srt_back() -> None:
+    """Move the stub srt back from WT_SRT_GONE, where a case moved it there."""
+    aside, srt = pathlib.Path(WT_SRT_GONE), pathlib.Path(WT_SRT)
+    if aside.exists(follow_symlinks=False) and not srt.exists(follow_symlinks=False):
+        aside.rename(srt)
+
+
+def hooked(text: str) -> list[str]:
+    """The lines of `text` that the worktree hook writes, `worktree hook: …`."""
+    return [line for line in text.splitlines() if line.startswith("worktree hook: ")]
+
+
+def unstage(path: pathlib.Path) -> None:
+    """Move the worktree `path` back from the staging directory WT_STAGE, where a case left it
+    there, and repair it, so that the later cases find the staging directory empty."""
+    staged = pathlib.Path(WT_STAGE, path.name)
+    if staged.is_dir() and not path.exists(follow_symlinks=False):
+        staged.rename(path)
+    if path.is_dir():
+        fixture_git("worktree", "repair", str(path))
+
+
 def boxed_failure_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
-    """A boxed remove in this process through `main` whose stub srt is gone after the rename into the
-    staging directory and back before the rename back: exit 1 with one `worktree hook:` line that
-    names srt, and the worktree back at its path; a boxed remove whose `git worktree remove` refuses
-    and whose repair after the rename back has no srt: the refusal of the remove, and one stderr
-    line on the repair; a boxed create that fails while the srt of its prune cannot start: `undo`
-    raises nothing and writes one line that names the prune."""
+    """The failures of a boxed create and remove in this process whose stub srt cannot start at
+    one step: `boxed_gone_case`, `boxed_norepair_case` and `boxed_prune_case`."""
+    boxed_gone_case(hook, report)
+    boxed_norepair_case(hook, report)
+    boxed_prune_case(hook, report)
+
+
+def boxed_gone_case(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """A boxed remove through `main` whose stub srt is gone after the rename into the staging
+    directory and back before the rename back: exit 1 with one `worktree hook:` line that names
+    srt, and the worktree back at its path, registered."""
     profile = pathlib.Path(WT_PROFILE)
-    srt = pathlib.Path(WT_SRT)
-    aside = srt.with_name("srt-gone")
     stage = pathlib.Path(WT_STAGE)
-    real_move, real_discard = hook.move, hook.discard
-
-    def restore() -> None:
-        if aside.exists(follow_symlinks=False) and not srt.exists(follow_symlinks=False):
-            aside.rename(srt)
-
-    def hooked(text: str) -> list[str]:
-        return [line for line in text.splitlines() if line.startswith("worktree hook: ")]
-
-    def unstage(path: pathlib.Path) -> None:
-        """Move the worktree `path` back from the staging directory, where a case left it there,
-        and repair it, so that the later cases find the staging directory empty."""
-        staged = stage / path.name
-        if staged.is_dir() and not path.exists(follow_symlinks=False):
-            staged.rename(path)
-        if path.is_dir():
-            fixture_git("worktree", "repair", str(path))
-
+    real_move = hook.move
     gone = pathlib.Path(WT_ROOT, "Repo-gone")
     inprocess(hook, lambda: hook.create(create("gone"), profile=profile))
 
     def vanish(source: pathlib.Path, target: pathlib.Path) -> None:
         real_move(source, target)
         if target.parent == stage:
-            srt.rename(aside)
+            srt_away()
         else:
-            restore()
+            srt_back()
 
     err = io.StringIO()
     try:
@@ -2097,7 +2114,7 @@ def boxed_failure_cases(hook: types.ModuleType, report: Callable[[object, str], 
             contextlib.redirect_stderr(err),
         )
     finally:
-        restore()
+        srt_back()
     lines = hooked(err.getvalue())
     report(
         outcome == "done: 1"
@@ -2114,6 +2131,14 @@ def boxed_failure_cases(hook: types.ModuleType, report: Callable[[object, str], 
     unstage(gone)
     inprocess(hook, lambda: hook.remove(remove("gone"), profile=profile))
 
+
+def boxed_norepair_case(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """A boxed remove whose `git worktree remove` refuses, a worktree with a change, and whose stub
+    srt is gone before the repair after the rename back: the refusal of the remove is raised, and
+    one stderr line is on the repair."""
+    profile = pathlib.Path(WT_PROFILE)
+    stage = pathlib.Path(WT_STAGE)
+    real_move = hook.move
     kept = pathlib.Path(WT_ROOT, "Repo-norepair")
     inprocess(hook, lambda: hook.create(create("norepair"), profile=profile))
     if kept.is_dir():
@@ -2122,7 +2147,7 @@ def boxed_failure_cases(hook: types.ModuleType, report: Callable[[object, str], 
     def back_gone(source: pathlib.Path, target: pathlib.Path) -> None:
         real_move(source, target)
         if source.parent == stage:
-            srt.rename(aside)
+            srt_away()
 
     err = io.StringIO()
     try:
@@ -2133,7 +2158,7 @@ def boxed_failure_cases(hook: types.ModuleType, report: Callable[[object, str], 
             contextlib.redirect_stderr(err),
         )
     finally:
-        restore()
+        srt_back()
     lines = hooked(err.getvalue())
     report(
         outcome.startswith("refused: ")
@@ -2150,21 +2175,27 @@ def boxed_failure_cases(hook: types.ModuleType, report: Callable[[object, str], 
         (kept / "change.txt").unlink(missing_ok=True)
         inprocess(hook, lambda: hook.remove(remove("norepair"), profile=profile))
 
+
+def boxed_prune_case(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """A boxed create whose stub srt fails its repair and is gone before the prune of `undo`: the
+    refusal of the repair, `undo` raises nothing, and one stderr line names the prune."""
+    real_discard = hook.discard
+
     def discard_then_gone(path: pathlib.Path) -> None:
         real_discard(path)
-        srt.rename(aside)
+        srt_away()
 
     err = io.StringIO()
     try:
         outcome, _ = inprocess(
             hook,
-            lambda: hook.create(create("agent-0c"), profile=profile),
+            lambda: hook.create(create("agent-0c"), profile=pathlib.Path(WT_PROFILE)),
             mock.patch.dict(os.environ, {"STUB_SRT_MODE": "fail-repair"}),
             mock.patch.object(hook, "discard", discard_then_gone),
             contextlib.redirect_stderr(err),
         )
     finally:
-        restore()
+        srt_back()
     prunes = [line for line in err.getvalue().splitlines() if "worktree prune" in line]
     report(
         outcome.startswith("refused: ")
@@ -2381,69 +2412,88 @@ def broker_profile_cases(hook: types.ModuleType, report: Callable[[object, str],
     binds no socket (FakeListener) and a parent that ends after one look, the profile is gone; and
     where the profile becomes a directory before a bind that the probe refuses, one line names the
     profile and the bind's refusal stays the error."""
-    parent = os.getpid()
-    stage = pathlib.Path(WT_STAGES, str(parent))
-    own = stage.parent / f"{stage.name}.json"
-    socket_path = pathlib.Path(WT_SOCKETS, "profile.sock")
-    args = ["--serve", str(socket_path), "--parent", str(parent), "--settings", WT_SETTINGS]
-    handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGHUP)}
+    own = pathlib.Path(WT_STAGES, f"{os.getpid()}.json")
     own.mkdir(parents=True)
-    err = io.StringIO()
-    with (
-        mock.patch.object(hook, "STAGES", pathlib.Path(WT_STAGES), create=True),
-        mock.patch.object(os, "getppid", return_value=parent),
-        contextlib.redirect_stderr(err),
-    ):
-        try:
-            code: object = hook.main(args)
-        except (OSError, hook.Refusal, hook.HarnessError) as raised:
-            code = repr(raised)
-    lines = err.getvalue().splitlines()
+    code, said = serve_inprocess(hook, None, None)
+    lines = said.splitlines()
     report(
         code == 1
         and len(lines) == 1
         and lines[0].startswith("worktree hook: ")
         and str(own) in lines[0]
-        and "Traceback" not in err.getvalue()
+        and "Traceback" not in said
         and own.is_dir(),
         f"a broker with a directory at its profile's path exits 1 with one line that names the profile, "
-        f"and the directory stands: {code}, {err.getvalue()!r}, directory {own.is_dir()}",
+        f"and the directory stands: {code}, {said!r}, directory {own.is_dir()}",
     )
-    own.rmdir()
-    with contextlib.suppress(OSError):
-        stage.rmdir()
+    clear_broker_stage()
+    broker_profile_end_cases(hook, report)
 
-    looks = iter([parent, parent])
+
+def serve_inprocess(
+    hook: types.ModuleType, listener: Callable[[int, int], object] | None, looks: list[int] | None
+) -> tuple[object, str]:
+    """`main` with `--serve` in this process, with STAGES that of the fixture, the probe's process
+    ID as `--parent`, the hook's `socket.socket` replaced by `listener` where given, and
+    `os.getppid` giving `looks` and then 1, or the parent where `looks` is None: the exit status, or
+    the exception that left `main`, and the stderr. The signal handlers that `serve` installs are
+    restored."""
+    parent = os.getpid()
+    socket_path = pathlib.Path(WT_SOCKETS, "profile.sock")
+    args = ["--serve", str(socket_path), "--parent", str(parent), "--settings", WT_SETTINGS]
+    handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGHUP)}
+    given = iter(looks or [])
+    err = io.StringIO()
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.object(hook, "STAGES", pathlib.Path(WT_STAGES), create=True))
+        stack.enter_context(
+            mock.patch.object(os, "getppid", side_effect=lambda: next(given, 1) if looks else parent)
+        )
+        if listener is not None:
+            fake = types.SimpleNamespace(
+                socket=listener, AF_UNIX=socket.AF_UNIX, SOCK_STREAM=socket.SOCK_STREAM
+            )
+            stack.enter_context(mock.patch.object(hook, "socket", fake))
+        stack.enter_context(contextlib.redirect_stderr(err))
+        try:
+            code: object = hook.main(args)
+        except (OSError, hook.Refusal, hook.HarnessError) as raised:
+            code = repr(raised)
+        finally:
+            for signum, handler in handlers.items():
+                signal.signal(signum, handler)
+    return code, err.getvalue()
+
+
+def clear_broker_stage() -> None:
+    """Remove the staging directory and the profile of the probe's process ID that a case left, where
+    they are empty directories."""
+    for path in (pathlib.Path(WT_STAGES, f"{os.getpid()}.json"), pathlib.Path(WT_STAGES, str(os.getpid()))):
+        with contextlib.suppress(OSError):
+            path.rmdir()
+
+
+def broker_profile_end_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """The ends of `broker_profile_cases`: a normal end after one look at the parent, and a profile
+    that becomes a directory before a bind that the probe refuses."""
+    parent = os.getpid()
+    stage = pathlib.Path(WT_STAGES, str(parent))
+    own = stage.parent / f"{stage.name}.json"
     written: list[object] = []
 
     def listener(family: int, kind: int) -> FakeListener:
         del family, kind
         return FakeListener(lambda: written.append(profile_state(own)))
 
-    fake = types.SimpleNamespace(socket=listener, AF_UNIX=socket.AF_UNIX, SOCK_STREAM=socket.SOCK_STREAM)
-    err = io.StringIO()
-    try:
-        with (
-            mock.patch.object(hook, "STAGES", pathlib.Path(WT_STAGES), create=True),
-            mock.patch.object(hook, "socket", fake),
-            mock.patch.object(os, "getppid", side_effect=lambda: next(looks, 1)),
-            contextlib.redirect_stderr(err),
-        ):
-            try:
-                code = hook.main(args)
-            except (OSError, hook.Refusal, hook.HarnessError) as raised:
-                code = repr(raised)
-    finally:
-        for signum, handler in handlers.items():
-            signal.signal(signum, handler)
+    code, said = serve_inprocess(hook, listener, [parent, parent])
     report(
         code == 0
         and written == [(0o600, profiled(stage))]
         and not own.exists(follow_symlinks=False)
         and not stage.exists(follow_symlinks=False)
-        and not socket_path.exists(follow_symlinks=False),
+        and not pathlib.Path(WT_SOCKETS, "profile.sock").exists(follow_symlinks=False),
         f"a broker that ends after one look at its parent removes the profile that it wrote, its staging "
-        f"directory and its socket: {code}, {written}, {err.getvalue()!r}",
+        f"directory and its socket: {code}, {written}, {said!r}",
     )
 
     def swap() -> None:
@@ -2454,22 +2504,8 @@ def broker_profile_cases(hook: types.ModuleType, report: Callable[[object, str],
         del family, kind
         return Listener(swap)
 
-    err = io.StringIO()
-    try:
-        with (
-            mock.patch.object(hook, "STAGES", pathlib.Path(WT_STAGES), create=True),
-            mock.patch.object(hook, "socket", types.SimpleNamespace(**{**vars(fake), "socket": swapped})),
-            mock.patch.object(os, "getppid", return_value=parent),
-            contextlib.redirect_stderr(err),
-        ):
-            try:
-                code = hook.main(args)
-            except (OSError, hook.Refusal, hook.HarnessError) as raised:
-                code = repr(raised)
-    finally:
-        for signum, handler in handlers.items():
-            signal.signal(signum, handler)
-    lines = err.getvalue().splitlines()
+    code, said = serve_inprocess(hook, swapped, None)
+    lines = said.splitlines()
     report(
         code == 1
         and len(lines) == 2
@@ -2478,12 +2514,9 @@ def broker_profile_cases(hook: types.ModuleType, report: Callable[[object, str],
         and "cannot bind" in lines[1]
         and own.is_dir(),
         f"a broker whose profile becomes a directory and whose bind is refused exits 1 with one line on "
-        f"the profile and the bind's refusal last: {code}, {err.getvalue()!r}",
+        f"the profile and the bind's refusal last: {code}, {said!r}",
     )
-    with contextlib.suppress(OSError):
-        own.rmdir()
-    with contextlib.suppress(OSError):
-        stage.rmdir()
+    clear_broker_stage()
 
 
 class Listener:

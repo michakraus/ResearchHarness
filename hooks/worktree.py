@@ -77,9 +77,9 @@ removes it there, and renames it back where git refuses or cannot start (`staged
 `--boxed` git runs as `git …`, outside srt.
 
 Every git, and the srt of a boxed git, starts in a session of its own (`run_git`). One that
-outlives its timeout is stopped with its process group: SIGTERM, then SIGKILL where it has not
-ended after GRACE seconds, so that no program that it started, such as the git inside srt or the
-ssh of a fetch, outlives the hook.
+outlives its timeout is stopped with its process group, which holds the programs that it started,
+such as the git inside srt or the ssh of a fetch: SIGTERM, then SIGKILL where it has not ended
+after GRACE seconds.
 
 A worktree made with `--relative-paths`, or in a repository or git config with
 `worktree.useRelativePaths=true`, is refused, even one this hook made itself: `main_checkout`

@@ -651,11 +651,11 @@ file into it, `.githooks/` included. That is the box's own power over a worktree
 that it made. Do not run `git` from a plain terminal in an agent's worktree. Without `agentbox`,
 in the Code tab, in `claudex` and in a plain session, the hook's `git` runs outside `srt`.
 
-Every `git` of the hook, and the `srt` of a boxed `git`, starts in a session of its own. One
-that runs longer than its timeout, 60 seconds or 300 for a fetch, is stopped with its process
-group: `SIGTERM`, so that `git` removes its lock files, then `SIGKILL` after 5 seconds where it
-has not ended. So no program that it started, such as the `git` inside `srt` or the `ssh` of a
-fetch, outlives the hook. A program that cannot start is refused with one line that names it.
+Every `git` of the hook, and the `srt` of a boxed `git`, starts in a session of its own. The
+hook stops one that runs longer than its timeout, 60 seconds or 300 for a fetch, with its whole
+process group, which holds the programs that it started, such as the `git` inside `srt` or the
+`ssh` of a fetch: `SIGTERM`, so that `git` removes its lock files, then `SIGKILL` after 5 seconds
+where it has not ended. A program that cannot start is refused with one line that names it.
 
 It fails closed: on each error it exits with status 1 and gives the reason, and it creates no
 worktree. Under `AGENTBOX`, a missing or empty `AGENTBOX_BROKER`, a broker that does not answer
