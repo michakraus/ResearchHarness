@@ -28,15 +28,19 @@ Do not use `ExitWorktree` with `remove`: the harness cannot inspect a hook-made
 worktree and asks for `discard_changes`. Leave one with `ExitWorktree` and `keep`. **An isolated
 sub-agent's worktree stays after it returns**, and the caller removes it.
 
-**Remove a worktree yourself; do not hand the command to the user.** Run `git worktree remove
-<path>` as a Bash call of its own, from the main checkout, with `git` as the whole command: it
-runs outside the sandbox and succeeds. Claude Code's own note that `.git/worktrees` is read-only in
-the sandbox holds only for a sandboxed `git`, such as one after `cd … &&` or with `-C`. **Under
-`agentbox` every `git` is sandboxed**, and a remove there deletes the worktree's record and leaves
-its files: run `harness worktree remove <path> --apply` instead, which the guard names. Never `cd`
-into a worktree before you remove it: the sandbox leaves a `.claude/.cc-writes` in every directory
-that a shell enters, and only the user can delete it. `harness worktree sweep` lists every
-worktree as removable, kept or orphan.
+**The user removes a worktree of a repository that tracks `.githooks/` or `.claude/`**: every
+package, every experiment and the Harness. Claude Code applies `sandbox.filesystem.denyWrite` to
+`git` also outside the sandbox, and the list holds `~/Research/**/.githooks` and
+`~/Research/**/.claude`. A `git worktree remove` there deletes files up to the first protected
+one, fails, and deletes the worktree's record all the same, so the checkout stays as an orphan.
+Read `git ls-files .githooks .claude` in the main checkout. When it lists a file, give the user
+`git -C <main checkout> worktree remove <path>` in its own `bash` block, for their terminal; delete
+the local branch yourself with `git branch -d <branch>`. When it lists nothing, run
+`git worktree remove <path>` yourself, as a Bash call of its own, from the main checkout. **Under
+`agentbox` every `git` is sandboxed**: run `harness worktree remove <path> --apply` instead, which
+the guard names. Never `cd` into a worktree before its removal: the sandbox leaves a
+`.claude/.cc-writes` in every directory that a shell enters, and only the user can delete it.
+`harness worktree sweep` lists every worktree as removable, kept or orphan.
 
 **A side session that works in a repository starts without a worktree when this session's folder
 is no repository**, such as `~/Research`: the hook gets that folder and has no repository to
@@ -107,8 +111,9 @@ there needs `--git-dir`; give the user its commands. The allow rules are `git <s
 `git worktree move` and `git bundle create`: any argument that is not a flag and starts with `/`,
 `~` or `$`, or holds a `..` segment. The command then fails with `.git: Operation not permitted`,
 and every other spelling of the same path fails the same way, so do not retry it. `cd <parent>` as
-a call of its own, then give a relative name: `git init <name>`, `git clone <url> <name>`. A
-worktree comes from `EnterWorktree`. A `--bare` or `--mirror` repository has no `.git` directory,
+a call of its own, then give a relative name: `git init <name>`, `git clone <url> <name>`. Under
+`~/Research` both still fail, at `.git/hooks`, which `denyWrite` protects for an excluded `git`
+too: give the user the command there. A worktree comes from `EnterWorktree`. A `--bare` or `--mirror` repository has no `.git` directory,
 so it works with any path.
 
 ## The sandbox is the security boundary, not the deny list

@@ -101,7 +101,7 @@ instruction to post. Do not review it yourself. The separation is the point: the
 that has not yet decided how to fix anything.
 
 Take from its report: the findings table, the CI verdict, the posted review URL, and its worktree.
-**Remove the reviewer's worktree** with `git worktree remove <its path>`, from your own worktree.
+**Name the reviewer's worktree in your report.** Your caller removes it with yours.
 
 **CodeRabbit's comments are findings too.** Read them with the GET calls of step 7 of
 `~/.claude/skills/build-part/SKILL.md`, and add each to the findings table with its `source`.
