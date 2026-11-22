@@ -1245,6 +1245,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   wrote zeros, or another series in place of one, survived. Recompute each written series at a few
   steps from the stored state, by an independent route, and compare values; pick a case where the
   series is not zero (I1 round 1, *Implement multi-modal symplectic autoencoders*)
+- **an in-place function whose tests read only its return value:** `f!(out, args...)` writes `out`
+  and returns it, and every test compared the returned array with the expected one. Mutants that
+  return a correct fresh array and leave `out` wrong, or never write it, survived. Assert
+  `f!(out, args...) === out` and compare `out` itself, with `out` prefilled with values the correct
+  result does not hold (L3 round 1, *a dynamical low-rank plan*)
 - **a constant factor of a formula tested only where it equals 1:** the one test of
   $|E_1| = k\,(2/N_x)\,|\cdot|$ used $k = 1$, and every other check was a log slope, which a constant
   factor does not change, so dropping $k$ survived. Give the fixture a value of each factor other
