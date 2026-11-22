@@ -4,7 +4,7 @@
     harness worktree remove <path> [--apply]
     harness worktree sweep [--apply]
 
-OpenCode and oh-my-pi have no `WorktreeCreate` hook, so an agent there runs this subcommand in
+OpenCode and oh-my-pi have no `WorktreeCreate` event, so an agent there runs this subcommand in
 the repository instead. It runs the hook that `harness install` puts at
 `~/.claude/hooks/worktree.py`, below the home that `HOME` gives, as the hook itself reads it, with
 the payload that Claude Code sends it on stdin: `{"hook_event_name": "WorktreeCreate", "cwd": …,
@@ -17,13 +17,15 @@ interpreter, in the working directory and in a session of its own, for at most T
 it prints the hook's stdout, which is the worktree's path for `add`, passes the hook's stderr on,
 and exits 0. A missing hook, a hook that exits other than 0 or runs longer than TIMEOUT seconds,
 a NAME or a PATH that is empty or holds a line break, and a working directory that no longer
-exists are a HarnessError, so `harness` exits 2. A SIGINT, SIGTERM or SIGHUP during the hook's run
-goes on to the hook's process group, and `harness` then exits 128 + the signal's number.
+exists are a HarnessError, so `harness` exits 2. A SIGINT, SIGTERM or SIGHUP during the hook's run,
+the stop after a timeout included, goes on to the hook's process group, and `harness` then exits
+128 + the signal's number, not 2.
 
 `sweep` lists each directory directly below `~/Research/.worktrees`: `removable` where it is clean,
 its HEAD is in `origin/HEAD` and its record shows no use for FRESH seconds; `kept` otherwise; and
 `orphan` where git holds no record of it, which the sweep never touches. With `--apply` it sends a
-`WorktreeRemove` request for each removable one and reports every failure. The hook refuses a
+`WorktreeRemove` request for each removable one and reports every failure; a signal during a
+removal ends the sweep with 128 + its number before the next removal. The hook refuses a
 remove that it cannot finish, so run it under `agentbox` or from a terminal, not from a sandboxed
 call: there the hook's own git runs in the sandbox.
 """
@@ -98,18 +100,32 @@ def stop(proc: subprocess.Popen[str]) -> tuple[str, str]:
     return "", ""
 
 
-def run_hook(script: pathlib.Path, payload: dict[str, str]) -> tuple[int, str, str]:
+@dataclasses.dataclass(frozen=True)
+class Ran:
+    """The hook's run: its exit status, None where it did not end; its stdout and stderr; and the
+    first SIGINT, SIGTERM or SIGHUP that arrived while it ran, or None."""
+
+    status: int | None
+    out: str
+    err: str
+    signum: int | None
+
+
+def run_hook(script: pathlib.Path, payload: dict[str, str]) -> Ran:
     """Run the hook with `payload` on its stdin, in the working directory and in a session of its
-    own: (its exit status, its stdout, its stderr), decoded with replacement characters. A
-    SIGINT, SIGTERM or SIGHUP meanwhile goes on to the hook's process group, and then ends this
-    process with status 128 + its number; a hook that runs longer than TIMEOUT seconds is stopped
-    and is a HarnessError."""
+    own; its output is decoded with replacement characters. A SIGINT, SIGTERM or SIGHUP meanwhile
+    goes on to the hook's process group: one that arrives before the hook's process starts goes
+    on right after the start. A hook that runs longer than TIMEOUT seconds is stopped, and is a
+    HarnessError where no signal arrived."""
     cwd = here()
     received: list[int] = []
+    missed: list[int] = []
     procs: list[subprocess.Popen[str]] = []
 
     def forward(signum: int, _frame: object) -> None:
         received.append(signum)
+        if not procs:
+            missed.append(signum)
         for proc in procs:
             signal_group(proc, signum)
 
@@ -127,39 +143,45 @@ def run_hook(script: pathlib.Path, payload: dict[str, str]) -> tuple[int, str, s
             start_new_session=True,
         )
         procs.append(proc)
+        # A signal before the line above went to no process group; one after it goes in `forward`.
+        if missed:
+            signal_group(proc, missed[0])
         try:
             out, err = proc.communicate(json.dumps(payload), timeout=TIMEOUT)
+            timed_out = False
         except subprocess.TimeoutExpired:
             out, err = stop(proc)
-            sys.stdout.write(out)
-            sys.stderr.write(err)
-            raise HarnessError(f"{script} takes more than {TIMEOUT} s and is stopped") from None
+            timed_out = True
     finally:
         for s, handler in previous.items():
             signal.signal(s, handler)
-    if received:
+    signum = received[0] if received else None
+    if timed_out and signum is None:
         sys.stdout.write(out)
         sys.stderr.write(err)
-        raise SystemExit(128 + received[0])
-    return proc.returncode, out, err
+        raise HarnessError(f"{script} takes more than {TIMEOUT} s and is stopped")
+    return Ran(proc.returncode, out, err, signum)
 
 
 def request(payload: dict[str, str], plan: str, *, apply: bool) -> int:
-    """With `apply`, send `payload` to the hook on its stdin and return 0; without it, print
-    `plan`, the request in words, and return 1. The hook's stderr goes to stderr; its last line
-    is the reason of the HarnessError when the hook exits other than 0."""
+    """With `apply`, send `payload` to the hook on its stdin and return 0, or 128 + n where the
+    signal n arrived while the hook ran; without it, print `plan`, the request in words, and
+    return 1. The hook's stderr goes to stderr; its last line is the reason of the HarnessError
+    when the hook exits other than 0 and no signal arrived."""
     script = hook()
     if not apply:
         print(f"would ask {script} {plan}")
         return DRY
     if not script.is_file():
         raise HarnessError(f"{script} does not exist; `harness install --apply` installs it")
-    status, out, err = run_hook(script, payload)
-    sys.stdout.write(out)
-    sys.stderr.write(err)
-    if status != 0:
-        lines = err.strip().splitlines()
-        raise HarnessError(lines[-1] if lines else f"{script} exited {status}")
+    ran = run_hook(script, payload)
+    sys.stdout.write(ran.out)
+    sys.stderr.write(ran.err)
+    if ran.signum is not None:
+        return 128 + ran.signum
+    if ran.status != 0:
+        lines = ran.err.strip().splitlines()
+        raise HarnessError(lines[-1] if lines else f"{script} exited {ran.status}")
     return 0
 
 
@@ -275,9 +297,12 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     for path in removable:
         payload = {"hook_event_name": "WorktreeRemove", "worktree_path": str(path)}
         try:
-            request(payload, "", apply=True)
+            status = request(payload, "", apply=True)
         except HarnessError as err:
             failed.append(f"{path.name}: {err}")
+            continue
+        if status != 0:  # 128 + n: a signal ends the sweep before the next removal
+            return status
     if failed:
         raise HarnessError(f"{len(failed)} of {len(removable)} removals failed: " + "; ".join(failed))
     return 0
@@ -353,6 +378,14 @@ sys.stderr.flush()
 os.kill(os.getppid(), {signum})
 time.sleep(20)
 print("done")
+"""
+# A stub that appends its stdin as one line to {log}, sends its caller the signal {signum}, then
+# sleeps.
+ASKED = """import os, sys, time
+with open({log!r}, "a") as f:
+    f.write(sys.stdin.read() + "\\n")
+os.kill(os.getppid(), {signum})
+time.sleep(20)
 """
 # Runs argv[2:] in the directory argv[1], which it removes first.
 GONE = "import os, sys; os.chdir(sys.argv[1]); os.rmdir(sys.argv[1]); os.execv(sys.argv[2], sys.argv[2:])"
@@ -612,6 +645,112 @@ def timeout_cases(check: Callable[[object, str], None], f: Fixture) -> None:
         )
 
 
+def window_cases(check: Callable[[object, str], None], f: Fixture) -> None:
+    """A signal that arrives before the hook's process joins the list of processes, or while a
+    timeout stops the hook, still reaches the hook's process group and makes `request` return
+    128 + its number; a timeout without a signal stays a HarnessError. Each signal goes through
+    the installed handler in this process, and `signal_group` is a recorder, so that no signal
+    reaches the test runner."""
+    module = sys.modules[__name__]
+    payload: dict[str, str] = {"hook_event_name": "WorktreeRemove", "worktree_path": "/x"}
+    signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+    real = subprocess.Popen
+    sent: list[tuple[object, int]] = []
+    started: list[object] = []
+
+    def record(proc: object, signum: int) -> None:
+        sent.append((proc, signum))
+
+    def deliver(signum: int) -> None:
+        handler = signal.getsignal(signum)
+        if callable(handler):
+            handler(signum, None)
+
+    def early(command: list[str], **_kwargs: object) -> subprocess.Popen[str]:
+        deliver(signal.SIGTERM)
+        proc = real(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=f.work,
+            text=True,
+            start_new_session=True,
+        )
+        started.append(proc)
+        return proc
+
+    class Late:
+        def __init__(self, command: list[str], **_kwargs: object) -> None:
+            self.command, self.pid, self.returncode = command, 0, None
+            started.append(self)
+
+        def communicate(self, _payload: str | None = None, timeout: float | None = None) -> tuple[str, str]:
+            raise subprocess.TimeoutExpired(self.command, timeout or 0)
+
+    def stopping(*signums: int) -> Callable[[object], tuple[str, str]]:
+        def stop_(_proc: object) -> tuple[str, str]:
+            for signum in signums:
+                deliver(signum)
+            return "", "worktree hook: stopped\n"
+
+        return stop_
+
+    def run(popen: object, stopper: object, what: str) -> tuple[int | None, str | None, str]:
+        """`request` with `popen` and `stopper` in place of Popen and `stop`: its return value or
+        None, the HarnessError's message or None, and the stderr; checks the handlers after it."""
+        sent.clear()
+        started.clear()
+        before = [signal.getsignal(s) for s in signals]
+        err = io.StringIO()
+        status = message = None
+        with (
+            mock.patch.dict(os.environ, {"HOME": str(f.home)}),
+            mock.patch.object(subprocess, "Popen", popen),
+            mock.patch.object(module, "signal_group", record),
+            mock.patch.object(module, "stop", stopper),
+            contextlib.chdir(f.work),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(err),
+        ):
+            try:
+                status = request(payload, "", apply=True)
+            except HarnessError as e:
+                message = str(e)
+        after = [signal.getsignal(s) for s in signals]
+        check(after == before, f"after {what}, the three signals have their earlier handlers: {after}")
+        return status, message, err.getvalue()
+
+    f.install()
+    what = "a SIGTERM before the hook's process joins the list"
+    status, message, _ = run(early, stop, what)
+    check(
+        status == 128 + signal.SIGTERM and message is None and sent == [(started[0], signal.SIGTERM)],
+        f"{what} goes on to the hook's process group after the join, and request returns 143: "
+        f"{status} {message!r} {sent} {started}",
+    )
+    what = "a SIGTERM and then a SIGHUP while a timeout stops the hook"
+    status, message, err = run(Late, stopping(signal.SIGTERM, signal.SIGHUP), what)
+    check(
+        status == 128 + signal.SIGTERM
+        and message is None
+        and sent == [(started[0], signal.SIGTERM), (started[0], signal.SIGHUP)]
+        and err == "worktree hook: stopped\n",
+        f"{what} go on to the hook's process group, the hook's stderr is passed on, and request "
+        f"returns 143 for the first and raises no HarnessError: {status} {message!r} {sent} {err!r}",
+    )
+    what = "a timeout without a signal"
+    status, message, err = run(Late, stopping(), what)
+    check(
+        status is None
+        and message == f"{f.stub} takes more than {TIMEOUT} s and is stopped"
+        and not sent
+        and err == "worktree hook: stopped\n",
+        f"{what} is the HarnessError of the timeout, and the hook's stderr is passed on: "
+        f"{status} {message!r} {sent} {err!r}",
+    )
+
+
 def fixture_git(directory: pathlib.Path, *arguments: str) -> str:
     """git in `directory` with a fixed author and no configuration of the caller; its stdout."""
     env = {
@@ -708,6 +847,26 @@ def sweep_cases(check: Callable[[object, str], None], f: Fixture) -> None:
         ),
         f"a hook that fails makes sweep --apply exit 2 and name the worktree: {p.returncode} {p.stderr!r}",
     )
+    repo = f.home / "Research" / "Repo"
+    second = trees["old"].with_name("Repo-old2")
+    fixture_git(repo, "worktree", "add", "--quiet", "--detach", str(second), "origin/main")
+    record = repo / ".git" / "worktrees" / second.name
+    old = time.time() - 2 * FRESH
+    for path in (record, record / "HEAD", record / "index", record / "logs" / "HEAD"):
+        if path.exists():
+            os.utime(path, (old, old))
+    f.write(ASKED.format(log=str(f.log), signum=int(signal.SIGTERM)))
+    p = f.run("sweep", "--apply")
+    asked = f.log.read_text().splitlines() if f.log.exists() else []
+    check(
+        p.returncode == 128 + signal.SIGTERM
+        and "would ask" not in p.stdout
+        and [jsonio.loads(line, where="the payload") for line in asked]
+        == [{"hook_event_name": "WorktreeRemove", "worktree_path": str(trees["old"])}]
+        and f"removable  {second}  " in p.stdout,
+        "a SIGTERM during the first of two removals ends sweep --apply with 143 and asks the hook "
+        f"once: {p.returncode} {asked} {p.stdout!r} {p.stderr!r}",
+    )
 
 
 def selftest() -> tuple[int, int]:
@@ -726,6 +885,7 @@ def selftest() -> tuple[int, int]:
         argument_cases(check, Fixture(tmp / "argument"))
         signal_cases(check, Fixture(tmp / "signal"))
         timeout_cases(check, Fixture(tmp / "timeout"))
+        window_cases(check, Fixture(tmp / "window"))
         sweep_cases(check, Fixture(tmp / "sweep"))
     for delta in DELTAS:
         text = delta.read_text()
