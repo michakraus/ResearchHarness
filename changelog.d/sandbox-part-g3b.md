@@ -6,8 +6,10 @@
   `harness worktree remove <path> --apply` sends `WorktreeRemove`. Under `agentbox` the hook asks
   its broker outside the sandbox, as for Claude Code. Without `--apply` the subcommand prints the
   request and exits 1; a missing hook exits 2 and names `harness install --apply`, and a hook that
-  fails exits 2 with its last line of standard error. The
-  section *Worktrees: ask for them* of `OPENCODE-DELTA.md` and `OMP-DELTA.md`, the OpenCode rule
-  of an agent with `isolation: worktree` and the `worktree` section of `UNDER-OMP.md` now send the
-  agent to `harness worktree add`. Antigravity's instructions keep `git worktree add`: its shell
-  tool does not run under `agentbox`.
+  fails exits 2 with its last line of standard error. The hook runs in a process group of its
+  own: a timeout of 480 seconds stops the whole group, and a SIGINT, SIGTERM or SIGHUP of the
+  subcommand goes on to it; a name or a path that is empty or holds a line break exits 2 before
+  the hook runs. The section *Worktrees: ask for them* of `OPENCODE-DELTA.md` and
+  `OMP-DELTA.md`, the OpenCode rule of an agent with `isolation: worktree` and the `worktree`
+  section of `UNDER-OMP.md` now send the agent to `harness worktree add`. Antigravity's
+  instructions keep `git worktree add`: its shell tool does not run under `agentbox`.

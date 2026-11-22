@@ -761,12 +761,16 @@ broker outside the sandbox. `~` is the home that `HOME` gives.
   without `--force`, and keeps its branch.
 
 Without `--apply`, the subcommand prints the request in one line and runs nothing. With
-`--apply`, it runs the hook with the interpreter of `harness`, in the working directory, for at
-most 480 seconds, and passes the hook's standard error on.
+`--apply`, it runs the hook with the interpreter of `harness`, in the working directory and in a
+process group of its own, for at most 480 seconds, and passes the hook's standard error on. A
+hook that runs longer is stopped with the programs that it started: SIGTERM, then SIGKILL 5
+seconds later. A SIGINT, SIGTERM or SIGHUP of the subcommand goes on to the same group.
 
-**Exit status:** 0 after `--apply`; 1 for the dry run; 2 when the hook is not installed, when it
-exits with another status than 0, with the hook's last line of standard error, or when it runs
-longer than 480 seconds.
+**Exit status:** 0 after `--apply`; 1 for the dry run; 2 when `<name>` or `<path>` is empty or
+holds a line break, when the working directory no longer exists, when the hook is not installed,
+when it exits with another status than 0, with the hook's last line of standard error, or when
+it runs longer than 480 seconds; 128 plus the number of a SIGINT, SIGTERM or SIGHUP that stops
+it.
 
 **Where to run it:** in a session of OpenCode or oh-my-pi, from the repository, or in your own
 terminal.
@@ -1604,11 +1608,15 @@ no `selftest`, and the sweep does not run it, because it runs Julia over the tre
 The subcommand `harness worktree add <name>` and `harness worktree remove <path>`, each with
 `--apply`. It runs the installed hook `~/.claude/hooks/worktree.py`, below the home of `HOME`,
 with `sys.executable`, and writes the JSON payload of a `WorktreeCreate` or `WorktreeRemove`
-event to its standard input; it runs no git itself. A missing hook and a hook that exits with
-another status than 0 raise `HarnessError`, the second with the hook's last line of standard
-error. Its cases run `harness worktree` in a fixture home whose hook is a stub that records its
-input, its working directory and its arguments, and they read the two deltas of OpenCode and
-oh-my-pi for the section that sends an agent to the subcommand.
+event to its standard input; it runs no git itself. The hook runs in a session of its own, so
+that a timeout or a forwarded signal reaches the programs that it started, and its output is
+decoded with replacement characters. A missing hook, a hook that exits with another status than
+0 or runs too long, an empty `<name>` or `<path>` or one with a line break, and a working
+directory that no longer exists raise `HarnessError`; a failing hook's reason is its last line
+of standard error. Its cases run `harness worktree` in a fixture home whose hook is a stub that
+records its input, its working directory and its arguments, or that hangs or signals its caller,
+and they read the two deltas of OpenCode and oh-my-pi for the section that sends an agent to the
+subcommand.
 
 ### `changelog.py`
 

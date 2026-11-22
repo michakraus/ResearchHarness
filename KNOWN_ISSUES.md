@@ -1236,3 +1236,26 @@
   returns `[1, 1]`; the label `"b"` is on line 2. No repository writes a pair in prefix form.
 - kind: defect
 - found: 2026-11-21, CodeRabbit on a pull request of the learning package
+
+### K184 · The development page names six subcommands that the contract sweep skips, but the sweep skips `setup`, `update`, `test` and `worktree` too.
+
+- location: `docs/src/development.md:17`
+- evidence: the page says the sweep "runs the dry run of every subcommand except `format`,
+  `ci-protection`, `skill-triggers`, `doctor`, `changelog` and `mutate`". `harness --help` lists
+  `setup`, `update`, `test` and `worktree` as well, and `SUBCOMMANDS` of `lib/harness/sweep.py`
+  holds none of the four, so no sweep case runs the dry run of `harness worktree add`.
+- kind: docs
+- found: 2026-11-22, a critic of the pull request that adds `harness worktree`
+
+### K185 · The worktree hook's name patterns accept a name that ends in a newline.
+
+- location: `hooks/worktree.py:94`
+- evidence: `SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")` and `AGENT =
+  re.compile(r"^agent-[0-9a-f]+$")` are used with `.match` (lines 337 and 376), and Python's `$`
+  also matches before a final newline:
+  `python3 -c "import re;print(bool(re.compile(r'^agent-[0-9a-f]+\$').match('agent-ab\n')))"`
+  prints `True`, and the same holds for `SEGMENT` with `"x\n"`. A payload whose `name` is
+  `"agent-ab\n"` therefore passes both checks; `harness worktree add` refuses such a name before
+  it runs the hook. `fullmatch` or `\Z` closes it.
+- kind: defect
+- found: 2026-11-22, a critic of the pull request that adds `harness worktree`
