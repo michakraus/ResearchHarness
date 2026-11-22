@@ -541,15 +541,16 @@ refused with the route for a side session of Claude Desktop, which sends the ses
 `~/Research/.worktrees/<Repository>-<slug>` on the branch `name`, from `origin/HEAD`, or from
 `origin/main` if `origin/HEAD` is not set. It prints the path on standard output. An existing
 branch is checked out, and an existing worktree of the repository is printed as it is. A name
-`agent-<hex>`, from a sub-agent, gets a detached worktree with no branch. The hook copies the main
-checkout's `Manifest.toml` into the new worktree when the manifest holds every package of the
-worktree's `[deps]` at a version inside its `[compat]`. Otherwise it copies none and says why on
-standard error, because Julia does not check `[compat]` at `using`, and a stale manifest loads
-old dependencies. On `WorktreeRemove` it runs `git worktree remove` without `--force`, so git
-refuses a worktree with changes, and the branch stays. Before that it makes and removes one file in
-each `.githooks` and `.claude` of the worktree, and refuses where it cannot: in a sandbox, git
-would delete the worktree's record and leave the directory. The settings template gives both
-events 480 seconds, more than a fetch (300) and the broker's answer (420) take.
+`agent-<hex>`, from a sub-agent, gets a detached worktree with no branch. A name that begins with
+`-` is refused before any `git` runs, because `git` reads such a name as an option. The hook
+copies the main checkout's `Manifest.toml` into the new worktree when the manifest holds every
+package of the worktree's `[deps]` at a version inside its `[compat]`. Otherwise it copies none
+and says why on standard error, because Julia does not check `[compat]` at `using`, and a stale
+manifest loads old dependencies. On `WorktreeRemove` it runs `git worktree remove` without
+`--force`, so git refuses a worktree with changes, and the branch stays. Before that it makes and
+removes one file in each `.githooks` and `.claude` of the worktree, and refuses where it cannot: in
+a sandbox, git would delete the worktree's record and leave the directory. The settings template
+gives both events 480 seconds, more than a fetch (300) and the broker's answer (420) take.
 
 **The hook finds the repository by reading files, before any `git` runs.** The directory, `cwd`
 or the worktree to remove, must lie below `~/Research`. The first `.git` above it must be a
@@ -637,15 +638,41 @@ copied. `~/Research/.worktrees` must be a directory and no link. The child then 
 staged worktree to its final path without `git`, after it has checked that the staged path is a
 directory and no link and that the final path does not exist. It runs `git worktree repair` on
 the final path, and refuses a worktree whose repaired `.git` file does not name the repository.
-Where a step fails, the child removes only what it made, runs `git worktree prune`, and exits
-with the first cause. A boxed remove renames the worktree into the staging directory, repairs it
-and removes it there, without `--force`. Where `git` refuses, for example a worktree with changes,
-the child renames the worktree back, repairs it, and exits with the reason of `git`.
+A new branch is made in a step of its own before `git worktree add`, as
+`git branch --no-track <name> <base>` under `srt`, because `git` keeps the branch of a
+`git worktree add -b` that fails. Where a step fails, the child removes only what it made, runs
+`git worktree prune`, and exits with the first cause. Where the create made a new branch and a
+later step fails, the add included, the child then deletes it with `git branch -D <name>`,
+unless a signal ends that undo first, as the open cases below say. A `git branch` that refuses,
+for example because another process made the branch first, deletes nothing; a `git branch` that
+times out is not undone. An existing branch and the detached worktree of a sub-agent stay as they
+were, and a deletion that fails writes one line on standard error. A boxed remove renames the
+worktree into the staging directory, repairs it and removes it there, without `--force`. Where
+`git` refuses, for example a worktree with changes, or where `srt` cannot start, the child renames
+the worktree back, repairs it, and exits with the first reason; a repair after the rename back that
+fails writes one line on standard error.
 
 `git` writes the files of the new worktree under the profile, so a config of the box can put any
 file into it, `.githooks/` included. That is the box's own power over a worktree of a branch
 that it made. Do not run `git` from a plain terminal in an agent's worktree. Without `agentbox`,
 in the Code tab, in `claudex` and in a plain session, the hook's `git` runs outside `srt`.
+
+Every `git` of the hook, and the `srt` of a boxed `git`, starts in a session of its own. The
+hook stops one that runs longer than its timeout, 60 seconds or 300 for a fetch, with its whole
+process group, which holds the programs that it started, such as the `git` inside `srt` or the
+`ssh` of a fetch: `SIGTERM`, so that `git` removes its lock files, then `SIGKILL` after 5 seconds
+where it has not ended, unless a signal ends the stop first, as the open cases below say. A
+`SIGINT`, `SIGTERM` or `SIGHUP` of the hook stops its running `git`'s group the same way, because
+a signal to the hook's own process group, as `harness worktree` sends it, does not reach that
+session. A `SIGTERM` or `SIGHUP` during a stop that a `SIGTERM` or `SIGHUP` began is ignored, and
+a `git` that the hook starts after the signal, such as the `git worktree prune` of a failed
+create, gets the default handlers of both signals. Four cases stay open: a `SIGKILL` of the hook
+leaves its `git` running; a signal that arrives after `git` starts and before the hook waits for
+it is not passed on; a `SIGINT` during any stop, and any of the three signals during a stop that
+a timeout or a `SIGINT` began, ends that stop before its `SIGKILL`, and such a signal during the
+undo of a failed create can end the undo before its `git branch -D`; and a caller that sends
+`SIGKILL` to the hook within those 5 seconds can end the hook before its own `SIGKILL` reaches
+`git`. A program that cannot start is refused with one line that names it.
 
 It fails closed: on each error it exits with status 1 and gives the reason, and it creates no
 worktree. Under `AGENTBOX`, a missing or empty `AGENTBOX_BROKER`, a broker that does not answer
