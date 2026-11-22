@@ -33,15 +33,15 @@ every experiment and the Harness, and one that a shell has entered. Claude Code 
 `sandbox.filesystem.denyWrite` to `git` also outside the sandbox, and the list holds
 `~/Research/**/.githooks` and `~/Research/**/.claude`. A `git worktree remove` there deletes files
 up to the first protected one and fails. It still deletes the worktree's record, so the checkout
-stays as an orphan. Run `ls -d <path>/.githooks <path>/.claude`. When it lists one, give the user
-`git -C <main checkout> worktree remove <path>` in its own `bash` block, for their terminal. After
-the user removes it, delete the local branch yourself with `git branch -d <branch>`: git refuses
-to delete a branch that a worktree holds. When it lists nothing, run `git worktree remove <path>`
-yourself, as a Bash call of its own, from the main checkout. **Under
-`agentbox` every `git` is sandboxed**: run `harness worktree remove <path> --apply` instead, which
-the guard names. Never `cd` into a worktree before its removal: the sandbox leaves a
-`.claude/.cc-writes` in every directory that a shell enters, and only the user can delete it.
-`harness worktree sweep` lists every worktree as removable, kept or orphan.
+stays as an orphan. Run `find <path> -name .githooks -o -name .claude`, which also finds one in a
+subdirectory. When it prints a path, give the user `git -C <main checkout> worktree remove <path>`
+in its own `bash` block, for their terminal. After the user removes it, delete the local branch
+yourself with `git branch -d <branch>`: git refuses to delete a branch that a worktree holds.
+When it prints nothing, run `git worktree remove <path>` yourself, as a Bash call of its own, from
+the main checkout. **Under `agentbox` every `git` is sandboxed**: run `harness worktree remove
+<path> --apply` instead, which the guard names. Never `cd` into a worktree before its removal: the
+sandbox leaves a `.claude/.cc-writes` in every directory that a shell enters, and only the user
+can delete it. `harness worktree sweep` lists every worktree as removable, kept or orphan.
 
 **A side session that works in a repository starts without a worktree when this session's folder
 is no repository**, such as `~/Research`: the hook gets that folder and has no repository to
