@@ -565,11 +565,12 @@ WT_BOXED = [WT_SRT, "--settings", WT_PROFILE, "--", "git", *WT_OPTIONS]
 # The stub srt: it appends its arguments as one line to WT_SRT_LOG, drops its options up to `--`,
 # and runs the rest with the environment that it got, as srt 0.0.81 does. STUB_SRT_MODE breaks one
 # step: `fail-add` runs a `worktree add` and exits 3; `fail-repair` exits 3 on a `worktree repair`,
-# and `fail-repair-branch` also on a `branch -D`, without running either; `link-after-add` replaces the staged
-# directory of a `worktree add` by a link to the empty `wt-empty`; `final-after-add` makes the
-# final path of a `worktree add`, with a file `found` in it; `wrong-git` writes a `.git` file that
-# names the worktree `Ssh-x` of another repository after a `worktree repair`, and points the admin
-# `gitdir` of `Ssh-x` back at it, so that the `.git` file is a valid one of `Ssh`.
+# and `fail-repair-branch` also on a `branch -D`, without running either; `link-after-add`
+# replaces the staged directory of a `worktree add` by a link to the empty `wt-empty`;
+# `final-after-add` makes the final path of a `worktree add`, with a file `found` in it; `wrong-git`
+# writes a `.git` file that names the worktree `Ssh-x` of another repository after a `worktree
+# repair`, and points the admin `gitdir` of `Ssh-x` back at it, so that the `.git` file is a valid
+# one of `Ssh`.
 STUB_SRT = f"""#!/bin/sh
 printf '%s\\n' "$*" >> '{WT_SRT_LOG}'
 while [ "$#" -gt 0 ] && [ "$1" != -- ]; do shift; done
@@ -2177,6 +2178,57 @@ def boxed_failure_cases(hook: types.ModuleType, report: Callable[[object, str], 
     fixture_git("worktree", "prune")
 
 
+def failure_unit_cases(hook: types.ModuleType, report: Callable[[object, str], None]) -> None:
+    """`undo` and `staged_remove` in this process with `run_git` patched to fail: a prune and a
+    branch deletion that time out or cannot start each write one stderr line, and `undo` raises
+    nothing; a remove whose first error is a refusal or a timeout raises that error where the
+    repair after the rename back times out, with one stderr line on the repair."""
+    repo = pathlib.Path("/repo")
+    timeout = subprocess.TimeoutExpired(["git", "worktree"], 60)
+    refusal = hook.Refusal("srt cannot start: by the probe")
+    for prune, delete in [(timeout, refusal), (refusal, timeout)]:
+        err = io.StringIO()
+        with (
+            mock.patch.object(hook, "run_git", side_effect=[prune, delete]),
+            contextlib.redirect_stderr(err),
+        ):
+            try:
+                hook.undo(repo, None, pathlib.Path(WT_PROFILE), "made")
+                outcome = "returned"
+            except (hook.Refusal, subprocess.TimeoutExpired, TypeError) as raised:
+                outcome = f"raised {raised!r}"
+        lines = err.getvalue().splitlines()
+        report(
+            outcome == "returned"
+            and len(lines) == 2
+            and "worktree prune" in lines[0]
+            and "branch -D made" in lines[1],
+            f"undo whose prune gives {type(prune).__name__} and whose branch deletion gives "
+            f"{type(delete).__name__}: one line on each, and nothing raised: {outcome}, {lines}",
+        )
+    for first in (hook.Refusal("`git worktree remove` exited 128"), timeout):
+        err = io.StringIO()
+        with (
+            mock.patch.object(hook, "stage_of", return_value=pathlib.Path("/stage")),
+            mock.patch.object(hook, "move"),
+            mock.patch.object(hook, "moved"),
+            mock.patch.object(hook, "git", side_effect=["", first]),
+            mock.patch.object(hook, "run_git", side_effect=subprocess.TimeoutExpired(["git", "repair"], 60)),
+            contextlib.redirect_stderr(err),
+        ):
+            try:
+                hook.staged_remove(repo, pathlib.Path("/root/Repo-x"), pathlib.Path(WT_PROFILE))
+                raised: object = None
+            except (hook.Refusal, subprocess.TimeoutExpired) as error:
+                raised = error
+        lines = err.getvalue().splitlines()
+        report(
+            raised is first and len(lines) == 1 and "worktree repair" in lines[0],
+            f"a remove whose first error is {first!r} and whose repair after the rename back times "
+            f"out raises the first error, with one line on the repair: {raised!r}, {lines}",
+        )
+
+
 def fixture_git(*args: str) -> subprocess.CompletedProcess[str]:
     """The real git with `args` in `Repo`, outside the hook."""
     return subprocess.run(
@@ -2326,7 +2378,9 @@ def broker_profile_cases(hook: types.ModuleType, report: Callable[[object, str],
     """`main` with `--serve` in this process, `os.getppid` patched to the probe's process ID: with a
     directory at the profile's path, it exits 1 with one `worktree hook:` line that names the
     profile, no traceback, and the directory stands; after a normal end, with a listener that
-    binds no socket (FakeListener) and a parent that ends after one look, the profile is gone."""
+    binds no socket (FakeListener) and a parent that ends after one look, the profile is gone; and
+    where the profile becomes a directory before a bind that the probe refuses, one line names the
+    profile and the bind's refusal stays the error."""
     parent = os.getpid()
     stage = pathlib.Path(WT_STAGES, str(parent))
     own = stage.parent / f"{stage.name}.json"
@@ -2728,8 +2782,13 @@ def worktree_git_cases() -> tuple[int, int]:
     the git config (`config_check_cases`); git pinned to the checked repository
     (`discovery_cases`); the GIT_ALLOW_PROTOCOL of every git; the client's
     refusals under `AGENTBOX`; the boxed child (`boxed_cases`); the broker's settings file, staging
-    directory and profile (`broker_start_cases`); the life of a broker; and the options of every git
-    that the hook starts, recorded in this process: (number of cases, number wrong)."""
+    directory and profile (`broker_start_cases`); the stop of a git past its timeout
+    (`run_git_timeout_cases`); the failures of a boxed remove and of `undo`
+    (`boxed_failure_cases`, `failure_unit_cases`); the branch of a failed boxed create
+    (`boxed_branch_cases`); names that end in a newline and parents of a digit that is not ASCII
+    (`name_cases`); the broker's profile at its end (`broker_profile_cases`); the life of a
+    broker; and the options of every git that the hook starts, recorded in this process: (number of
+    cases, number wrong)."""
     verdict, why = bind_verdict(unix_bind, ci="CI" in os.environ)
     worktree_fixture()
     total = wrong = 0
@@ -2971,6 +3030,7 @@ def worktree_git_cases() -> tuple[int, int]:
     broker_start_cases(hook, report)
     run_git_timeout_cases(hook, report)
     boxed_failure_cases(hook, report)
+    failure_unit_cases(hook, report)
     boxed_branch_cases(report)
     name_cases(hook, report)
     broker_profile_cases(hook, report)

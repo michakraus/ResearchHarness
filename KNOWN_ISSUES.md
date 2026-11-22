@@ -956,18 +956,18 @@
 
 ### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
 
-- location: `hooks/probe.py:3912`
+- location: `hooks/probe.py:4634`
 - evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
   reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
   calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
   `matcher calls 471, 7.20 seconds`. The matcher calls stay at their bound, so the guard is right
   and only its time is close to the limit. The case measures wall time while the other parts of
   `harness test` run in parallel. So the verdict of the case depends on wall-clock time: the
-  bound of the matcher calls (line 1756, `0 <= calls <= indexed`) already checks the guard's work,
+  bound of the matcher calls (line 4634, `0 <= calls <= indexed`) already checks the guard's work,
   so `seconds <= MIB_LIMIT` on the same line adds only a dependence on the load of the machine,
-  and the `timeout=MIB_LIMIT` of line 1745 makes a slow run a failure. The cases of the commands
-  of 1 MiB at line 2691 depend on it the same way: `guard_run(..., limit=MIB_LIMIT)` passes the
-  limit as `timeout=` (line 2402) and returns `timeout` past it (line 2406), which fails
+  and the `timeout=MIB_LIMIT` of line 4623 makes a slow run a failure. The cases of the commands
+  of 1 MiB at line 5816 depend on it the same way: `guard_run(..., limit=MIB_LIMIT)` passes the
+  limit as `timeout=` (line 5294) and returns `timeout` past it (line 5298), which fails
   `got == expected`.
 - kind: defect
 - found: #282
@@ -1090,7 +1090,7 @@
 
 ### K172 · The worktree hook prints a traceback for a `WorktreeRemove` whose `worktree_path` holds a NUL byte.
 
-- location: `hooks/worktree.py:678`
+- location: `hooks/worktree.py:771`
 - evidence: `remove` calls `Path(where).resolve()` on the payload's `worktree_path`, which raises
   `ValueError: lstat: embedded null character in path`, and `main` does not catch it:
   `printf '%s' '{"hook_event_name":"WorktreeRemove","worktree_path":"/a\u0000b"}' | python3.14
@@ -1101,18 +1101,18 @@
 
 ### K174 · `hooks/probe.py` holds a copy of `unix_bind`, `bind_verdict` and the injected-bind case of `lib/harness/sandbox.py`.
 
-- location: `hooks/probe.py:806`
-- evidence: `hooks/probe.py:806-822` defines `unix_bind` and `bind_verdict`, and `:2108-2119`
+- location: `hooks/probe.py:823`
+- evidence: `hooks/probe.py:823-839` defines `unix_bind` and `bind_verdict`, and `:2807-2818`
   repeats the body of `bind_verdict_cases`, the same code as `lib/harness/sandbox.py:1982-2016`,
   about 30 lines. `hooks/probe.py` already puts `REPO/lib` on `sys.path` and imports `harness` in
-  other groups (`from harness import install_cases`, `:4334`), so it can import them. Each copy
+  other groups (`from harness import install_cases`, `:5040`), so it can import them. Each copy
   has its own mutants: the three mutants of the three-way decision run twice.
 - kind: defect
 - found: 2026-11-17, the verification of part G3a of the sandbox plan
 
 ### K175 · The worktree hook's `git fetch` reads a legacy `.git/remotes/<name>` or `.git/branches/<name>` file, whose URL the config check does not see.
 
-- location: `hooks/worktree.py:415`
+- location: `hooks/worktree.py:487`
 - evidence: `checked_config` reads only `.git/config`, and `remote_url` tests only the URLs there.
   A repository whose config has no `remote.origin` and whose `.git/remotes/origin` holds
   `URL: ext::sh -c touch% <marker>` passes the check, and git 2.54.0 reads that file for the
@@ -1128,7 +1128,7 @@
 
 ### K176 · The worktree hook's git reads the user's global and system config, so a global `filter.lfs` driver runs outside the sandbox on a branch that a sandboxed program made.
 
-- location: `hooks/worktree.py:200`
+- location: `hooks/worktree.py:230`
 - evidence: `run_git` sets `GIT_DIR`, `GIT_ALLOW_PROTOCOL` and the two `-c` options, and passes the
   caller's `HOME`, so git reads `~/.gitconfig`, `~/.config/git/config` and the system config.
   `checked_config` refuses every `filter.*` key of the repository's `.git/config`, but not of
@@ -1143,7 +1143,7 @@
 
 ### K178 · The worktree hook's git inherits every `GIT_*` variable of its caller except `GIT_WORK_TREE` and `GIT_COMMON_DIR`.
 
-- location: `hooks/worktree.py:211`
+- location: `hooks/worktree.py:244`
 - evidence: `run_git` drops only the names of `UNSET`, `GIT_WORK_TREE` and `GIT_COMMON_DIR`, and
   sets `GIT_DIR` and `GIT_ALLOW_PROTOCOL`. `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`,
   `GIT_CONFIG_COUNT` with its `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, and
@@ -1156,7 +1156,7 @@
 
 ### K179 · No case of the worktree hook's tests sets a `GIT_DIR` in the caller's environment, so a change that lets the caller's value override the pin passes.
 
-- location: `hooks/worktree.py:216`
+- location: `hooks/worktree.py:251`
 - evidence: `run_git` builds `env={**env, "GIT_DIR": …, …}`, so its own `GIT_DIR` wins today. A
   mutant `env={"GIT_DIR": …, **env, …}` survives `probe.py payloads`, because the case of the
   caller's `GIT_COMMON_DIR` and `GIT_WORK_TREE` sets no `GIT_DIR`. A `GIT_DIR` in that case's
@@ -1212,31 +1212,6 @@
   returns `[1, 1]`; the label `"b"` is on line 2. No repository writes a pair in prefix form.
 - kind: defect
 - found: 2026-11-21, CodeRabbit on a pull request of the learning package
-
-### K184 · The worktree broker's `--parent` test accepts a digit that is not ASCII.
-
-- location: `hooks/worktree.py:955`
-- evidence: `serve_arguments` admits `parent` where `parent.isdigit()` holds, and then calls
-  `int(parent)`. `"²".isdigit()` is `True`, and `int("²")` raises `ValueError: invalid literal for
-  int() with base 10: '²'`, so `worktree.py --serve <socket> --parent ² --settings <file>` ends in
-  a traceback, not in the usage line. A digit such as `"٣"` passes `int` and gives 3, which the
-  check against `os.getppid()` then refuses. `parent.isascii() and parent.isdigit()` closes it.
-  Commit `69179e7d` has the same test.
-- kind: defect
-- found: 2026-11-21, the review of part G3c of the sandbox plan
-
-### K186 · The worktree hook's name patterns accept a name that ends in a newline.
-
-- location: `hooks/worktree.py:110`
-- evidence: `SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")` and `AGENT =
-  re.compile(r"^agent-[0-9a-f]+$")` are used with `.match` (lines 371 and 428), and Python's `$`
-  also matches before a final newline:
-  `python3 -c "import re;print(bool(re.compile(r'^agent-[0-9a-f]+\$').match('agent-ab\n')))"`
-  prints `True`, and the same holds for `SEGMENT` with `"x\n"`. A payload whose `name` is
-  `"agent-ab\n"` therefore passes both checks; `harness worktree add` refuses such a name before
-  it runs the hook. `fullmatch` or `\Z` closes it.
-- kind: defect
-- found: 2026-11-22, a critic of the branch `sandbox/part-g3b`
 
 ### K189 · The `--help` description of `harness worktree` says that the frontend has no worktree hook, and then runs the installed worktree hook.
 
