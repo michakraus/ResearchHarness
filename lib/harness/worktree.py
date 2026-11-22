@@ -10,7 +10,7 @@ the repository instead. It runs the hook that `harness install` puts at
 the payload that Claude Code sends it on stdin: `{"hook_event_name": "WorktreeCreate", "cwd": …,
 "name": …}` for `add`, `{"hook_event_name": "WorktreeRemove", "worktree_path": …}` for `remove`.
 The hook holds the whole logic of a worktree, and under `agentbox` it asks the broker outside the
-sandbox; this subcommand runs no git of its own.
+sandbox; this subcommand runs git of its own only in `sweep`, and only to read.
 
 The dry run prints the request in one line and exits 1. `--apply` runs the hook with this
 interpreter, in the working directory and in a session of its own, for at most TIMEOUT seconds;
@@ -219,8 +219,8 @@ def record_of(tree: pathlib.Path) -> pathlib.Path | None:
 
 
 def last_use(record: pathlib.Path) -> float:
-    """The newest change time of the record's HEAD, index and logs/HEAD, in seconds since the epoch;
-    git writes them at a checkout, a commit and a status that refreshes the index."""
+    """The newest modification time of the record's HEAD, index and logs/HEAD, in seconds since the
+    epoch; git writes them at a checkout, a commit and a status that refreshes the index."""
     times = [
         path.stat().st_mtime
         for path in (record / "HEAD", record / "index", record / "logs" / "HEAD")

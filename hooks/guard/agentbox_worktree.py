@@ -36,9 +36,9 @@ ROUTES = {
 REFUSED = """Refused: {command}
 
 This session runs under `agentbox`, where every `git` runs inside srt, and srt denies writes below
-`.githooks`. `git worktree {action}` there fails halfway: a remove deletes some files and the
-worktree's record, and leaves the rest of the directory behind. Run `{route}` instead, from the
-repository's main checkout: it asks the worktree broker, which runs outside srt.
+`.githooks`, so `git worktree {action}` fails halfway: a remove deletes the worktree's record and
+leaves most of its files. Run `{route}` instead, from the repository's main checkout: it asks the
+worktree broker, which runs outside srt.
 """
 
 

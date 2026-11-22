@@ -86,6 +86,9 @@ Other guards of git and `gh`:
   `$?`, an absolute, `~`, `$` or `..` path argument to `git init`, `git clone`,
   `git worktree add` or `move` or `git bundle create`, and a `git init` or `git clone` inside a
   working tree.
+- [The agentbox worktree check](guard-hooks.md#the-agentbox-worktree-check) refuses every
+  `git worktree add`, `move` and `remove` under `agentbox`, and names `harness worktree add` or
+  `harness worktree remove` instead.
 
 ## Pushes
 

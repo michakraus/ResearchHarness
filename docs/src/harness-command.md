@@ -752,9 +752,9 @@ harness worktree sweep [--apply]
 Makes or removes a worktree through the worktree hook that `install` puts at
 `~/.claude/hooks/worktree.py`, for a frontend that has no worktree hook of its own, OpenCode and
 oh-my-pi, and for every frontend under `agentbox`, where a `git worktree` command runs inside srt
-and the guard refuses it. The subcommand sends the hook the payload of Claude Code's event on its standard input,
-so the hook decides where the worktree goes and runs the git; under `agentbox` the hook asks its
-broker outside the sandbox. `~` is the home that `HOME` gives.
+and the guard refuses it. The subcommand sends the hook the payload of Claude Code's event on its
+standard input, so the hook decides where the worktree goes and runs the git; under `agentbox`
+the hook asks its broker outside the sandbox. `~` is the home that `HOME` gives.
 
 - `add` sends `WorktreeCreate` with the working directory and `<name>`: the hook makes the
   worktree of the repository that holds the working directory, on the branch `<name>`, or
@@ -1618,9 +1618,10 @@ no `selftest`, and the sweep does not run it, because it runs Julia over the tre
 
 The subcommand `harness worktree add <name>`, `harness worktree remove <path>` and `harness
 worktree sweep`, each with `--apply`. The sweep reads each worktree with `git --no-optional-locks`,
-so that its status leaves the index's time, which tells the last use, as it is. It runs the installed hook `~/.claude/hooks/worktree.py`, below the home of `HOME`,
-with `sys.executable`, and writes the JSON payload of a `WorktreeCreate` or `WorktreeRemove`
-event to its standard input; it runs no git itself. The hook runs in a session of its own, so
+so that its status leaves the index's time, which tells the last use, as it is. It runs the
+installed hook `~/.claude/hooks/worktree.py`, below the home of `HOME`, with `sys.executable`, and
+writes the JSON payload of a `WorktreeCreate` or `WorktreeRemove` event to its standard input;
+only the sweep runs git itself, and only to read. The hook runs in a session of its own, so
 that a timeout or a forwarded signal reaches the programs that it started, and its output is
 decoded with replacement characters. A missing hook, a hook that exits with another status than
 0 or runs too long, an empty `<name>` or `<path>` or one with a line break, and a working

@@ -604,8 +604,8 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove @@R@@/.worktrees/Own-pushed --force"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove @@R@@/.worktrees/X-y"}, "cwd": "@@CWD@@"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force @@R@@/.worktrees/Own-pushed"}, "cwd": "@@R@@/Packages/Own"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
-{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree add ../../.worktrees/X-y -b y origin/main"}, "cwd": "@@CWD@@"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
-{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree move @@R@@/.worktrees/X-y @@R@@/.worktrees/X-z"}, "cwd": "@@CWD@@"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree add X-y -b y origin/main"}, "cwd": "@@CWD@@"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree move X-y X-z"}, "cwd": "@@CWD@@"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C @@R@@/Packages/Own worktree remove @@R@@/.worktrees/X-y"}, "cwd": "@@CWD@@"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd @@R@@/Packages/Own && git worktree remove @@R@@/.worktrees/X-y"}, "cwd": "@@CWD@@"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash -c 'git worktree remove @@R@@/.worktrees/X-y'"}, "cwd": "@@CWD@@"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}

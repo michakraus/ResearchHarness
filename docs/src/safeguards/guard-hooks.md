@@ -259,9 +259,12 @@ inside `srt`, whatever `sandbox.excludedCommands` says, and `srt` denies writes 
 `.githooks`, fails, and still deletes the worktree's record below `.git/worktrees/`: the rest of
 the directory stays, and no `git worktree` command knows it. The reason names
 `harness worktree add <branch> --apply` or `harness worktree remove <path> --apply`, which ask
-the worktree broker outside `srt`. The check finds a `git` call after an assignment, after
-`cd … &&`, with `-C`, and in the script of `sh -c`, `bash -c` or `eval`. The variable is no
-boundary: the check only sends a call that would fail to the route that works.
+the worktree broker outside `srt`. In Claude Code's table the check runs before the sandbox
+check, so an `add` or `move` with a path argument gets this route, not that check's. The check
+finds a
+`git` call after an assignment, after `cd … &&`, with `-C`, and in the script of `sh -c`,
+`bash -c` or `eval`. The variable is no boundary: the check only sends a call that would fail to
+the route that works.
 
 ### The rm check
 
