@@ -68,6 +68,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   (matrix product, broadcast) and not the other guard's message, and print the library's messages
   before a phrase enters a spec. The refinement of the entry above: the phrase must be one that only
   the guard writes (A verify 2, *Implement multi-modal symplectic autoencoders*)
+- **a short expected value asserted as a substring of a line that also holds temporary paths:**
+  `"x" in out` passes when a tempfile name holds an `x`, about one run in five and every run under
+  such a `TMPDIR`, so the mutant that drops the name from the line survives by chance. Assert the
+  whole line, or use a value that no generated path can hold (G3b round 1a, *Sandbox the agent
+  frontends*)
 - **a refusal message that names several values, tested on a case where two of them are equal:** a
   message can name the outer scale and the march's scale, and a test at `χ = 2` matches either, so a
   mutant that drops one of the two sentences survives; the equal case never separates them. Give
@@ -215,6 +220,10 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   `match` and `fullmatch` alike, so a mutant that drops the anchor at the end survives, and `a.b`
   then reads `a.b.age`. Give the refusals a name that starts inside the class and leaves it later
   (E5n1 round 1a, *Sandbox the agent frontends*)
+- **a name pattern that ends in `$`:** Python's `$` also matches before a trailing newline, so
+  `re.match(r"^agent-[0-9a-f]+$", "agent-ab\n")` accepts the name, and a path or a one-line reply
+  built from it gets a second line. Use `fullmatch` or `\Z`, and give the refusals a name with a
+  trailing newline (G3b round 1b, *Sandbox the agent frontends*)
 - **a time limit tested with a short real limit against a stub that sleeps:** the verdict depends
   on the machine's load, and the mutant that drops the limit is killed only by the outer guard of
   the case. Give the code a seam for the wait, let the case inject one that raises the expiry and
@@ -868,6 +877,18 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   next check, but `subprocess.run` raises `OSError`, a traceback past every check and the refusal
   line. Catch `OSError` at each start as a failed check with one line, and test a missing and a
   non-executable program (P2 round 1)
+- a child's output read with `text=True`: Python decodes it as strict UTF-8, so one byte that is
+  not UTF-8 gives a `UnicodeDecodeError` traceback, and the child's error lines are lost. Pass
+  `errors="replace"`, and test a child that writes such a byte to each stream (G3b round 1,
+  *Sandbox the agent frontends*)
+- a command that reads `Path.cwd()`, run from a directory that was removed, such as a worktree
+  that the agent removed while it stood in it: `FileNotFoundError` gives a traceback and exit 1,
+  which can also be the status of a dry run. Raise the command's own error with one line, and
+  test a removed working directory (G3b round 1)
+- a timeout of `subprocess.run` with captured output: the `TimeoutExpired` holds what the child
+  wrote so far, and a caller that raises its own error drops it, so the child's last progress line
+  never reaches the user. Write `e.stderr` on before the error: it is bytes even with `text=True`,
+  and `None` where the child wrote nothing, so decode it with `errors="replace"` (G3b round 1)
 - a CI stub written at the path of a program that the same job then runs for real: the
   stub `exit 0` at the environment's interpreter, made before `bin/harness render`, is an
   interpreter that starts, so `bin/harness` runs on it, every rendered unit is empty, and
