@@ -335,10 +335,24 @@ function renamed()
 end
 
 """
+The commits that the merge in progress merges into HEAD, from the file `MERGE_HEAD` of the
+repository; more than one for an octopus merge, and none outside a merge.
+"""
+function merge_heads()
+    success(`git rev-parse -q --verify MERGE_HEAD`) || return String[]
+    return split(read(readchomp(`git rev-parse --git-path MERGE_HEAD`), String))
+end
+
+"""
 The lines, counted from 1, that the commit adds to the staged file `file`, whose path before a
 rename is `old` (`nothing` for a file that the commit does not rename): one range per hunk, from
 the `+c,d` side of each hunk header of `git diff --cached -U0`. A header with no `,d` adds one
 line, and one with `,0` adds none.
+
+In a merge, a line is added only when it is new against every parent: the ranges are the
+intersection of those against HEAD and those against each commit of `merge_heads`, which
+`git diff --cached <commit>` gives. A line that a parent other than HEAD brings in unchanged is
+thus no added line.
 
 Rename detection pairs two paths only when both are in the pathspec, so `old` goes in beside
 `file`, and a pure rename adds no line. `-M` asks for the detection whatever `diff.renames`
@@ -352,15 +366,24 @@ paths are literal, so a name such as `a[b].jl` matches no other file. The diff r
 function added_lines(file, old)
     paths = old === nothing ? [file] : [file, old]
     options = `--no-color --no-ext-diff --no-textconv --text --inter-hunk-context=0 -M`
-    cmd = `git --literal-pathspecs diff --cached -U0 $options -- $paths`
-    diff = read(
-        addenv(cmd, "GIT_DIFF_OPTS" => nothing, "GIT_ICASE_PATHSPECS" => nothing,
-            "GIT_GLOB_PATHSPECS" => nothing),
-        String)
-    return map(eachmatch(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@"m, diff)) do m
-        c = parse(Int, m[1])
-        return c:(c + (m[2] === nothing ? 1 : parse(Int, m[2])) - 1)
+    # No commit diffs against HEAD, and against the empty tree before the first commit.
+    function against(commit...)
+        cmd = `git --literal-pathspecs diff --cached $commit -U0 $options -- $paths`
+        diff = read(
+            addenv(cmd, "GIT_DIFF_OPTS" => nothing, "GIT_ICASE_PATHSPECS" => nothing,
+                "GIT_GLOB_PATHSPECS" => nothing),
+            String)
+        return map(eachmatch(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@"m, diff)) do m
+            c = parse(Int, m[1])
+            return c:(c + (m[2] === nothing ? 1 : parse(Int, m[2])) - 1)
+        end
     end
+    ranges = against()
+    for commit in merge_heads()
+        theirs = against(commit)
+        ranges = filter(!isempty, [intersect(r, t) for r in ranges for t in theirs])
+    end
+    return ranges
 end
 
 """
@@ -387,7 +410,9 @@ Stage 2.7. `ast-grep scan` runs, once over the staged files, the rules of the `s
 that it finds in the repository's root or a directory above it, such as
 `~/Research/sgconfig.yml`. A hit of severity `error` blocks when a line of its range is one that
 the commit adds, and is advisory otherwise, so the hits that a file already holds do not block
-an unrelated commit. A hit of severity `warning` or `hint` never blocks: it is printed as
+an unrelated commit. In a merge, a line that the commit adds is one that is new against every
+parent (see `added_lines`), so a merge does not block on the hits that the merged branch holds.
+A hit of severity `warning` or `hint` never blocks: it is printed as
 advisory, after the hits of severity `error`. A hit of severity `info`, such as one of the rule
 `parse-error`, is not printed. `ast-grep: clean` means no hit of severity `error`, `warning` or
 `hint`. `# ast-grep-ignore: <rule-id>` at the end of the hit's line or on the line above

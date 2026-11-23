@@ -228,6 +228,26 @@ function two_hunks()
     return repo, env
 end
 
+"""
+A fixture in the middle of a merge, with nothing committed yet: `main` and the branch `topic`
+start from `CLEAN`, `main` adds `triple` at the end of `src/Fixture.jl`, and `topic` adds the
+`@show x` of `PROBE` on line 4. `main` merges `topic` with `--no-commit`. Returns the repository
+and its environment.
+"""
+function merging()
+    repo, env = fixture(CLEAN; extra = [SGCONFIG])
+    git(args) = run(setenv(`git -C $repo $args`, env))
+    git(`commit -q -m base`)
+    git(`switch -q -c topic`)
+    write(joinpath(repo, "src", "Fixture.jl"), PROBE)
+    git(`commit -q -am probe`)
+    git(`switch -q main`)
+    write(joinpath(repo, "src", "Fixture.jl"), replace(CLEAN, r"end\n$" => "triple(x) = 3x\n\nend\n"))
+    git(`commit -q -am triple`)
+    git(`merge -q --no-ff --no-commit topic`)
+    return repo, env
+end
+
 "A directory with one executable `name` that holds `script`."
 function bindir(name, script)
     d = mktempdir()
@@ -616,6 +636,30 @@ end
         code, out = second_commit(wide, replace(wide, "        x\n" => "        2x\n"))
         @test code == 1
         @test occursin("    src/Fixture.jl:4: debug-probe: ", out)
+    end
+
+    # Against HEAD, the merge adds line 4, which `topic` holds unchanged.
+    @testset "a merge that brings in a hit from the merged branch passes" begin
+        repo, env = merging()
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 0
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/Fixture.jl:4: debug-probe: ", out * err)
+        @test !occursin("ast-grep: FAILED", out * err)
+    end
+
+    # The resolution adds line 5, which neither parent holds.
+    @testset "a merge that adds a hit of its own is refused" begin
+        repo, env = merging()
+        merged = read(joinpath(repo, "src", "Fixture.jl"), String)
+        write(joinpath(repo, "src", "Fixture.jl"), replace(merged, "    return 2x" => "    @show 2x\n    return 2x"))
+        run(setenv(`git -C $repo add src/Fixture.jl`, env))
+        code, out, err = capture(`bash $HOOK`, repo, env)
+        @test code == 1
+        @test occursin("ast-grep: FAILED", out * err)
+        @test occursin("    src/Fixture.jl:5: debug-probe: ", out * err)
+        @test occursin("ast-grep: 1 hit(s) on lines this commit does not add — advisory", out * err)
+        @test occursin("    src/Fixture.jl:4: debug-probe: ", out * err)
     end
 
     # The hunk of a deletion, `+c,0`, adds no line, and its `c` is the line of the old hit.
