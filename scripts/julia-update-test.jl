@@ -15,9 +15,11 @@
 # and arguments to a call log, so no case can reach the real ~/.juliaup or the real Kaimon server.
 #
 # The server is a real process: a copy of `perl` named `julia` that sleeps, which the test starts,
-# then deletes, rewrites or leaves alone, and whose pid the lsof stub prints. On Linux the script
-# reads its binary from /proc/<pid>/exe; on macOS from `ps`, whose stub prints the copy's path while
-# the process lives.
+# then deletes, rewrites or leaves alone, and whose pid the lsof stub prints for the `-iTCP` form.
+# On Linux the script reads its binary from /proc/<pid>/exe. On macOS it reads it with
+# `lsof -p <pid> -d txt`, which the stub hands to the real `lsof`: the test starts the stand-in, so
+# the real `lsof` sees it inside the agent sandbox too. The `ps` stub cannot start, as the job's
+# profile refuses the setuid `/bin/ps`, so a script that ran `ps` would fail.
 
 using Test
 
@@ -40,6 +42,16 @@ const LOG_HINT = LINUX ? "journalctl --user -u julia-update.service" : "~/Librar
 "Write an executable `/bin/sh` script."
 function stub(path, body)
     write(path, "#!/bin/sh\n" * body)
+    chmod(path, 0o755)
+    return path
+end
+
+"""
+Write an executable script at `path` whose interpreter does not exist, so that Julia's `run` of it
+throws `Base.IOError` (could not spawn), as an exec that a Seatbelt profile refuses does.
+"""
+function unstartable(path)
+    write(path, "#!/nonexistent/interpreter\n")
     chmod(path, 0o755)
     return path
 end
@@ -81,11 +93,24 @@ function fixture()
         exit 0
         """)
     stub(joinpath(jbin, "juliaup"), LOG_LINE * "exit 0\n")
-    # Real lsof prints nothing and exits 1 when no process listens.
+    # The `-iTCP` form prints $STUB_PID, and prints nothing and exits 1 without one, as the real
+    # lsof does when no process listens; with $STUB_BREAK set, it then makes its own file a script
+    # that cannot start, so that only the next call fails to start. The `-p` form prints $STUB_TXT
+    # when that is set, and is the real lsof otherwise, which only macOS calls.
+    real_lsof = Sys.which("lsof")
     stub(joinpath(stubs, "lsof"), LOG_LINE * raw"""
-        [ -n "$STUB_PID" ] || exit 1
-        printf '%s\n' "$STUB_PID"
-        """)
+        case "$*" in
+            *-iTCP*)
+                [ -n "$STUB_PID" ] || exit 1
+                printf '%s\n' "$STUB_PID"
+                [ -z "$STUB_BREAK" ] || printf '#!/nonexistent/interpreter\n' > "$0"
+                exit 0 ;;
+        esac
+        if [ -n "$STUB_TXT" ]; then
+            printf '%s\n' "$STUB_TXT"
+            exit 0
+        fi
+        """ * (real_lsof === nothing ? "exit 1\n" : "exec $real_lsof \"\$@\"\n"))
     for manager in ("launchctl", "systemctl")
         stub(joinpath(stubs, manager), LOG_LINE * raw"""
             if [ -n "$STUB_RESTART_FAILS" ]; then
@@ -104,14 +129,8 @@ function fixture()
     end
     stub(joinpath(stubs, "osascript"), LOG_LINE * "exit 0\n")
     stub(joinpath(stubs, "notify-send"), LOG_LINE * "exit 0\n")
-    # `ps -o comm= -p <pid>` prints a live process's full path on macOS, its 15-character name on
-    # Linux, and nothing for an ended one. The real `ps` and `kill -0` are refused inside the agent
-    # sandbox, so this stub stands for it: it prints $STUB_COMM, which `comm` sets for this system,
-    # for the server's pid and nothing for any other.
-    stub(joinpath(stubs, "ps"), LOG_LINE * raw"""
-        [ -n "$STUB_COMM" ] && [ "$4" = "$STUB_PID" ] || exit 1
-        printf '%s\n' "$STUB_COMM"
-        """)
+    # The job's profile refuses the exec of the setuid `/bin/ps`, so this `ps` cannot start either.
+    unstartable(joinpath(stubs, "ps"))
 
     write(joinpath(juliaup, "juliaup.json"), """
         {"Default": "release",
@@ -140,10 +159,16 @@ function copy_server(binary)
     return binary
 end
 
-"Start the server: a copy of `perl` at `bindir/julia` that sleeps. Returns the process and its binary."
+"""
+Start the server: a copy of `perl` at `bindir/julia` that sleeps. Returns the process and its
+binary once the copy has printed `up`: macOS kills a process whose binary file is removed while it
+still loads, and keeps one that has loaded.
+"""
 function start_server(fx::Fixture)
     binary = copy_server(joinpath(fx.bindir, "julia"))
-    return run(`$binary -e 'sleep 600'`; wait = false), binary
+    proc = open(`$binary -e 'syswrite STDOUT, "up\n"; sleep 600'`)
+    readline(proc) == "up" || error("the server stand-in $binary did not start")
+    return proc, binary
 end
 
 """
@@ -169,24 +194,14 @@ function run_script(fx::Fixture, extra::Pair...; phases = LINUX ? (:update, :ser
     return code, String(take!(out)), readlines(fx.log)
 end
 
-"""
-What `ps -o comm=` prints for a process run from `binary`: the full path on macOS, and only the
-first 15 characters of the file name on Linux. So a script that read `ps` on Linux would test
-the name `julia`, never the server's path.
-"""
-comm(binary) = LINUX ? first(basename(binary), 15) : binary
-
 "Run the script against a live server; `prepare(binary)` acts on its binary first."
 function with_server(prepare, fx::Fixture, extra::Pair...; kwargs...)
     proc, binary = start_server(fx)
     try
         prepare(binary)
-        result = run_script(fx, "STUB_PID" => string(getpid(proc)), "STUB_COMM" => comm(binary), extra...;
-                            kwargs...)
-        # On Linux a server that died reads as "ended before its binary was read", which some cases
-        # accept. macOS kills a process whose binary file is removed, but there the ps stub stands
-        # for the process, so its death changes nothing.
-        LINUX && !process_running(proc) &&
+        result = run_script(fx, "STUB_PID" => string(getpid(proc)), extra...; kwargs...)
+        # A server that died reads as "ended before its binary was read", which some cases accept.
+        !process_running(proc) &&
             error("the server stand-in $binary exited during the case: exit $(proc.exitcode), " *
                   "signal $(proc.termsignal)")
         return result
@@ -194,6 +209,22 @@ function with_server(prepare, fx::Fixture, extra::Pair...; kwargs...)
         kill(proc)
         wait(proc)
     end
+end
+
+"""
+A module that holds the top-level definitions of julia-update.jl named in `names`, each with its
+docstring, and nothing else of the script, which runs `main` when it loads.
+"""
+function script_definitions(names...)
+    m = Module()
+    for e in Meta.parseall(read(SCRIPT, String)).args
+        def = e isa Expr && e.head === :macrocall ? e.args[end] : e
+        def isa Expr || continue
+        name = def.head === :struct ? def.args[2] :
+               def.head === :function ? def.args[1].args[1] : nothing
+        name in names && Core.eval(m, e)
+    end
+    return m
 end
 
 restarts(calls) = count(==(RESTART), calls)
@@ -220,6 +251,9 @@ end
         @test others(calls) == 0
         @test occursin("RESTARTED", out)
         @test isempty(alerts(calls))
+        @test !occursin("Stacktrace", out)
+        # On macOS the stub hands this call to the real lsof.
+        LINUX || @test any(l -> startswith(l, "lsof ") && occursin("-d txt -Fn", l), calls)
     end
 
     @testset "a server whose binary exists: no restart" begin
@@ -298,13 +332,47 @@ end
         @test length(alerts(calls)) == 1
     end
 
-    # Only macOS reads the binary with `ps`.
-    LINUX || @testset "no ps on the PATH (macOS): a failure, never \"no server\"" begin
+    # Only macOS reads the server with `julia-update.jl`; on Linux julia-update-server does.
+    LINUX || @testset "an lsof that cannot start (macOS): a failure, no stack trace" begin
         fx = fixture()
-        rm(joinpath(fx.stubs, "ps"))
+        unstartable(joinpath(fx.stubs, "lsof"))
         code, out, calls = with_server(rm, fx)
         @test code == 1
-        @test occursin("cannot read the server, because no ps", out)
+        @test occursin("FAILED: cannot read the server: ", out)
+        @test occursin("could not spawn", out)
+        @test !occursin("No process listens", out)
+        @test restarts(calls) == 0 && others(calls) == 0
+        @test length(alerts(calls)) == 1
+        @test !occursin("Stacktrace", out)
+    end
+
+    LINUX || @testset "an lsof that cannot start for the binary (macOS): a failure" begin
+        fx = fixture()
+        code, out, calls = with_server(rm, fx, "STUB_BREAK" => "1")
+        @test code == 1
+        @test occursin("FAILED: cannot read the server: ", out)
+        @test occursin("could not spawn", out) && occursin("-d txt -Fn", out)
+        @test restarts(calls) == 0 && others(calls) == 0
+        @test length(alerts(calls)) == 1
+        @test !occursin("Stacktrace", out)
+    end
+
+    @testset "the reader's helper turns only a spawn failure into a failure value" begin
+        m = script_definitions(:Unreadable, :output_lines)
+        missing_tool = joinpath(mktempdir(), "missing")
+        @test m.output_lines(`$missing_tool`) isa m.Unreadable
+        @test occursin("could not spawn", m.output_lines(`$missing_tool`).reason)
+        @test m.output_lines(`/bin/sh -c 'printf "a\n\nb\n"; exit 3'`) == ["a", "b"]
+        # `ignorestatus(42)` throws a MethodError inside the helper's `try`.
+        @test_throws MethodError m.output_lines(42)
+    end
+
+    LINUX || @testset "lsof lists no binary (macOS): a failure, never \"ended\"" begin
+        fx = fixture()
+        code, out, calls = run_script(fx, "STUB_PID" => "4242", "STUB_TXT" => "p4242")
+        @test code == 1
+        @test occursin("FAILED: cannot read the server: ", out)
+        @test !occursin("ended before", out)
         @test restarts(calls) == 0 && others(calls) == 0
         @test length(alerts(calls)) == 1
         @test !occursin("Stacktrace", out)

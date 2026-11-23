@@ -879,7 +879,7 @@ places:
 | | macOS | Linux |
 |:--|:--|:--|
 | the job | launchd, `launchagents/julia-update.plist` | `systemd --user`, the unit `julia-update.service` |
-| the binary of the Kaimon server | `ps -o comm=` of the process that `lsof` finds on port 2828 | the link `/proc/<pid>/exe` of that process, without its ` (deleted)` suffix |
+| the binary of the Kaimon server | the first name that `lsof -d txt` lists for the process that `lsof` finds on port 2828 | the link `/proc/<pid>/exe` of that process, without its ` (deleted)` suffix |
 | the restart of the server | `launchctl kickstart -k gui/<uid>/<launchd_prefix>.kaimon` | `systemctl --user restart kaimon.service` |
 | the notification, and the log that it names | `osascript`; `~/Library/Logs/julia-update/` | `notify-send`; `journalctl --user -u julia-update.service` |
 | the runs | one run of the four steps | `julia-update.jl` runs steps 1 to 3 under `bwrap`, then `julia-update-server` step 4 and the alerts, outside it |
@@ -904,10 +904,14 @@ Linux on macOS.
 On macOS the script reads the profile key `launchd_prefix` for the label of the Kaimon job (see
 [Profile](../profile.md)); on Linux it reads no profile. A failure or a restart that is due also
 shows a notification. Without the notifier on the `PATH`, the log line is the only report. When
-no `lsof` is on the `PATH`, the server check fails and the job restarts nothing. A restart that
+no `lsof` is on the `PATH`, the server check fails and the job restarts nothing. On macOS the
+check also fails when `lsof` cannot start or lists no binary. It does not use `ps`, because the
+job's profile refuses the exec of the setuid `/bin/ps`. A restart that
 fails is a failure, with its output in the log, and so is a restart with no service manager on
 the `PATH`. The script, and on Linux the server phase, exits with status 1 when a step fails.
 
 `julia-update-test.jl` runs the script on a fixture home with stubs of every tool it calls, on the
 system it runs on (`julia --startup-file=no julia-update-test.jl`); on Linux each case runs the
-update phase and then `julia-update-server`, as the unit does. CI runs it on Linux.
+update phase and then `julia-update-server`, as the unit does. On macOS the `lsof` stub hands the
+read of the server's binary to the real `lsof`, which reads a deleted binary of a stand-in that
+the test starts. CI runs it on Linux.
