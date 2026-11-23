@@ -470,6 +470,20 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   reads as consistent and a wrong pairing never shows. Build the label from the objects that the
   adapter passes to the call, and give each adapter a mutant that swaps one of them (Y1 round 1,
   *Design the solver package*)
+- **a verification test that reads a hypothesis at a point, or trusts a user-supplied derivative on
+  the box:** an interval Newton test decorated `F` at the box centre and `J` on the box and never
+  `F` on the box, so with the automatic-differentiation Jacobian a discontinuous `F`
+  (`x + floor(x) + 1/2` at `0`) certified a box with no root; with an analytic `J` that is not the
+  Jacobian of `F` a false certificate is possible by construction. Read every hypothesis of the
+  theorem from `F` on the whole box, and never read the user's derivative; add a discontinuous `F`
+  and a neighbour search (`round`, `mod`, `trunc`, `ceil`, `sign`, `hypot`, `max`, `min`) to the
+  round's probes (VC verify 2, the solver package)
+- **a literal element-type tuple that the repository's own matrix check refuses:** a fix wrote a
+  literal tuple of element types in a test loop header, and `test/quality/matrix.jl` flagged it.
+  The fix builder and the critic ran only the part's test file, so only the full suite saw it: the
+  round ended with a critic PASS and a failed suite. Loop over the shared element-type constants,
+  filtered where a type does not apply, and run the repository's quality files with the part's
+  test file in every round that edits a test header (CH verify 2, the solver package)
 
 ## A type or an interface
 
