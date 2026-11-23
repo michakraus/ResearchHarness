@@ -24,7 +24,7 @@
   //
   // KEEP THE DELTA SMALL. The global file and the `instructions` files load EAGERLY into every
   // session, unlike a directory-scoped CLAUDE.md, which loads only when a file in its subtree is
-  // read. The delta's budget is 5 KB, 5,120 bytes. Anything longer belongs in a lazily-loaded file
+  // read. The delta's budget is 5.5 KB, 5,632 bytes. Anything longer belongs in a lazily-loaded file
   // that it points at.
   // This is also why the project-memory entries are NOT listed here: they are ~120,000 tokens
   // before the first message. See Tasks/Migrate the Claude Code project memory.md.

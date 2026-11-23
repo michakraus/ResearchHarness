@@ -20,7 +20,9 @@ session's directory, else in that directory; the `workdir` is also a path that t
 below. The command is checked as given and again with a leading `rtk ` removed, as the rtk plugin
 rewrites it, and the stricter verdict holds. A Kaimon tool `kaimon_<tool>` is the `mcp` call
 `kaimon.<tool>` of the Kaimon check, and `webfetch` and `websearch` are the `mcp` calls `web.fetch`
-and `web.search` of the web check; the token check reads both too. Every other tool passes.
+and `web.search` of the web check; the token check reads both too. Every other tool passes,
+`execute` too: code mode runs each tool that its code calls, such as `tools.kaimon.ex(…)`, through
+the `execute.before` event of that tool's own id, `kaimon_ex`, so the nested call meets its checks.
 
 A message that the table cannot read is refused: bytes that are not UTF-8, a text that `jsonio`
 refuses, no object `event`, no string `tool`, an `input` that is no object, a `shell` call without a

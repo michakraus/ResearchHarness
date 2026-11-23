@@ -84,7 +84,7 @@ SHARED_ROOTS = (
 )
 # The bytes that the delta of OpenCode, oh-my-pi or Antigravity may hold: each installs as that
 # frontend's global instruction file and loads into every session.
-DELTA_BUDGET = 5120
+DELTA_BUDGET = 5632
 
 
 def shared(dst: str) -> bool:

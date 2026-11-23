@@ -202,12 +202,13 @@ It states the facts of OpenCode:
 
 - which rule file to read before which kind of work, because OpenCode loads no rule by itself;
 - there is no sandbox, and `external_directory` is the one boundary;
+- under `agentbox` the shell has no GPU, so GPU code runs through Kaimon;
 - pass `workdir` and absolute paths, and do not `cd` inside a command;
 - there is no session scratchpad, no worktree hook and no background run;
 - the plugins `rtk.ts` and `guards.ts` take the place of the hooks;
 - how to call the agents.
 
-The file loads into every session, so keep it small. `opencode.jsonc` gives its budget as 5,120
+The file loads into every session, so keep it small. `opencode.jsonc` gives its budget as 5,632
 bytes, and a case of `harness test` fails when the file is larger. `OMP-DELTA.md` and
 `ANTIGRAVITY-DELTA.md` have the same budget, which their own cases hold. A rule that only one skill
 needs goes into that skill's copy: the installed `build-part` skill carries the rule for its
@@ -347,6 +348,7 @@ agent directory, byte for byte. Its first three lines import oh-my-pi's copies o
 It states the facts of oh-my-pi:
 
 - there is no sandbox, and `bash.patterns` and the guard extension are the two controls;
+- under `agentbox` the shell has no GPU, so GPU code runs through Kaimon;
 - oh-my-pi runs no RTK rewrite, so a command runs as typed;
 - the approval mode is `yolo`, and the `eval` tool is denied;
 - what the guard extension refuses;
@@ -358,7 +360,7 @@ It states the facts of oh-my-pi:
 - the dispatcher continues an agent by starting a new one, never by a write to `agent://`, and
   runs a command that a sub-agent returns for approval.
 
-The file loads into every session. A case of `harness test` fails when it has more than 5,120
+The file loads into every session. A case of `harness test` fails when it has more than 5,632
 bytes, the budget of `OPENCODE-DELTA.md`. The installed `build-part` skill carries the rule for its
 council of critics, in its *Under oh-my-pi* section.
 
@@ -558,7 +560,7 @@ It states the facts of Antigravity:
 - the skills are Antigravity's own copies in `~/.gemini/config/skills/`;
 - there is no session scratchpad.
 
-A case of `harness test` fails when the file has more than 5,120 bytes, the budget of
+A case of `harness test` fails when the file has more than 5,632 bytes, the budget of
 `OPENCODE-DELTA.md`.
 
 ## `antigravity/UNDER-ANTIGRAVITY.md`
