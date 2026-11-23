@@ -78,7 +78,8 @@ the path `**/KNOWN_ISSUES.md`.
 
 The file holds each finding that has evidence and that its pull request does not fix. The
 entries are in the present tense. A defect that the branch itself causes stays out, because the
-branch fixes it. The file exists only when it has an entry. Each entry has a stable ID that is
+branch fixes it. A limit of a form that the plan decided goes in, because a clause of the spec
+prescribes it; its `found` field names the clause. The file exists only when it has an entry. Each entry has a stable ID that is
 never used again, a heading `### <ID> · <problem>`, and the fields `location`, `evidence`, `kind`
 and `found`. The rule gives the values of `kind`. An entry leaves the file when its fix merges,
 and the changelog entry of the fix names its ID. Every agent reads the file before it adds an entry.
