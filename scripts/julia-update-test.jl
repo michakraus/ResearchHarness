@@ -221,7 +221,7 @@ function script_definitions(names...)
         def = e isa Expr && e.head === :macrocall ? e.args[end] : e
         def isa Expr || continue
         name = def.head === :struct ? def.args[2] :
-               def.head === :function ? def.args[1].args[1] : nothing
+               def.head === :function && def.args[1] isa Expr ? def.args[1].args[1] : nothing
         name in names && Core.eval(m, e)
     end
     return m

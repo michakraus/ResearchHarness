@@ -906,9 +906,9 @@ On macOS the script reads the profile key `launchd_prefix` for the label of the 
 shows a notification. Without the notifier on the `PATH`, the log line is the only report. When
 no `lsof` is on the `PATH`, the server check fails and the job restarts nothing. On macOS the
 check also fails when `lsof` cannot start or lists no binary. It does not use `ps`, because the
-job's profile refuses the exec of the setuid `/bin/ps`. A restart that
-fails is a failure, with its output in the log, and so is a restart with no service manager on
-the `PATH`. The script, and on Linux the server phase, exits with status 1 when a step fails.
+job's profile refuses the exec of the setuid `/bin/ps`. A restart that fails is a failure, with
+its output in the log, and so is a restart with no service manager on the `PATH`. The script,
+and on Linux the server phase, exits with status 1 when a step fails.
 
 `julia-update-test.jl` runs the script on a fixture home with stubs of every tool it calls, on the
 system it runs on (`julia --startup-file=no julia-update-test.jl`); on Linux each case runs the
