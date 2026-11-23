@@ -124,6 +124,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   that file. A `zsh -c` reads `.zshenv` and not `.zshrc`, so a shim that `.zshrc` puts in front
   is not the `julia` of a frontend whose Bash does not read `.zshrc`. Check `command -v <name>`
   in each frontend's own shell (M1, *Sandbox the agent frontends*)
+- a named mutant whose symptom the spec reasons from another shell: zsh does not split an unquoted
+  `$*` unless `SH_WORD_SPLIT` is set, so `$*` for `"$@"` keeps `a b` whole and drops only an empty
+  argument, and the spec's `a b` case let the mutant live. Run each shell mutant in the shell that
+  reads the code before its `catches:` line names a symptom, and give the case an empty argument
+  (G0 build, *Sandbox the agent frontends*)
 - a table of a program's options that knows only the `=` form of a valued option: `julia` reads
   `--startup-file no -e 1` as `--startup-file=no`, so a reader that takes `no` for the script
   misses the probe. Run the program on each option with its value in the next word, and give the
