@@ -114,8 +114,8 @@ GONE = """Refused: no live Kaimon session has the key `{value}`.
 {live} The session has ended, or the key is stale. Call `ping`: reuse the live session of your
 tree if it lists one, else start one with `start_session(project_path = <tree>)`. When a start
 times out twice, or Kaimon is not connected, probe in a fresh process,
-`julia --startup-file=no <file>`, and go on; the rule is in `skills/build-part/evidence.md`,
-*A warm session for probes*.
+`julia --startup-file=no <file>`, and go on; a GPU probe has no such fallback, so report the
+failure. The rule is in `skills/build-part/evidence.md`, *A warm session for probes*.
 """
 
 
