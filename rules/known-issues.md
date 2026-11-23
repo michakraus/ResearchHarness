@@ -14,6 +14,8 @@ fixed, in the present tense.
 - **A defect that the branch causes stays out.** A CHANGELOG line that the branch makes false is an
   example. The branch fixes it before its pull request opens. A doubt that a later run answers is
   not a defect either: its entry is deleted.
+- **A limit of a form that the plan decided goes in.** A clause of the part's spec prescribes
+  the form, so the branch does not cause the limit. Its `found` field names the clause.
 - **No empty file.** The file exists when it has an entry, so it never says "checked, nothing
   found" when nobody checked.
 - **One entry per issue**, with a stable ID that is never reused. An existing ID (`A1`, `D7`, …)

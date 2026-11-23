@@ -70,13 +70,13 @@ those counts are no progress, whatever the critics' wording.
 
 | move | when | parks |
 |:--|:--|:--|
-| `continue` | progress is measured, and the open defects are `wrong result` with a known fix. State the condition that makes round 3 close where round 2 did not | no |
+| `continue` | progress is measured, and the open defects are `wrong result` with a known fix; or, after a PASS, a finding in code that the branch causes and whose fix changes source. On a second FAIL, state the condition that makes round 3 close where round 2 did not | no |
 | `redesign` | `neighbour` or `fix regression` dominates. Name the design, inside the part's *Done when* | no |
 | `decide` | `spec` dominates, and the question is one the advisor may decide | no |
 | `test round` | only `evidence` is left: the fix round writes tests and changes no source | no |
 | `fresh build` | the first design is the cause, and a redesign on it costs more than a new start. A new builder starts from the base with the spec, the decisions and the list of dead ends. Once per part | no |
 | `rerun` | only `harness` is left | no |
-| `known issue` | after a PASS, the finding is in code and not a wrong result on an input of a clause: record it, change nothing | no |
+| `known issue` | after a PASS, the finding is in code, not a wrong result on an input of a clause, and the branch does not cause it or it is a limit of a form that the plan decided (`~/.claude/rules/known-issues.md`): record it, change nothing. A finding in code that the branch causes takes `continue`, or `test round` when only a test changes | no |
 | `park` | the move needs the user: a weaker or narrower clause, a scope cut, a split, a change to a rule outside the plan, landing with an unmet clause, or a fourth critic round | yes |
 
 **You do not decide**, and you park instead: a `decision` part; a weaker *Done when*; a
