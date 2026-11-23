@@ -207,7 +207,7 @@ It states the facts of OpenCode:
 - the plugins `rtk.ts` and `guards.ts` take the place of the hooks;
 - how to call the agents.
 
-The file loads into every session, so keep it small. `opencode.jsonc` gives its budget as 5,120
+The file loads into every session, so keep it small. `opencode.jsonc` gives its budget as 5,632
 bytes, and a case of `harness test` fails when the file is larger. `OMP-DELTA.md` and
 `ANTIGRAVITY-DELTA.md` have the same budget, which their own cases hold. A rule that only one skill
 needs goes into that skill's copy: the installed `build-part` skill carries the rule for its
@@ -358,7 +358,7 @@ It states the facts of oh-my-pi:
 - the dispatcher continues an agent by starting a new one, never by a write to `agent://`, and
   runs a command that a sub-agent returns for approval.
 
-The file loads into every session. A case of `harness test` fails when it has more than 5,120
+The file loads into every session. A case of `harness test` fails when it has more than 5,632
 bytes, the budget of `OPENCODE-DELTA.md`. The installed `build-part` skill carries the rule for its
 council of critics, in its *Under oh-my-pi* section.
 
@@ -558,7 +558,7 @@ It states the facts of Antigravity:
 - the skills are Antigravity's own copies in `~/.gemini/config/skills/`;
 - there is no session scratchpad.
 
-A case of `harness test` fails when the file has more than 5,120 bytes, the budget of
+A case of `harness test` fails when the file has more than 5,632 bytes, the budget of
 `OPENCODE-DELTA.md`.
 
 ## `antigravity/UNDER-ANTIGRAVITY.md`

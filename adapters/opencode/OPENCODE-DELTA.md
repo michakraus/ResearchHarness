@@ -33,6 +33,11 @@ unsandboxed programs, a `git` alone on its line, no `cd … &&`, no `git -C`, no
 `ps` read as a refusal. `ps` and `pgrep` run here. The network lists of `network.toml` apply to
 Claude Code only; here no list limits the hosts that a command or `webfetch` reaches.
 
+**Under `agentbox` the shell has no GPU.** `agentbox` sets `AGENTBOX=1` and starts OpenCode inside
+srt, which hides the GPU from every command. Run GPU code through Kaimon — `kaimon_ex` and
+`kaimon_run_tests`, or `tools.kaimon.<tool>` in `execute` — never through a shell `julia`, first or
+as a fallback.
+
 **`external_directory` is the one boundary here.** A file tool that touches a path outside the
 workspace root and outside the directories that `opencode.jsonc` allows is refused. A session
 rooted at `/` has no such path.

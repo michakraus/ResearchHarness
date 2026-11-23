@@ -17,6 +17,11 @@ permission matcher does not bind here: the unsandboxed programs, a `git` alone o
 `git -C`, no `$?`, and a failed `ps` read as a refusal. The network
 lists of `network.toml` apply to Claude Code only; here no list limits the hosts a command reaches.
 
+**Under `agentbox` the shell has no GPU.** `agentbox` sets `AGENTBOX=1` and starts oh-my-pi inside
+srt, which hides the GPU from every command. Run GPU code through Kaimon, whose tools are the
+`bash` commands `mcp__kaimon_<tool>`, such as `mcp__kaimon_ex --e '<code>' --ses <key>` — never
+through a shell `julia`, first or as a fallback.
+
 oh-my-pi runs no RTK rewrite: a command runs as typed, so the rewrite facts of `RTK.md` do not
 apply, and `grep` returns every match.
 
