@@ -217,7 +217,9 @@ last.**
    not stop the start: call `ping` before you call it again. **When `start_session` times out
    twice, when a call answers "disconnected" or "No session matched", or when Kaimon is not
    connected, probe in a fresh process**, `julia --startup-file=no <probe file>`, and go on; a
-   session is a speed-up, not a precondition. Start no second session for the tree.
+   session is a speed-up, not a precondition. **A GPU probe is the exception**: a sandboxed shell
+   has no GPU, so a fresh process measures nothing on the device. Report the failure, and leave the
+   device run to the caller. Start no second session for the tree.
 2. **Load the test environment in a call of its own.** `TestEnv.activate()` alone fails in a
    session, because the package's project is active:
 
