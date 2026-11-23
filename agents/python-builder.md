@@ -114,9 +114,9 @@ Work in these steps, in this order. Each step ends on a check.
    no-defect in *Mutants*: equivalent, dead code, or message text that no clause names. Where the
    plan's §L asks for a generated sweep, put its commands under *Left for the dispatcher*.
 7. **Run the gate once on your last head.** Run `harness test` with the full suite once, with
-   `--log <file>` in your scratch directory, before you report: about 3 minutes in the
-   Harness. A full suite that runs longer than 5 minutes goes under *Left for the dispatcher*,
-   with its exact command. Then `ruff format --check`, `ruff check` and `basedpyright`, and the
+   `--log <file>` in your scratch directory, under `timeout -k 10 160`, before you report. A full
+   suite that does not end in that call goes under *Left for the dispatcher*, with its exact
+   command, and you run `harness test --changed <base>` in its place. Then `ruff format --check`, `ruff check` and `basedpyright`, and the
    spec's checks where the bundle names a spec: `python3 ~/Research/Harness/scripts/spec-validate.py
    <spec> --head <worktree> --out "$TMPDIR/gate-<Repository>-<part>-builder"`.
 8. **Read the *Done when* again against `git diff <base>...HEAD`.** Every clause has a PASS row,
@@ -144,6 +144,12 @@ dispatcher*, with its exact command. Never `sleep`, and never poll a log in a lo
 `grep` or a line range, not whole. **Run everything in the foreground**: never set
 `run_in_background`, and never end your turn to wait, because your caller reads the turn you end as
 your report.
+
+**Each Bash call ends within 170 seconds.** In a sub-agent that runs in the background, Claude Code
+moves a call that runs past 180 s to the background, whatever its `timeout`, and you cannot report
+while that job runs. Split a longer run, one call each, and run each test or probe command under
+`timeout -k 10 160`: a program that handles SIGTERM, Julia among them, can block in its exit path
+while a bare `timeout` waits, and `-k 10` sends SIGKILL.
 
 ## Return for the critic
 

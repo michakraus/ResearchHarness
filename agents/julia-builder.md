@@ -174,9 +174,14 @@ that check passes.
 Your context is cached for 5 minutes. **A call after a longer pause writes the whole context
 again**, at $5 per million tokens: $2.5 at 500 k, on every such pause. Three rules follow.
 
-- **No command of yours runs longer than 5 minutes.** A suite, a docs build or a probe that takes
-  longer goes into your report under *Left for the dispatcher*, with the exact command. Never
-  `sleep`, and never poll a log in a loop.
+- **Each Bash call ends within 170 seconds, in the foreground.** In a sub-agent that runs in the
+  background, Claude Code moves a call that runs past 180 s to the background, whatever its
+  `timeout`, and you cannot report while that job runs. Split a longer run by test file or
+  testset, one call each. A suite, a docs build or a probe that takes longer than 5 minutes in all
+  goes into your report under *Left for the dispatcher*, with the exact command. Never `sleep`,
+  and never poll a log in a loop.
+- **Run each Julia command under `timeout -k 10 160`.** Julia answers SIGTERM by running its exit
+  hooks, which can block at 0 % CPU for hours while a bare `timeout` waits; `-k 10` sends SIGKILL.
 - **Print what you need, not the whole output.** `run-tests.jl` prints a summary; read a log with
   `grep` or with a line range.
 - **Read the files you change and the sections the part names.** A reference implementation is
@@ -273,7 +278,8 @@ plus the block for the pull-request body.
 **Run everything in the foreground.** A child that runs in the background reports to the main
 session, never to you, and your caller reads the turn you end as your report. So never set
 `run_in_background` on an `Agent` or a Bash call, and never end your turn to wait. A Bash call that
-hits its timeout moves to the background, and its end notification can reach you minutes late.
+runs past 180 s or hits its timeout moves to the background, and its end notification can reach
+you minutes late, or never.
 The verifier is the one wait longer than 5 minutes that is yours, and it comes once, after the
 last critic.
 
