@@ -87,14 +87,19 @@ if SYSTEM == "Darwin"
     notify_cmd(notifier, message) =
         `$notifier -e $("display notification \"$message\" with title \"julia-update\"")`
     """
-    The binary of process `pid` from `ps -o comm=`, which prints its full path on macOS,
-    `:ended` when the process has ended, or `:nops` when no `ps` is on the PATH.
+    The binary of process `pid`, read with `lsof`: the first `n` line of `lsof -d txt -Fn`
+    without its `n`, because `lsof` names the executable first and keeps its path after the file
+    is deleted. `:ended` when `lsof` prints nothing, as for a process that has ended, and an
+    `Unreadable` when `lsof` cannot start or lists no name. Not `ps`: the job's profile refuses
+    the exec of the setuid `/bin/ps`. `-w` keeps `lsof`'s warnings out of the log.
     """
-    function binary_of(pid)
-        ps = Sys.which("ps")
-        ps === nothing && return :nops
-        comm = readchomp(ignorestatus(`$ps -o comm= -p $pid`))
-        return isempty(comm) ? :ended : comm
+    function binary_of(lsof, pid)
+        lines = output_lines(`$lsof -w -a -p $pid -d txt -Fn`)
+        lines isa Unreadable && return lines
+        isempty(lines) && return :ended
+        name = findfirst(startswith('n'), lines)
+        name === nothing && return Unreadable("lsof lists no binary of process $pid")
+        return String(chop(lines[name]; head = 1, tail = 0))
     end
 elseif SYSTEM != "Linux"
     error("julia-update.jl runs on macOS and Linux, not on $SYSTEM")
@@ -135,16 +140,40 @@ function kaimon_version()
 end
 
 """
+A failure to read the server: the `reason`, for the log. Never "no server".
+"""
+struct Unreadable
+    reason::String
+end
+
+"""
+The non-empty lines that `cmd` prints, whatever its exit status, or an `Unreadable` with the
+error when `cmd` cannot start, as when a sandbox profile refuses its exec. Any other exception
+propagates.
+"""
+function output_lines(cmd)
+    out = try
+        read(ignorestatus(cmd), String)
+    catch e
+        e isa Base.IOError || rethrow()
+        return Unreadable(sprint(showerror, e))
+    end
+    return filter(!isempty, split(out, '\n'))
+end
+
+"""
 The Julia binary of the process that listens on the Kaimon port: its path, `:none` when no
-process listens, `:ended` when the process ended before its binary was read, or `:nolsof` or
-`:nops` when that tool is not on the PATH. A missing tool is never "no server".
+process listens, `:ended` when the process ended before its binary was read, `:nolsof` when no
+`lsof` is on the PATH, or an `Unreadable` when `lsof` cannot start or lists no binary. A tool
+that is missing or cannot read is never "no server".
 """
 function server_julia()
     lsof = Sys.which("lsof")
     lsof === nothing && return :nolsof
-    pids = split(readchomp(ignorestatus(`$lsof -nP -iTCP:$KAIMON_PORT -sTCP:LISTEN -t`)))
+    pids = output_lines(`$lsof -nP -iTCP:$KAIMON_PORT -sTCP:LISTEN -t`)
+    pids isa Unreadable && return pids
     isempty(pids) && return :none
-    return binary_of(first(pids))
+    return binary_of(lsof, first(pids))
 end
 
 """The Sys.BINDIR of the release that the launcher resolves for the default channel."""
@@ -210,9 +239,11 @@ function server_phase(failures, before, after)
     println("--- server check")
     server = server_julia()
     due = String[]
-    if server === :nolsof || server === :nops
-        println("FAILED: cannot read the server, because no ", server === :nolsof ? "lsof" : "ps",
-                " is on the PATH.")
+    if server isa Unreadable
+        println("FAILED: cannot read the server: ", server.reason)
+        push!(failures, "cannot read the server")
+    elseif server === :nolsof
+        println("FAILED: cannot read the server, because no lsof is on the PATH.")
         push!(failures, "cannot read the server")
     elseif server === :none
         println("No process listens on port $KAIMON_PORT; $SERVICE_MANAGER restarts the server.")
