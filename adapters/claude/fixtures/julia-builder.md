@@ -181,7 +181,8 @@ again**, at $5 per million tokens: $2.5 at 500 k, on every such pause. Four rule
   goes into your report under *Left for the dispatcher*, with the exact command. Never `sleep`,
   and never poll a log in a loop.
 - **Run each Julia command under `timeout -k 10 160`.** Julia answers SIGTERM by running its exit
-  hooks, which can block at 0 % CPU for hours while a bare `timeout` waits; `-k 10` sends SIGKILL.
+  path, which can block for hours after a stack overflow while a bare `timeout` waits; `-k 10`
+  sends SIGKILL.
 - **Print what you need, not the whole output.** `run-tests.jl` prints a summary; read a log with
   `grep` or with a line range.
 - **Read the files you change and the sections the part names.** A reference implementation is
