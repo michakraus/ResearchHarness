@@ -23,7 +23,9 @@ reads below when `input.cwd` is given or the command recurses. `read` and `grep`
 a `grep` with none the working directory, and a `grep` reads below its path. `edit` edits each path
 that it names (edit_paths), and `write` writes `input.path` and the path of its hashline header
 (write_path). Each tool path is checked in every form that oh-my-pi may read (path_forms).
-A Kaimon tool `mcp__kaimon_<tool>` is the `mcp` call `kaimon.<tool>`. `web_search` is the `mcp`
+A Kaimon tool `mcp__kaimon_<tool>` is the `mcp` call `kaimon.<tool>`; oh-my-pi mounts it as a
+`bash` command of that name, which reaches the extension as a `tool_call` of the Kaimon tool, so
+the Kaimon check reads it. `web_search` is the `mcp`
 call `web.search` of the web check, and a `read` of an `http` or `https` URL is also the `mcp` call
 `web.fetch` (web_call), beside its path checks; the Kaimon, web and token checks read each `mcp`
 call. The caller is `sub` when the agent's kind is `sub`, and a sub-agent's write to `agent://` is
