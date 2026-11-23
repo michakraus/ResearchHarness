@@ -129,9 +129,12 @@ julia --startup-file=no mutate.jl <package> --check <mutants.toml>
 ```
 
 The list modes write a result file under `~/Research/.scratch/mutants/`, named for the package
-directory and the list, and print its path on the `result:` line. `--check` runs nothing and says
-VALID or INVALID for each mutant. The checks need `fatou` on the `PATH` and Julia 1.12 or later.
-Without units, the script runs the units that the diff against `origin/main` reaches.
+directory and the list, and print its path on the `result:` line. A run prints a `start:` line
+first, and the list modes print a `progress:` line when the run of a mutant ends. Each line is
+flushed, so a log that the output is redirected to shows the run while it goes on. `--check`
+runs nothing and says VALID or INVALID for each mutant. The checks need `fatou` on the `PATH` and
+Julia 1.12 or later. Without units, the script runs the units that the diff against `origin/main`
+reaches.
 
 `mutate-worker.jl` is the warm worker of `mutate.jl --warm`. `mutate.jl` starts it. Do not run
 it by hand.

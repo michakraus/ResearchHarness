@@ -315,6 +315,11 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   entry, and measure the scalar's own threshold before a comment claims it holds (M1b round 1b,
   *Simplify the optimiser package and the learning package for 0.9*)
 - a counter or a budget that a relative stop cannot end, such as a bracket whose lower end is 0
+- **a test of a guard's inclusive bound that runs a real solve at that bound:** a check that
+  `maxit = typemax(Int32)` passes the guard ran a Gauss–Newton solve with that budget, which never
+  fails fast under a regression that stops convergence; under one mutant it ran for 26 minutes.
+  Test the bound with a call that the guard, or an error raised before any evaluation, ends, and
+  give every solve the budget its scenario names (A, *a remap-fit plan*)
 - an aggregate whose value depends on data the case set does not name: an accuracy whose error count
   is floored rather than halved agrees with the halved form on every fully labelled case, and moves
   its value on a sample that carries no label. Name that input in the decided edge, and keep the
