@@ -50,7 +50,8 @@ key. Keep the session for all your probes, and shut it down when you are done, n
 When the session does not answer — a caller timeout, "stalled", "disconnected", "No session
 matched", a job that stays "running" — or `start_session` times out twice, or Kaimon is not
 connected when your session starts, do not start another session: run the code in a fresh process,
-`julia --startup-file=no <file>`, and report the failure. A Kaimon server that has started many
+`julia --startup-file=no <file>`, and report the failure. GPU code has no such fallback: a
+sandboxed shell has no GPU, so report the failure and stop. A Kaimon server that has started many
 sessions loses replies and hangs new ones, and each new start adds to it. Never call `exit()` in
 `ex`, and run code that loads PythonCall in a fresh process: each one ends the shared process.
 
