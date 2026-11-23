@@ -282,7 +282,7 @@ end
 
     @testset "the load check of Kaimon reads an empty config directory, which it then removes" begin
         fx = fixture()
-        code, out, calls = with_server(identity, fx)
+        code, _, calls = with_server(identity, fx)
         @test code == 0
         config = filter(l -> startswith(l, "config "), calls)
         @test length(config) == 1
