@@ -77,6 +77,13 @@ the round whatever you find. `run-tests.jl … affected` runs the full suite whe
 changed, so run `select` before it, as step 2 says. No command of yours runs longer than 5 minutes:
 your context is cached for 5 minutes, and a longer pause writes it again in full.
 
+**Each Bash call ends within 170 seconds, in the foreground.** In a sub-agent that runs in the
+background, Claude Code moves a call that runs past 180 s to the background, whatever its
+`timeout`, and you cannot report while that job runs. Split a longer run by test file or testset,
+one call each, and run each Julia command under `timeout -k 10 160`: Julia answers SIGTERM by
+running its exit hooks, which can block at 0 % CPU for hours while a bare `timeout` waits, and
+`-k 10` sends SIGKILL.
+
 ## Round 1 — judge the whole part
 
 Judge `cd <worktree> && git diff origin/main...HEAD`.

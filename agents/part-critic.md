@@ -42,6 +42,12 @@ comments and the CHANGELOG are claims, not evidence. **You change nothing there.
 probe with the Write tool under `~/Research/.scratch/critic/<Repository>-<part>/`, and run it
 against a copy or by path. No command of yours runs longer than 5 minutes.
 
+**Each Bash call ends within 170 seconds, in the foreground.** In a sub-agent that runs in the
+background, Claude Code moves a call that runs past 180 s to the background, whatever its
+`timeout`, and you cannot report while that job runs. Split a longer run, one call each, and run
+each test or probe command under `timeout -k 10 160`: a program that handles SIGTERM, Julia among
+them, can block in its exit path while a bare `timeout` waits, and `-k 10` sends SIGKILL.
+
 **A probe needs no repository.** A `cd` in a Bash call of its own is reset before the next call,
 so a `git init`, `git clone` or `git checkout` after it runs in your root, which is often the
 builder's directory. Compare two copies with `git diff --no-index <a> <b>`, and read the work with
