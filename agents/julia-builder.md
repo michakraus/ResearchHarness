@@ -172,7 +172,7 @@ that check passes.
 ## Keep the context small, and never wait long
 
 Your context is cached for 5 minutes. **A call after a longer pause writes the whole context
-again**, at $5 per million tokens: $2.5 at 500 k, on every such pause. Three rules follow.
+again**, at $5 per million tokens: $2.5 at 500 k, on every such pause. Four rules follow.
 
 - **Each Bash call ends within 170 seconds, in the foreground.** In a sub-agent that runs in the
   background, Claude Code moves a call that runs past 180 s to the background, whatever its

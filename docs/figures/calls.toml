@@ -91,13 +91,13 @@ label = "a long run"
 [[call]]
 caller = "julia-builder"
 callee = "julia-branch-verifier"
-at = "agents/julia-builder.md:269"
+at = "agents/julia-builder.md:274"
 label = "before the pull request"
 
 [[call]]
 caller = "julia-builder"
 callee = "changelog-scribe"
-at = "agents/julia-builder.md:281"
+at = "agents/julia-builder.md:287"
 label = "a CHANGELOG fix"
 
 [[call]]
@@ -114,7 +114,7 @@ at = "agents/part-builder.md:151"
 [[call]]
 caller = "python-builder"
 callee = "python-branch-verifier"
-at = "agents/python-builder.md:201"
+at = "agents/python-builder.md:207"
 
 [[call]]
 caller = "julia-pr-shepherd"

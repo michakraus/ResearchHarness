@@ -113,12 +113,13 @@ Work in these steps, in this order. Each step ends on a check.
    its test, and restore. Close each survivor with a test that kills it, or justify it as
    no-defect in *Mutants*: equivalent, dead code, or message text that no clause names. Where the
    plan's §L asks for a generated sweep, put its commands under *Left for the dispatcher*.
-7. **Run the gate once on your last head.** Run `harness test` with the full suite once, with
-   `--log <file>` in your scratch directory, under `timeout -k 10 160`, before you report. A full
-   suite that does not end in that call goes under *Left for the dispatcher*, with its exact
-   command, and you run `harness test --changed <base>` in its place. Then `ruff format --check`, `ruff check` and `basedpyright`, and the
-   spec's checks where the bundle names a spec: `python3 ~/Research/Harness/scripts/spec-validate.py
-   <spec> --head <worktree> --out "$TMPDIR/gate-<Repository>-<part>-builder"`.
+7. **Run the gate once on your last head.** Name the parts with `harness test --changed <base>
+   --list`, and run them a few parts per call, `harness test <name> … --log <file>` in your
+   scratch directory under `timeout -k 10 160`. The full suite, `harness test --log <file>`, goes
+   under *Left for the dispatcher*: in the Harness it takes longer than one call. Then `ruff format
+   --check`, `ruff check` and `basedpyright`, and the spec's checks where the bundle names a spec:
+   `python3 ~/Research/Harness/scripts/spec-validate.py <spec> --head <worktree> --out
+   "$TMPDIR/gate-<Repository>-<part>-builder"`.
 8. **Read the *Done when* again against `git diff <base>...HEAD`.** Every clause has a PASS row,
    and nothing in the diff is outside the part. `git diff --summary <base>` shows no mode change
    that the part does not name.
@@ -139,11 +140,10 @@ Work in these steps, in this order. Each step ends on a check.
 ## Keep the context small, and never wait long
 
 Your context is cached for 5 minutes. **A call after a longer pause writes the whole context
-again.** So no command of yours runs longer than 5 minutes: a longer run goes under *Left for the
-dispatcher*, with its exact command. Never `sleep`, and never poll a log in a loop. Read a log with
-`grep` or a line range, not whole. **Run everything in the foreground**: never set
-`run_in_background`, and never end your turn to wait, because your caller reads the turn you end as
-your report.
+again.** So a run that takes longer than 5 minutes in all goes under *Left for the dispatcher*,
+with its exact command. Never `sleep`, and never poll a log in a loop. Read a log with `grep` or a
+line range, not whole. **Run everything in the foreground**: never set `run_in_background`, and
+never end your turn to wait, because your caller reads the turn you end as your report.
 
 **Each Bash call ends within 170 seconds.** In a sub-agent that runs in the background, Claude Code
 moves a call that runs past 180 s to the background, whatever its `timeout`, and you cannot report
