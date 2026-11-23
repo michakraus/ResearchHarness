@@ -25,11 +25,11 @@ that it names (edit_paths), and `write` writes `input.path` and the path of its 
 (write_path). Each tool path is checked in every form that oh-my-pi may read (path_forms).
 A Kaimon tool `mcp__kaimon_<tool>` is the `mcp` call `kaimon.<tool>`; oh-my-pi mounts it as a
 `bash` command of that name, which reaches the extension as a `tool_call` of the Kaimon tool, so
-the Kaimon check reads it. `web_search` is the `mcp`
-call `web.search` of the web check, and a `read` of an `http` or `https` URL is also the `mcp` call
-`web.fetch` (web_call), beside its path checks; the Kaimon, web and token checks read each `mcp`
-call. The caller is `sub` when the agent's kind is `sub`, and a sub-agent's write to `agent://` is
-refused (agent_write). Every other tool passes.
+the Kaimon check reads it. `web_search` is the `mcp` call `web.search` of the web check, and a
+`read` of an `http` or `https` URL is also the `mcp` call `web.fetch` (web_call), beside its path
+checks; the Kaimon, web and token checks read each `mcp` call. The caller is `sub` when the agent's
+kind is `sub`, and a sub-agent's write to `agent://` is refused (agent_write). Every other tool
+passes.
 
 A message that the table cannot read is refused: bytes that are not UTF-8, a text that `jsonio`
 refuses, no object `event`, no string `toolName`, an `input` that is no object, a `bash` call
