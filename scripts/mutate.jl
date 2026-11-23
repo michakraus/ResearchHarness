@@ -56,6 +56,11 @@
 #       Check each mutant of the list, as the modes above do before they run one, and run
 #       nothing: VALID, or INVALID with the reason.
 #
+# A run of mutants prints a `start:` line first: the mode, the mutants, the jobs and the units.
+# The list modes print a `progress:` line when the run of a mutant ends: the phase (warm or cold in
+# warm mode), the count, the seconds since the start, the verdict and the name. Each line is
+# flushed, so a log that the output is redirected to shows the run while it goes on.
+#
 # The branch's tests on the base's code, PINS or FAILS, are pins.jl's.
 #
 # A <unit> is as for run-tests.jl. Without units, the units that the diff against origin/main
@@ -85,6 +90,17 @@ pkgversion(JuliaSyntax) >= v"1" ||
 
 const RUNTESTS = joinpath(@__DIR__, "run-tests.jl")
 julia(args...) = `$(Base.julia_cmd()) --startup-file=no $args`
+
+"Print a line, and flush stdout and stderr: a redirected stdout is an IOStream, which buffers."
+say(xs...) = (println(xs...); flush(stdout); flush(stderr); nothing)
+
+"The first line of a run: the mode, the number of mutants, the parallel jobs and the units."
+announce(mode, count, jobs, units) =
+    say("start: $mode mode, $count mutant$(count == 1 ? "" : "s"), $jobs job$(jobs == 1 ? "" : "s"), units: $(join(units, ", "))")
+
+"The line for a mutant whose run has ended: the phase, the count, the seconds since `t0`, the verdict and the name."
+progress(phase, k, total, t0, verdict, name) =
+    say("progress: $phase$k of $total at $(round(Int, time() - t0)) s, $verdict — $name")
 
 module RunTests
 include(joinpath(@__DIR__, "run-tests.jl"))
@@ -302,11 +318,11 @@ function report(list, verdicts)
     counts = Dict("CAUGHT" => 0, "SURVIVED" => 0, "NO-COVERAGE" => 0, "UNKNOWN" => 0, "INVALID" => 0)
     for ((name, _), (verdict, detail)) in zip(list, verdicts)
         counts[verdict] += 1
-        println("$verdict: $name — $detail")
+        say("$verdict: $name — $detail")
     end
     # NO-COVERAGE, a finding as SURVIVED is, comes only from the warm mode, and only when there is one
     uncovered = counts["NO-COVERAGE"] == 0 ? "" : " $(counts["NO-COVERAGE"]) NO-COVERAGE,"
-    println("\n$(counts["CAUGHT"]) CAUGHT, $(counts["SURVIVED"]) SURVIVED,$uncovered $(counts["UNKNOWN"]) UNKNOWN, $(counts["INVALID"]) INVALID, of $(length(list)) mutants")
+    say("\n$(counts["CAUGHT"]) CAUGHT, $(counts["SURVIVED"]) SURVIVED,$uncovered $(counts["UNKNOWN"]) UNKNOWN, $(counts["INVALID"]) INVALID, of $(length(list)) mutants")
     return counts["UNKNOWN"] + counts["INVALID"] == 0 ? 0 : 3
 end
 
@@ -408,14 +424,23 @@ end
 function run_list(pkg, file, units; only = nothing)
     list = read_list(file)
     list isa String && (println(stderr, list); return 2)
+    t0 = time()
+    announce("list", length(list), 1, units)
     tree = tree_hash(pkg)
     kept = kept_verdicts(pkg, file, list, sort(units), tree, only)
-    verdicts = map(zip(list, invalid_all(pkg, list), kept)) do ((_, edits), why, k)
-        why !== nothing ? ("INVALID", why) : k !== nothing ? first(k) : cold(pkg, edits, units)
+    why = invalid_all(pkg, list)
+    total = count(((w, k),) -> w === nothing && k === nothing, zip(why, kept))
+    ran = Ref(0)
+    verdicts = map(zip(list, why, kept)) do ((name, edits), w, k)
+        w !== nothing && return ("INVALID", w)
+        k !== nothing && return first(k)
+        v = cold(pkg, edits, units)
+        progress("", ran[] += 1, total, t0, v[1], name)
+        return v
     end
     status = report(list, verdicts)
     trees = [k === nothing ? tree : last(k) for k in kept]
-    println("result: ", write_result(pkg, file, list, verdicts, trees, sort(units), tree))
+    say("result: ", write_result(pkg, file, list, verdicts, trees, sort(units), tree))
     return status
 end
 
@@ -607,9 +632,9 @@ end
 
 """
 Run `jobs` in one warm worker process on a copy of its own, in `dir`; write each verdict into
-`verdicts` and add the worker's times to `spent`.
+`verdicts`, call `ended(job)` after each, and add the worker's times to `spent`.
 """
-function drive_worker(pkg, jobs, warm_units, dir, verdicts, spent)
+function drive_worker(pkg, jobs, warm_units, dir, verdicts, spent, ended)
     mkpath(dir)
     copy = fresh_copy(pkg)
     for j in jobs
@@ -651,6 +676,7 @@ function drive_worker(pkg, jobs, warm_units, dir, verdicts, spent)
                     # no result for the mutant at `pos`; a new worker goes on after it
                     j = jobs[pos]
                     verdicts[j["i"]] = ("UNKNOWN", j["detail"] * " — " * why)
+                    ended(j)
                     write(j["path"], read(joinpath(pkg, relpath(j["path"], copy)), String))
                     pos += 1
                     done = pos > length(jobs)
@@ -695,6 +721,7 @@ function drive_worker(pkg, jobs, warm_units, dir, verdicts, spent)
                     j["warm"] = "warm, $secs s$units_s"
                     verdicts[j["i"]] = (v, j["detail"] * " — " * j["warm"] *
                                            (v == "UNKNOWN" ? ": " * verdict[9:end] : ""))
+                    ended(j)
                     pos += 1
                 end
             end
@@ -735,6 +762,8 @@ survivor and a sample of the kills again cold, `n` at a time. The rules:
 function run_warm(pkg, file, units; n = 1, only = nothing)
     list = read_list(file)
     list isa String && (println(stderr, list); return 2)
+    t0 = time()
+    announce("warm", length(list), n, units)
     # n processes at once: each runs one Julia thread and one BLAS thread
     n > 1 && (ENV["JULIA_NUM_THREADS"] = "1"; ENV["OPENBLAS_NUM_THREADS"] = "1")
     why = invalid_all(pkg, list)
@@ -742,11 +771,11 @@ function run_warm(pkg, file, units; n = 1, only = nothing)
     kept = kept_verdicts(pkg, file, list, sort(units), tree, only)
     trees =[k === nothing ? tree : last(k) for k in kept]
     finish(verdicts) = (status = report(list, verdicts);
-        println("result: ", write_result(pkg, file, list, verdicts, trees, sort(units), tree)); status)
+        say("result: ", write_result(pkg, file, list, verdicts, trees, sort(units), tree)); status)
     test = joinpath(pkg, "test")
     entries = RunTests.named(RunTests.units(pkg), units)
     quality = [relpath(e.path, test) for e in entries if startswith(relpath(e.path, test), "quality/")]
-    isempty(quality) || println("The warm mode leaves out $(join(quality, ", ")): a quality check sees the methods the tests leave.")
+    isempty(quality) || say("The warm mode leaves out $(join(quality, ", ")): a quality check sees the methods the tests leave.")
     warm_units = [relpath(e.path, test) for e in entries if !(relpath(e.path, test) in quality)]
     mods = include_modules(pkg)
     verdicts = Vector{Tuple{String, String}}(undef, length(list))
@@ -788,17 +817,17 @@ function run_warm(pkg, file, units; n = 1, only = nothing)
         empty!(jobs)
     end
     nkept = count(!isnothing, kept)
-    nkept == 0 || println("kept: $nkept verdicts from $(result_path(pkg, file))")
+    nkept == 0 || say("kept: $nkept verdicts from $(result_path(pkg, file))")
     # the smoke mutant: if the units reach no function that a mutant changes, no verdict means anything
     torun = [[j["i"] for j in jobs]; [c[1] for c in colds]]
     smoke = isempty(torun) ? nothing : smoke_edits(pkg, list, torun)
     if !isempty(torun) && smoke === nothing
-        println("smoke: none, because no mutant lies inside a function with a body")
+        say("smoke: none, because no mutant lies inside a function with a body")
     elseif smoke !== nothing
         nf = count(e -> occursin(SMOKE, e[3]), smoke)
         bad = invalid(pkg, smoke)
         sv, sd = bad === nothing ? cold(pkg, smoke, units) : ("INVALID", bad)
-        println("smoke: $sv — `$SMOKE` at the start of $nf functions that the mutants change")
+        say("smoke: $sv — `$SMOKE` at the start of $nf functions that the mutants change")
         if sv != "CAUGHT"
             # the cause and the log, without the smoke mutant's edits
             log = match(r"log: (\S+)", sd)
@@ -816,7 +845,7 @@ function run_warm(pkg, file, units; n = 1, only = nothing)
     # one coverage run per unit: a mutant runs only the units that reach its lines, and one on a
     # line that the coverage lists but no unit runs is NO-COVERAGE, and does not run
     t_cov = @elapsed cov = isempty(jobs) ? nothing : unit_coverage(pkg, warm_units, n, dir)
-    cov === nothing && !isempty(jobs) && println("The coverage runs failed, so every mutant runs every unit; log: $(joinpath(dir, "coverage.log"))")
+    cov === nothing && !isempty(jobs) && say("The coverage runs failed, so every mutant runs every unit; log: $(joinpath(dir, "coverage.log"))")
     uncovered = Set{Int}()
     if cov !== nothing
         for j in jobs
@@ -837,8 +866,10 @@ function run_warm(pkg, file, units; n = 1, only = nothing)
     spent = Dict("apply" => 0.0, "test" => 0.0, "restore" => 0.0, "baseline" => 0.0)
     # the mutants are dealt out in turn, so that each worker gets every file's mutants
     shares = filter(!isempty, [jobs[k:n:end] for k in 1:n])
+    nwarm = Ref(0)
+    ended(j) = progress("warm ", nwarm[] += 1, length(jobs), t0, verdicts[j["i"]][1], list[j["i"]][1])
     t_warm = @elapsed @sync for (k, share) in enumerate(shares)
-        @async drive_worker(pkg, share, warm_units, joinpath(dir, "worker-$k"), verdicts, spent)
+        @async drive_worker(pkg, share, warm_units, joinpath(dir, "worker-$k"), verdicts, spent, ended)
     end
     # every survivor runs again cold, and the cold verdict counts; so does a sample of the warm
     # kills, at even steps through the list: one that is not caught cold means a worker can invent
@@ -849,9 +880,11 @@ function run_warm(pkg, file, units; n = 1, only = nothing)
     append!(colds, [(j["i"], "SURVIVED $(j["warm"]), cold again", false) for j in survivors])
     append!(colds, [(j["i"], "CAUGHT $(j["warm"]), cold again", true) for j in sample])
     wrong = String[]
+    ncold = Ref(0)
     asyncmap(colds; ntasks = n) do (i, note, was_kill)
         cv, cd = cold(pkg, list[i][2], units)
         verdicts[i] = (cv, cd * " — $note" * (startswith(note, "runs") ? "" : ": $cv"))
+        progress("cold ", ncold[] += 1, length(colds), t0, cv, list[i][1])
         was_kill && cv != "CAUGHT" && push!(wrong, list[i][1])
     end
     again = length(survivors)
@@ -861,13 +894,13 @@ function run_warm(pkg, file, units; n = 1, only = nothing)
         end
     end
     status = finish(verdicts)
-    isempty(wrong) || println("The warm kills are not trusted: not caught cold: $(join(wrong, "; "))")
+    isempty(wrong) || say("The warm kills are not trusted: not caught cold: $(join(wrong, "; "))")
     split_s = join(("$k $(round(Int, spent[k])) s" for k in ("apply", "test", "restore", "baseline")), ", ")
     workers = length(shares) == 1 ? "one worker" : "$(length(shares)) workers"
     peak = haskey(spent, "peak") ? ", peak $(round(spent["peak"] / 2^30; digits = 1)) GiB per worker" : ""
-    println("warm: $(length(jobs)) mutants in $(round(Int, t_warm)) s, $workers ($split_s$peak); $again survivors and $(length(sample)) kills run again cold")
+    say("warm: $(length(jobs)) mutants in $(round(Int, t_warm)) s, $workers ($split_s$peak); $again survivors and $(length(sample)) kills run again cold")
     cov === nothing ||
-        println("coverage: $(length(warm_units)) units in $(round(Int, t_cov)) s; $(length(uncovered)) mutants NO-COVERAGE, $(count(j -> haskey(j, "reach"), jobs)) of $(length(jobs)) run only the units that reach them")
+        say("coverage: $(length(warm_units)) units in $(round(Int, t_cov)) s; $(length(uncovered)) mutants NO-COVERAGE, $(count(j -> haskey(j, "reach"), jobs)) of $(length(jobs)) run only the units that reach them")
     return isempty(wrong) ? status : 3
 end
 
@@ -920,15 +953,16 @@ function main(args)
     isempty(units) && (println("No unit to run."); return 2)
     mode == "--list" && return run_list(pkg, args[3], units; only)
     mode == "--warm" && return run_warm(pkg, args[3], units; n, only)
+    announce("edit", 1, 1, units)
     edits = Edit[(args[2], args[3], args[4], nothing)]
     why = invalid(pkg, edits)
-    why === nothing || (println("\nINVALID — $why"); return 3)
+    why === nothing || (say("\nINVALID — $why"); return 3)
     copy = fresh_copy(pkg)
     apply!(copy, edits)
     what = describe(edits)
     code, _ = run_units(copy, units)
-    code in (0, 1) || (println("\nUNKNOWN — run-tests.jl exited $code, so no verdict: $what"); return 3)
-    println("\n", code == 0 ? "SURVIVED — no unit sees the mutant" : "CAUGHT", ": $what")
+    code in (0, 1) || (say("\nUNKNOWN — run-tests.jl exited $code, so no verdict: $what"); return 3)
+    say("\n", code == 0 ? "SURVIVED — no unit sees the mutant" : "CAUGHT", ": $what")
     return 0
 end
 

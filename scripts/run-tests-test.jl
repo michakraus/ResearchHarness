@@ -893,12 +893,29 @@ end
     from = "g() = 2"
     to = "g() = 3"
     """)
-    out = IOBuffer()
+    # the output goes to a file, as a caller's `> log 2>&1` sends it, where an unflushed line
+    # appears only when the process ends
+    log = joinpath(dir, "mutate.log")
     cmd = addenv(`$(Base.julia_cmd()) --startup-file=no $MUTATE $(fixture()) --warm $list base/options.jl`,
         "MUTATE_TIME_LIMIT" => "20")
-    code = run(pipeline(ignorestatus(cmd); stdout = out, stderr = out)).exitcode
-    s = String(take!(out))
+    p = run(pipeline(ignorestatus(cmd); stdout = log, stderr = log, append = true); wait = false)
+    # whether `needle` is in the log while the process still runs: the log is read first
+    function seen_running(needle)
+        while true
+            occursin(needle, read(log, String)) && return !process_exited(p)
+            process_exited(p) && return false
+            sleep(0.1)
+        end
+    end
+    @test seen_running("start: warm mode, 2 mutants, 1 job, units: base/options.jl\n")
+    # a new worker runs the second mutant after the first one's line
+    @test seen_running("progress: warm 1 of 2 at ")
+    wait(p)
+    code = p.exitcode
+    s = read(log, String)
     @test code == 3
+    @test occursin(r"progress: warm 1 of 2 at \d+ s, UNKNOWN — g never returns\n", s)
+    @test occursin(r"progress: warm 2 of 2 at \d+ s, CAUGHT — g is wrong\n", s)
     @test occursin(r"UNKNOWN: g never returns — [^\n]* — the time limit of 20 s", s)
     @test occursin("CAUGHT: g is wrong", s)
 end
