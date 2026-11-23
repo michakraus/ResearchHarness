@@ -202,6 +202,7 @@ It states the facts of OpenCode:
 
 - which rule file to read before which kind of work, because OpenCode loads no rule by itself;
 - there is no sandbox, and `external_directory` is the one boundary;
+- under `agentbox` the shell has no GPU, so GPU code runs through Kaimon;
 - pass `workdir` and absolute paths, and do not `cd` inside a command;
 - there is no session scratchpad, no worktree hook and no background run;
 - the plugins `rtk.ts` and `guards.ts` take the place of the hooks;
@@ -347,6 +348,7 @@ agent directory, byte for byte. Its first three lines import oh-my-pi's copies o
 It states the facts of oh-my-pi:
 
 - there is no sandbox, and `bash.patterns` and the guard extension are the two controls;
+- under `agentbox` the shell has no GPU, so GPU code runs through Kaimon;
 - oh-my-pi runs no RTK rewrite, so a command runs as typed;
 - the approval mode is `yolo`, and the `eval` tool is denied;
 - what the guard extension refuses;
