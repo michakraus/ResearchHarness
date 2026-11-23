@@ -381,7 +381,11 @@ prints `error: could not lock config file ~/.gitconfig: Operation not permitted`
 operation goes on: the line is noise, not a failure. git matches the port of a credential URL
 exactly, and the proxy's port changes with each run, so no section of `forge.gitconfig` can clear
 the helper for the proxy. Removing the credential manager from `~/.gitconfig` (step 5 of *The
-organisation tokens*) ends the line.
+organisation tokens*) ends the line. On macOS the system configuration of the Command Line
+Tools, `/Library/Developer/CommandLineTools/usr/share/git-core/gitconfig`, sets a second general
+helper, `osxkeychain`. Its `store` is refused too, and git prints `fatal: failed to store:
+-60008`. An empty `helper` in a general `[credential]` section of `~/.gitconfig` clears it; the
+helpers of `forge.gitconfig` come later and still answer.
 
 **Your steps** are *The organisation tokens* of the setup page
 ([macOS](../setup-macos.md#the-organisation-tokens),

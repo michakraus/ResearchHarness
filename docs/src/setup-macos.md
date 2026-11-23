@@ -169,10 +169,11 @@ tokens.
 5. Remove the broad credentials and route your terminal the same way: `gh auth logout`, replace
    glab's stored token by the group token (`glab auth login --hostname <gitlab host>`), erase the
    credential manager's GitHub and GitLab entries, and, in your dotfiles, remove the credential
-   manager and `gh auth git-credential` helpers from `~/.gitconfig` and end its credential lines
-   with `[include] path = ~/.config/research-harness/forge.gitconfig`. A Claude Code session runs
-   git and gh outside its [sandbox](concepts.md#sandbox), so a broad credential that stays there
-   stays usable.
+   manager and `gh auth git-credential` helpers from `~/.gitconfig`, clear the system's
+   `osxkeychain` helper with an empty `helper` in a general `[credential]` section, and end its
+   credential lines with `[include] path = ~/.config/research-harness/forge.gitconfig`. A Claude
+   Code session runs git and gh outside its [sandbox](concepts.md#sandbox), so a broad credential
+   that stays there stays usable.
 
 ### Your own broad tokens
 
