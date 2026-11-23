@@ -63,10 +63,10 @@ what CI runs minutes later.
 
 **Each Bash call ends within 170 seconds, in the foreground.** In a sub-agent that runs in the
 background, Claude Code moves a call that runs past 180 s to the background, whatever its
-`timeout`, and you cannot report while that job runs. Split a longer run, a few parts of
-`harness test` per call, and run each test or probe command under `timeout -k 10 160`: a program
-that handles SIGTERM, Julia among them, can block in its exit path while a bare `timeout` waits,
-and `-k 10` sends SIGKILL.
+`timeout`, and you cannot report while that job runs. Split a longer run, one call each: in the
+Harness, `harness test --changed <base> --list` names the parts, and you run a few per call. Run
+each test or probe command under `timeout -k 10 160`: a program that handles SIGTERM, Julia among
+them, can block in its exit path while a bare `timeout` waits, and `-k 10` sends SIGKILL.
 
 ## The seven points
 
