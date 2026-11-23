@@ -864,7 +864,7 @@
 
 ### K154 · With `GIT_GLOB_PATHSPECS=1`, `GIT_LITERAL_PATHSPECS=1` or `GIT_NOGLOB_PATHSPECS=1`, the Julia packages' pre-commit hook lists no staged `.jl` file below the repository's root.
 
-- location: `githooks/pre-commit.jl:550`
+- location: `githooks/pre-commit.jl:575`
 - evidence: `main` takes the staged files from `staged("--diff-filter=ACMRT", "--", "*.jl")`.
   Under `GIT_GLOB_PATHSPECS=1`, git reads `*.jl` as a glob in which `*` matches no `/`: with
   `src/Fixture.jl` and `top.jl` staged, `git diff --cached --name-only --diff-filter=ACMRT --
@@ -1155,7 +1155,7 @@
 
 ### K180 · The pre-commit hook counts the end line of an ast-grep hit as covered even when the hit ends at column 0 of that line.
 
-- location: `githooks/pre-commit.jl:376`
+- location: `githooks/pre-commit.jl:399`
 - evidence: `hit` sets `last = range["end"]["line"]::Int + 1`. ast-grep 0.51.3 reports the end
   column as exclusive: `printf 'x = 1\ny = 2\n' | ast-grep run -p 'x = 1' -l python
   --json=stream --stdin` gives `"end":{"line":0,"column":5}` for the 5-character match. So a hit
@@ -1169,7 +1169,7 @@
 
 ### K181 · A staged `.jl` file that is edited on disk while the pre-commit stages run is judged on the new content.
 
-- location: `githooks/pre-commit.jl:570`
+- location: `githooks/pre-commit.jl:595`
 - evidence: `main` refuses a staged `.jl` file with unstaged changes once, before any stage runs.
   The stages then read the files on disk. An editor save during `lint` or `ast_grep` makes the
   disk differ from the index, so the hook can pass on content that the commit does not hold, or

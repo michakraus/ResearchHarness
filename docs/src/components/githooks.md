@@ -95,7 +95,9 @@ commit when a line of the hit is one that the commit adds: the stage prints
 not block an unrelated commit; a pure rename adds no line. The stage takes the added lines from
 the hunks of `git diff --cached -U0 -M`, with literal paths and with options that keep an
 external diff program, a textconv driver, a `-diff` attribute and `diff.interHunkContext` from
-changing the hunks, and it scans the working tree, which holds the staged text of each staged
+changing the hunks. During a merge, a line counts as added only when it is also new against each
+commit of `MERGE_HEAD`, so a merge does not block on the hits that the merged branch brings in.
+The stage scans the working tree, which holds the staged text of each staged
 `.jl` file, since a partly staged one is refused before. The diff runs without the variables
 `GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS` and `GIT_GLOB_PATHSPECS`. A hit of severity `warning` or
 `hint` never blocks: after the hits of severity `error`, the stage prints
@@ -132,7 +134,8 @@ stops its load test; a partly staged `.jl` file is refused with its name, also u
 file or of a path that its name, read as a glob, matches. For the ast-grep stage, a hit on a
 line that a commit adds, also on the last line of a hunk or inside a hit that spans lines, is
 refused with its line; a hit on lines that a commit does not add, also after a rename or a
-deletion, warns; the added lines do not change with an external diff program, a textconv
+deletion, warns; a merge that brings in a hit from the merged branch passes, and a merge whose
+resolution adds a hit of its own is refused while the merged-in hit warns; the added lines do not change with an external diff program, a textconv
 driver, a `-diff` attribute, `diff.interHunkContext`, `GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS`,
 `GIT_GLOB_PATHSPECS` or glob characters in a path; a
 hit of severity `warning` or `hint` warns on an added line; a `parse-error` hit and a silenced
