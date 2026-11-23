@@ -70,7 +70,7 @@ those counts are no progress, whatever the critics' wording.
 
 | move | when | parks |
 |:--|:--|:--|
-| `continue` | progress is measured, and the open defects are `wrong result` with a known fix; or, after a PASS, a finding in code that the branch causes and whose fix changes source. State the condition that makes round 3 close where round 2 did not | no |
+| `continue` | progress is measured, and the open defects are `wrong result` with a known fix; or, after a PASS, a finding in code that the branch causes and whose fix changes source. On a second FAIL, state the condition that makes round 3 close where round 2 did not | no |
 | `redesign` | `neighbour` or `fix regression` dominates. Name the design, inside the part's *Done when* | no |
 | `decide` | `spec` dominates, and the question is one the advisor may decide | no |
 | `test round` | only `evidence` is left: the fix round writes tests and changes no source | no |
