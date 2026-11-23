@@ -135,7 +135,8 @@ file or of a path that its name, read as a glob, matches. For the ast-grep stage
 line that a commit adds, also on the last line of a hunk or inside a hit that spans lines, is
 refused with its line; a hit on lines that a commit does not add, also after a rename or a
 deletion, warns; a merge that brings in a hit from the merged branch passes, and a merge whose
-resolution adds a hit of its own is refused while the merged-in hit warns; the added lines do not change with an external diff program, a textconv
+resolution adds a hit of its own is refused while the merged-in hit warns; the added lines do not
+change with an external diff program, a textconv
 driver, a `-diff` attribute, `diff.interHunkContext`, `GIT_DIFF_OPTS`, `GIT_ICASE_PATHSPECS`,
 `GIT_GLOB_PATHSPECS` or glob characters in a path; a
 hit of severity `warning` or `hint` warns on an added line; a `parse-error` hit and a silenced
