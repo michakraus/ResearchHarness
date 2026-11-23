@@ -223,8 +223,15 @@ function update_phase()
     update = `$JULIA --startup-file=no -e 'using Pkg; Pkg.Apps.update("Kaimon")'`
     step("Pkg.Apps.update(\"Kaimon\")", update) || push!(failures, "Kaimon update")
     after = kaimon_version()
+    # Kaimon reads its config.json from KAIMON_CONFIG_DIR as it loads. The load check names an
+    # empty directory there: the job's profile refuses ~/.config/kaimon, which holds the server's
+    # keys, and Kaimon loads without a config.
     loads = `$JULIA --startup-file=no -e 'using Kaimon'`
-    if !step("using Kaimon", setenv(loads, merge(ENV, Dict("JULIA_LOAD_PATH" => APP))))
+    loaded = mktempdir() do config
+        env = merge(ENV, Dict("JULIA_LOAD_PATH" => APP, "KAIMON_CONFIG_DIR" => config))
+        return step("using Kaimon", setenv(loads, env))
+    end
+    if !loaded
         push!(failures, "Kaimon $after does not load; reinstall with Pkg.Apps.add(\"Kaimon\")")
     end
     return failures, before, string(after)

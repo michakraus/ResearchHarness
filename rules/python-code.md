@@ -57,7 +57,7 @@ it; "review" means that the critic checks it and no tool does.
 
 - **A test is a case of `harness test`** in the Harness: a selftest of the module, run in a process
   of its own. Run the parts that your change reaches while you edit, and the full suite once before
-  you report.
+  you report; a builder leaves the full suite to its dispatcher.
 - **A named mutant runs with `harness mutate <spec>`**, which applies it to a copy and runs the
   parts that must kill it. A mutant that survives shows a test that does not test what it claims.
 

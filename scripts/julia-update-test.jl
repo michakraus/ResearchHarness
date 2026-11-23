@@ -84,9 +84,24 @@ function fixture()
     log = joinpath(root, "calls.log")
     touch(log)
 
-    # The launcher prints a BINDIR when asked for one, and fails a call that names $STUB_FAIL.
+    # The launcher prints a BINDIR when asked for one, and fails a call that names $STUB_FAIL. For
+    # the load check of Kaimon it logs KAIMON_CONFIG_DIR, and whether that is an empty directory.
     stub(joinpath(jbin, "julia"), LOG_LINE * raw"""
         case "$*" in *Sys.BINDIR*) printf '%s' "$STUB_BINDIR" ;; esac
+        case "$*" in *"using Kaimon"*)
+            if [ -z "${KAIMON_CONFIG_DIR+x}" ]; then
+                state=unset
+            elif [ ! -d "$KAIMON_CONFIG_DIR" ]; then
+                state=missing
+            else
+                state=empty
+                for f in "$KAIMON_CONFIG_DIR"/* "$KAIMON_CONFIG_DIR"/.[!.]*; do
+                    [ -e "$f" ] && state=full
+                done
+            fi
+            printf 'config %s %s\n' "$state" "$KAIMON_CONFIG_DIR" >> "$STUB_LOG"
+            ;;
+        esac
         if [ -n "$STUB_FAIL" ]; then
             case "$*" in *"$STUB_FAIL"*) exit 1 ;; esac
         fi
@@ -263,6 +278,18 @@ end
         @test restarts(calls) == 0 && others(calls) == 0
         @test occursin("No restart due", out)
         @test isempty(alerts(calls))
+    end
+
+    @testset "the load check of Kaimon reads an empty config directory, which it then removes" begin
+        fx = fixture()
+        code, _, calls = with_server(identity, fx)
+        @test code == 0
+        config = filter(l -> startswith(l, "config "), calls)
+        @test length(config) == 1
+        state, dir = split(only(config), ' '; limit = 3)[2:3]
+        @test state == "empty"
+        @test !startswith(dir, fx.home)
+        @test !ispath(dir)
     end
 
     @testset "a binary deleted and written again at the same path: no restart" begin

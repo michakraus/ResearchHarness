@@ -169,6 +169,12 @@ as the spec writes it, with the reason. No local path and no closing keyword in 
 **Run everything in the foreground.** Never set `run_in_background`, and never end your turn to
 wait: your caller reads the turn you end as your report.
 
+**Each Bash call ends within 170 seconds.** In a sub-agent that runs in the background, Claude Code
+moves a call that runs past 180 s to the background, whatever its `timeout`, and you cannot report
+while that job runs. Split a longer run, one call each, and run each test or probe command under
+`timeout -k 10 160`: a program that handles SIGTERM, Julia among them, can block in its exit path
+while a bare `timeout` waits, and `-k 10` sends SIGKILL.
+
 ## Do not touch the task file
 
 Your caller owns the state cell and the part's section. Return text for them; do not write it.

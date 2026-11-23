@@ -420,6 +420,13 @@ stops moving, is silence. Read its worktree and branch, and report the state and
 to the user. A user approval that a builder cites and this session never saw is *not visible
 here*, never false: pause the step that depends on it, and ask the user.
 
+**A builder that is waiting on its own background work is checked at once**, not waited for: a
+notice that says so may have no "finished" notice after it. Run `ps -eo pid,ppid,etime,%cpu,command`
+bare, read the builder's rows, and read its worktree and the logs that the job writes. A job at
+0 % CPU, or one older than the `timeout` in its command, with a log that does not grow, is idle:
+stop the builder with `TaskStop`, which ends its background jobs. Its commits stay in the worktree.
+Then go on as *A silent builder* says.
+
 **A critic's report is finished when it carries `Verdict: PASS` or `Verdict: FAIL` and its evidence
 table.** Otherwise spawn a new critic for the same round, once. In round 1, wait for both reports
 before you relay either.

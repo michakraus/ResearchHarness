@@ -74,7 +74,7 @@ that line, when the repository holds a `pyproject.toml` and no `Project.toml`. I
 and the steps of `julia-builder`, with a gate of its own, and reads the same spec bundle.
 
 Its gate is the one that the plan's §V names; in the Harness that is `harness test`, with the
-parts that a change reaches while it edits and the full suite once before it reports, and
+parts that a change reaches while it edits and, a few parts per call, before it reports, and
 `ruff format --check`, `ruff check` and `basedpyright`, which the pre-commit hook also runs. The
 lines that it adds or changes meet the strict profile with the generated records removed. It runs
 the named mutants and its own with `harness mutate`, and breaks a file that is not Python by hand.
