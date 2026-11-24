@@ -326,6 +326,16 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   arithmetic the base used (M6 fix 1, *Simplify the optimiser package and the learning package for
   0.9*)
 - a status that hides a failure, such as *stalled* for a large increase
+- **a return that substitutes an earlier iterate for the one the last step reached, with that
+  iterate's whole status:** a least-squares solve of the solver package kept a stationary step
+  start `x_k` when the step left it, and returned `x_k`'s status, so it dropped the solve-wide
+  counters that the discarded step added — the `step_failures` of a failed line search with a
+  decreased merit, and the `promoted` flag — where the `SolverStatus` docstring says
+  `step_failures` counts every step-rule failure of the solve. Three critic rounds missed it; the
+  branch verifier found it after the PASS. Take the fields that describe the iterate (the
+  iterations, the residual norm, the step norm, the diagnostics) from the iterate returned, and the
+  solve-wide counters from the status after the discarded step, and test each counter on that
+  return (S, *a remap-fit plan*)
 - a finite-difference reference whose error the check divides by a quantity that can approach zero
   across draws: no fixed-step `Float64` difference meets a relative bound on every draw there, and
   the reference must be taken in `BigFloat` at a small step. Measure the reference's own error over
