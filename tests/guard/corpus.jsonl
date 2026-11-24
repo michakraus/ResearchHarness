@@ -618,6 +618,43 @@
 {"frontend": "opencode", "tool": "shell", "input": {"command": "git worktree list"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "git worktree remove /x/.worktrees/X-y"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "git worktree list"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "julia -e 'using Metal; MtlArray(Float32[1, 2, 3])'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "julia -e 'using Metal; MtlArray(Float32[1, 2, 3])'"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd /x && timeout 90 julia --startup-file=no -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "timeout -k 10 240 julia -e 'using CUDA'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "timeout --signal KILL 90 julia -e 'CUDA.functional()'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "env JULIA_DEBUG=all julia -e 'using AMDGPU'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "env -u JULIA_DEBUG julia -e 'ROCArray(x)'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "JULIA_NUM_THREADS=2 julia -e 'oneArray(x)'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "time julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "time -p julia -e 'using oneAPI'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "nice -n 5 julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "nice -n 5 timeout 90 julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "nohup julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "exec julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "command julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "/Users/me/.juliaup/bin/julia -e 'CuArray(x)'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "bash -c 'julia -e \"using Metal\"'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "julia --project=. <<'EOF'\nusing Metal\nEOF"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "echo 'using Metal' | julia"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "grep -n Metal Manifest.toml"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "echo 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "ls ~/.julia/packages/Metal"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "which julia; ls Metal"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "command -v julia && echo Metal"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "command -V julia && echo Metal"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "JULIA=julia echo Metal"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "juliaup add 1.12 && echo Metal"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "/usr/bin/timeout 90 julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "timeout 90 ls Metal"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "nice -n; echo Metal"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "julia --version"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "julia -e 'using Pkg; Pkg.test()'"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "julia -e 'using Metalhead'"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "julia -e 'BigMetal(1)'"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "julia -e 'println(\"metal\")'"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "julia -e 'Cube(1)'"}, "env": {"AGENTBOX": "1"}, "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "grep -n Metal Manifest.toml && julia --version"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force @@R@@/.worktrees/Own-unpushed"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove --force @@R@@/.worktrees/Own-modified"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git worktree remove -f @@R@@/.worktrees/Own-staged"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
