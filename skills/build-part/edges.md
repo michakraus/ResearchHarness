@@ -716,6 +716,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
 - a finish that quotes a critic's reproducer: the critics' probes live under the home directory,
   so the quoted path is a home path that the leak gate refuses; quote the probe by its file name
   (M finish, *Unify the agent configuration*)
+- a test literal that spells a home directory with a user name, `/Users/<name>/…`: CI's
+  gitleaks rule `home-path` admits only `/Users/me` and `/home/example`, the pre-push hook checks
+  a branch with `harness leaks` only, which does not flag it, and the job scans every commit of
+  the branch, so a fix at the head does not clear it. Spell `/Users/me` from the first commit (M5
+  gate, *Sandbox the agent frontends*)
+- a new file read in a check of a shell command, placed by its spec in the new check's module: the
+  probe case *file-system reads outside paths.py* refuses a read outside `hooks/guard/paths.py`
+  that its `READS_ALLOWED` does not list. Put the read in `paths.py`, memoised per process, and
+  name it in that module's docstring (M5 round 1, *Sandbox the agent frontends*)
 - a bound tested only on its refusing side: a case for "nine is refused" and none for "eight is
   accepted" lets a mutant that refuses eight survive (D1b round 1, *Unify the agent
   configuration*)
