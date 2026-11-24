@@ -9,15 +9,15 @@ decides each one before the build. This page describes the catalogue and how it 
 
 ## The edge catalogue
 
-The catalogue is one file of the harness, `skills/build-part/edges.md`. It has about 260 entries,
+The catalogue is one file of the harness, `skills/build-part/edges.md`. It has about 320 entries,
 one bullet each, in seven sections, one for each kind of part:
 
 | kind of part | entries |
 |:--|--:|
-| a part that predicts what another tool reads or does | 28 |
-| a numerical method | 44 |
+| a part that predicts what another tool reads or does | 55 |
+| a numerical method | 51 |
 | a type or an interface | 37 |
-| a tool that reads files or a tree | 63 |
+| a tool that reads files or a tree | 70 |
 | a step that runs a user's script | 20 |
 | a lint cleanup | 5 |
 | a migration of tests or of text | 80 |
