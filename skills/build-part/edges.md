@@ -494,6 +494,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   round ended with a critic PASS and a failed suite. Loop over the shared element-type constants,
   filtered where a type does not apply, and run the repository's quality files with the part's
   test file in every round that edits a test header (CH verify 2, the solver package)
+- **a host-factor routing that moves the last bits of a solve, checked against the part's own test
+  files and the regenerated reference only:** other parts' tests pin outcomes that read the same
+  factor — an iteration bound (AF Check 6: RASPEN `<= 6` gave 7) and a set of cells that return
+  SUCCESS (AU Check 1b: the regenerated reference dropped a cell from it) — and only the full suite
+  runs them. Two rounds failed on them after the kernel had no defect left. Regenerate the
+  reference first, run the full suite on that head in the same round, and search the tests for
+  counts and cell sets that read the changed solver's outcomes before the critic (RL round 1 and
+  verify 2, the solver package)
 
 ## A type or an interface
 
