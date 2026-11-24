@@ -24,10 +24,13 @@ sites ask for it. Above the reads, `go` walks a (start `Place`, word, mode) once
 absolute path text once in each mode, so a walk that every check and every reading asks for steps
 once. `contents` reads the text of a file once per process, as the path list of a frontend, and
 `regular_text` that of a regular file only, as the query file of a `gh api graphql` call.
-`entries` lists a directory once per process, as the gate files of Kaimon.
+`regular_prefix` reads the first `PREFIX` bytes of a regular file once per process, opened without
+blocking, as a `.jl` script that a shell `julia` run names. `entries` lists a directory once per
+process, as the gate files of Kaimon.
 """
 
 import functools
+import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -38,6 +41,8 @@ type Read = Literal["real", "plain", "link"]
 
 # The names that each `Place` keeps from the start of its path.
 HEAD = 64
+# The most bytes of a file that `regular_prefix` reads.
+PREFIX = 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -229,6 +234,30 @@ def regular_text(path: str) -> str | None:
         return contents(path) if Path(path).is_file() else None
     except OSError, UnicodeDecodeError:
         return None
+
+
+@functools.cache
+def regular_prefix(path: str) -> str:
+    """The first PREFIX bytes of the regular file `path` as text, read once per process, or "" for
+    a path that is missing, cannot be read or is no regular file. It opens without blocking and
+    reads only a descriptor that is a regular file once open, so a FIFO returns at once."""
+    try:
+        handle = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return ""
+    try:
+        if not stat.S_ISREG(os.fstat(handle).st_mode):
+            return ""
+        chunks: list[bytes] = []
+        left = PREFIX
+        while left > 0 and (chunk := os.read(handle, left)):
+            chunks.append(chunk)
+            left -= len(chunk)
+        return b"".join(chunks).decode("utf-8", "replace")
+    except OSError:
+        return ""
+    finally:
+        os.close(handle)
 
 
 @functools.cache

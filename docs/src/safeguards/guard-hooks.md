@@ -64,7 +64,7 @@ Antigravity, oh-my-pi and OpenCode also run the path-list check `path_list.py`, 
 frontend's `guard-paths.json`; Antigravity's table runs the lift check `sandbox_lift.py` on a shell
 call that it does not deny, which lifts a command out of the sandbox only where the line matches a
 closed grammar and Claude Code's sandbox rule lifts it. One module per check reads that call: the
-staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, agentbox worktree, rm, archive, git write, push
+staging, write, sandbox, `gh api`, `gh pr create`, `gh` watcher, agentbox worktree, GPU shell, rm, archive, git write, push
 deletion, web, token, Kaimon and directory checks below. Each check gives `deny`, `ask`, `allow` or `pass` with a reason. The
 guard answers the first of `deny`, `ask`, `allow` and `pass` that a check gives, with that check's
 reason, in the form of the frontend: for Claude Code exit 2 with the reason on standard error for
@@ -265,6 +265,35 @@ finds a
 `git` call after an assignment, after `cd … &&`, with `-C`, and in the script of `sh -c`,
 `bash -c` or `eval`. The variable is no boundary: the check only sends a call that would fail to
 the route that works.
+
+### The GPU shell check
+
+`gpu_shell.py` refuses a shell `julia` run that names a GPU package, on each shell call of
+oh-my-pi alone, when `AGENTBOX` is set in the guard's environment. Under `agentbox` the shell has
+no GPU, so such a run cannot answer and only delays the route that works. The reason names that
+route, `mcp__kaimon_start_session --project-path <project> --private` and then
+`mcp__kaimon_ex --ses <key> --mt --e '<code>'`, and says that when Kaimon does not answer, the
+agent reports the failure and stops, with no shell route first or as a fallback. The tables of
+Claude Code, OpenCode and Antigravity do not run the check.
+
+A part of the command runs `julia` when its command word has the name `julia`, also as a path such
+as `~/.juliaup/bin/julia`, after assignments and after the wrappers `env`, `timeout`, `time`,
+`nice`, `nohup`, `exec` and `command` with their options; `command -v julia` runs nothing. The
+check reads such a part also in the script of `bash -c`. Once the command has a `julia` part, the
+check refuses it when the command's whole text holds a GPU word, so a heredoc's body and a pipe
+into `julia` count too, and so does a word of another command: the reason of
+`grep -n Metal Manifest.toml && julia --version` says to run the two commands as two calls. The
+GPU words are `Metal`, `CUDA`, `AMDGPU`, `oneAPI`, `oneArray`, and the names that start with `Mtl`,
+with `Cu` and an upper-case letter or with `ROC` and an upper-case letter, as whole words and
+case-sensitive: `Metalhead` and `metal` are none. The check also reads the first 1 MiB of each
+`.jl` file that a `julia` part names, a leading `~` expanded and a relative path taken against the
+call's working directory. It opens a file without blocking and reads it only when it is a regular
+file, so a FIFO or a directory adds nothing, and neither does a file that is missing or cannot be
+read. It follows no `include` and no `cd` before a relative script path (K193), it passes a
+shell `Pkg.test` of a package with a GPU dependency (K192), and it passes a `julia` run that a
+redirection, a `!`, a group, a compound command, backticks, `env -S` or a wrapper outside its list
+puts ahead of `julia` (K194). The variable is no boundary: the check only sends a call that cannot
+work to the route that works.
 
 ### The rm check
 
@@ -831,6 +860,9 @@ rendered `Bash` entry with a guard that cannot start. The groups
 the plugin and the guard package, and the cases of the transport that a record cannot hold: an
 interpreter that is missing, a guard that exits 3, prints `{`, is killed or answers late, a path
 list that is missing, malformed or without `python`, and a message that the guard cannot read.
+The group `omp` also runs the GPU shell check on the script files that it makes below its fixture
+home: a Metal script by an absolute, a relative and a `~` path, a FIFO, a directory, a file of more
+than 1 MiB and one that is not UTF-8.
 The group `antigravity` runs the guard package with `--from antigravity` from a fixture home, on
 each Antigravity record of the corpus and on the cases that a record cannot hold: a broken path
 list, a payload that cannot be read, a call with no workspace, commands of many words and of 1 MiB

@@ -1241,3 +1241,41 @@
   instead.
 - kind: defect
 - found: 2026-11-22, a critic of part G3d of the sandbox plan
+
+### K192 · Under `agentbox`, oh-my-pi's GPU shell check passes a shell `Pkg.test`, or a `test/runtests.jl` run, of a package whose `[deps]` hold a GPU package.
+
+- location: `hooks/guard/gpu_shell.py:126`
+- evidence: with `AGENTBOX=1`, in a package whose `Project.toml` lists `Metal` under `[deps]` and
+  whose `test/runtests.jl` includes a file that holds `using Metal`, `gpu_shell.check` gives `pass`
+  for `julia --project=. -e 'using Pkg; Pkg.test()'` and for `julia --project=. test/runtests.jl`.
+  The check reads the command and the `.jl` files that the command names, and no `Project.toml`,
+  so such a run starts in a shell that has no GPU and fails there.
+- kind: defect
+- found: 2026-11-24, the spec of part M5 of the sandbox plan
+
+### K193 · Under `agentbox`, oh-my-pi's GPU shell check follows no `include` in a script or in `-e`, and no `cd` before a relative script path.
+
+- location: `hooks/guard/gpu_shell.py:117`
+- evidence: with `AGENTBOX=1` and the call's working directory a package directory `P`, where
+  `P/test/gpu.jl` and `P/sub/probe.jl` hold `using Metal`, `gpu_shell.check` gives `pass` for
+  `julia -e 'include("test/gpu.jl")'` and for `cd sub && julia probe.jl`: the first names no `.jl`
+  word, and the second reads `P/probe.jl`, which does not exist. A script whose `include`d file
+  names a GPU package passes the same way.
+- kind: defect
+- found: 2026-11-24, the spec of part M5 of the sandbox plan
+
+### K194 · Under `agentbox`, oh-my-pi's GPU shell check passes a `julia` run that shell syntax, a wrapper outside its list or `env -S` puts ahead of `julia`.
+
+- location: `hooks/guard/gpu_shell.py:88`
+- evidence: with `AGENTBOX=1`, `gpu_shell.check` gives `pass` for each of
+  `>log julia -e 'using Metal'`, `2>&1 julia -e 'using Metal'`, `{ julia -e 'using Metal'; }`,
+  `! julia -e 'using Metal'`, `if true; then julia -e 'using Metal'; fi`,
+  `for f in a; do julia -e 'using Metal'; done`, ``echo `julia -e 'using Metal'` ``,
+  `xargs julia -e 'using Metal'` and `env -S 'julia -e "using Metal"'`. `command_word` takes the
+  first word after the assignments and the wrappers of `WRAPPERS`; the shell reader keeps a
+  leading redirection's target as the first word, `xargs` is no wrapper of `WRAPPERS`, and the
+  check reads no script of `env -S`, so `julia` is no command word in these forms.
+  The check stays a miss here, not a refusal: the variable is no boundary, and a missed run is one
+  shell run that fails for want of a GPU.
+- kind: defect
+- found: 2026-11-24, the critic of part M5 of the sandbox plan

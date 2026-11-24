@@ -19,7 +19,9 @@ reaching only the names that its glob segment matches.
 
 THE CALLS. `bash` is a shell call: `input.command`, in `input.cwd` resolved against the session's
 working directory, else in that directory; the working directory is a path of the call, which it
-reads below when `input.cwd` is given or the command recurses. `read` and `grep` read `input.path`,
+reads below when `input.cwd` is given or the command recurses. Under `agentbox`, the GPU shell check
+(`gpu_shell`) refuses a shell `julia` run that names a GPU package, in this table alone, since the
+shell there has no GPU. `read` and `grep` read `input.path`,
 a `grep` with none the working directory, and a `grep` reads below its path. `edit` edits each path
 that it names (edit_paths), and `write` writes `input.path` and the path of its hashline header
 (write_path). Each tool path is checked in every form that oh-my-pi may read (path_forms).
@@ -57,6 +59,7 @@ from guard import (
     git_archive_output,
     git_push_delete,
     git_writes,
+    gpu_shell,
     kaimon_session,
     launcher,
     no_blind_stage,
@@ -158,6 +161,7 @@ SHELL: tuple[Check, ...] = (
     git_push_delete.check,
     sandbox_semantics.work_tree_check,
     web_identity.check,
+    gpu_shell.check,
 )
 CHECKS: dict[Action, tuple[Check, ...]] = {
     "shell": SHELL,

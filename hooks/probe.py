@@ -3671,7 +3671,8 @@ STAMP = ".harness-install.json"
 # interpreter that is missing, a guard that exits 3 after its answer, prints `{`, is killed after its
 # answer or does not answer in time, a path list that is missing, malformed or without `python`, and
 # a message that the guard cannot read. The timeout case runs a copy whose timeout is 0.3 s, so that
-# it costs no 10 s.
+# it costs no 10 s. The group `omp` also runs the GPU shell check on the script files that
+# `gpu_script_cases` makes below the home.
 #
 # An oh-my-pi record holds `tool`, `input`, the `decision` and, where it needs them, `cwd`, the
 # session's working directory (CWD by default), and `agent`, the kind of the context's agent. An
@@ -4017,6 +4018,7 @@ def omp_cases():
             f"{json.dumps(record['input'])[:160]} in {cwd} {record.get('agent', '')}"
             + (f" with the profile {record['profile']}" if "profile" in record else ""),
         )
+    gpu_script_cases(report, good)
     for command, expected in OMP_PATTERNS:
         got = omp_pattern(command, patterns)
         report(ok=got == expected, line=f"exp {expected} got {got}  [omp-patts]  {command}")
@@ -4094,6 +4096,88 @@ def omp_cases():
         lambda command: {"event": {"toolName": "bash", "input": {"command": command}}, "cwd": CWD},
     )
     return report.total, report.wrong
+
+
+def gpu_script_cases(report: AgyReport, home: str) -> None:
+    """The GPU shell check on a `julia` run of a script file, under `AGENTBOX`, in the home `home`:
+    below `home/gpu`, a `probe.jl` that holds `using Metal`, one that holds `println(1)`, one that
+    holds `println(1)` after bytes that are not UTF-8, none, a FIFO and a directory of that name, a
+    FIFO that holds `using Metal`, `probe.txt` that holds `using Metal`, and files whose `Metal`
+    ends at the last byte of their first MiB or one byte after it. The Metal file is refused by its
+    absolute path, by a path relative to the call's working directory and by a `~` path, and so is
+    the file whose first MiB ends in `Metal`; every other case passes, the FIFOs without a block,
+    since the check reads only a regular file whose name ends in `.jl`, and only its first MiB. In
+    process, a read that fails adds nothing, and a call that is no shell call
+    passes."""
+    gpu = pathlib.Path(home, "gpu")
+    for name in ("metal", "plain", "latin", "fifo", "fed", "dir", "missing", "near", "far"):
+        (gpu / name).mkdir(parents=True)
+    (gpu / "metal" / "probe.jl").write_text("using Metal\nMtlArray(Float32[1, 2, 3])\n", encoding="utf-8")
+    (gpu / "metal" / "probe.txt").write_text("using Metal\n", encoding="utf-8")
+    (gpu / "plain" / "probe.jl").write_text("println(1)\n", encoding="utf-8")
+    (gpu / "latin" / "probe.jl").write_bytes(b"# \xff\xfe\nprintln(1)\n")
+    # The guard reads the first MiB: `Metal` ends at its last byte in `near` and one byte after it in
+    # `far`, so the first MiB of `far` ends in `Meta`.
+    tail = b"\nusing Metal"
+    (gpu / "near" / "probe.jl").write_bytes(b"#" * (1024 * 1024 - len(tail)) + tail)
+    (gpu / "far" / "probe.jl").write_bytes(b"#" * (1024 * 1024 - len(tail) + 1) + tail)
+    os.mkfifo(gpu / "fifo" / "probe.jl")
+    os.mkfifo(gpu / "fed" / "probe.jl")
+    (gpu / "dir" / "probe.jl").mkdir()
+    # The read end first: a FIFO with no reader refuses a writer that does not block. The writer
+    # closes before the call, so a reader of the FIFO gets the text and then its end.
+    reader = os.open(gpu / "fed" / "probe.jl", os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        writer = os.open(gpu / "fed" / "probe.jl", os.O_WRONLY | os.O_NONBLOCK)
+        try:
+            os.write(writer, b"using Metal\n")
+        finally:
+            os.close(writer)
+        got = omp_reply(home, ("bash", {"command": f"julia {gpu}/fed/probe.jl"}), extra={"AGENTBOX": "1"})
+    finally:
+        os.close(reader)
+    report(
+        ok=got.decision == "pass",
+        line=f"exp pass got {got.decision}  [omp-gpu]  a FIFO that holds using Metal: "
+        f"{got.seconds:.2f} seconds",
+    )
+    run = "julia --startup-file=no --project=. "
+    cases = [
+        ("the Metal file", run + f"{gpu}/metal/probe.jl", CWD, "deny"),
+        ("the Metal file, relative to the call's directory", "julia probe.jl", f"{gpu}/metal", "deny"),
+        ("the Metal file, by ~", "julia ~/gpu/metal/probe.jl", CWD, "deny"),
+        ("the println file", run + f"{gpu}/plain/probe.jl", CWD, "pass"),
+        ("the println file, relative to the call's directory", "julia probe.jl", f"{gpu}/plain", "pass"),
+        ("the println file after bytes that are not UTF-8", run + f"{gpu}/latin/probe.jl", CWD, "pass"),
+        ("no file", run + f"{gpu}/missing/probe.jl", CWD, "pass"),
+        ("a FIFO", run + f"{gpu}/fifo/probe.jl", CWD, "pass"),
+        ("a directory", run + f"{gpu}/dir/probe.jl", CWD, "pass"),
+        ("the Metal text in no .jl file", run + f"{gpu}/metal/probe.txt", CWD, "pass"),
+        ("Metal at the end of the first MiB", run + f"{gpu}/near/probe.jl", CWD, "deny"),
+        ("Metal that ends one byte after the first MiB", run + f"{gpu}/far/probe.jl", CWD, "pass"),
+    ]
+    for label, command, cwd, expected in cases:
+        got = omp_reply(home, ("bash", {"command": command}), cwd=cwd, extra={"AGENTBOX": "1"})
+        report(
+            ok=got.decision == expected,
+            line=f"exp {expected} got {got.decision}  [omp-gpu]  {label}: {command} in {cwd}: "
+            f"{got.seconds:.2f} seconds",
+        )
+    sys.path.insert(0, HOOKS)
+    try:
+        shell: Any = importlib.import_module("guard.gpu_shell")
+        paths: Any = importlib.import_module("guard.paths")
+        contract: Any = importlib.import_module("guard.contract")
+    finally:
+        sys.path.remove(HOOKS)
+    with mock.patch.object(paths.os, "read", side_effect=OSError(errno.EIO, "probe")):
+        text = paths.regular_prefix.__wrapped__(str(gpu / "metal" / "probe.jl"))
+    report(ok=text == "", line=f"exp '' got {text!r}  [omp-gpu]  a regular file whose read fails")
+    # The table runs the check on a shell call alone; the check itself passes any other call.
+    command = "julia -e 'using Metal'"
+    with mock.patch.dict(os.environ, {"AGENTBOX": "1"}):
+        got = shell.check(contract.Call("read", command, (command,), CWD, "main")).decision
+    report(ok=got == "pass", line=f"exp pass got {got}  [omp-gpu]  a read call whose path is {command}")
 
 
 def size_cases(report: AgyReport, home: str, frontend: str, message: Callable[[str], object]) -> None:
