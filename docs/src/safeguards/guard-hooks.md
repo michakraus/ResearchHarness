@@ -174,9 +174,11 @@ organisation, and refuses a remote delete, on each shell call of every frontend.
 It finds each top-level `gh api` and `glab api` call and determines the HTTP method in the same
 way as `gh`: `-X` or `--method`; otherwise POST when a body flag is present; otherwise GET. A GET,
 a HEAD and a `search/…` endpoint pass. It refuses a DELETE from `gh api` or `glab api`. Any other
-`glab api` call passes. A review, an inline comment, a reply, and a comment on a pull request, an
-issue or a commit pass in a repository of an own organisation, so the review agents can post
-there. The endpoint must be `repos/<owner>/<repo>/…` with an `<owner>` of the profile's `org` list,
+`glab api` call passes. A review, an inline comment, a reply, a comment on a pull request, an
+issue or a commit, an edit (PATCH) of an inline or an issue comment, and a new pull request or
+issue (POST `…/pulls`, `…/issues`) pass in a repository of an own organisation, so the review
+agents can post there, and an agent can open a pull request through the REST API when GraphQL,
+which `gh pr create` uses, fails. The endpoint must be `repos/<owner>/<repo>/…` with an `<owner>` of the profile's `org` list,
 compared without case, and the call must name no `--hostname`; the check does not read
 `GH_HOST`, so a host that the environment names is beyond its reach. The same write to any other
 repository asks, because an agent can post a secret in a comment on any public repository. It
@@ -185,8 +187,8 @@ a repository name with a character that GitHub does not allow in it, such as a `
 repository `.` or `..`. The check reads the endpoint as `gh` gets it, without percent-decoding. A
 GraphQL query passes when it holds no mutation, or when each mutation is a review or comment
 operation, in any repository: its node IDs name no repository that the check can read. Every
-other write gets an `ask` decision, and the user sees a prompt. An edit of an existing comment
-also asks.
+other write gets an `ask` decision, and the user sees a prompt. An edit of a comment outside an own
+organisation also asks, because the token can edit other people's comments there.
 
 The check reads a GraphQL query where `gh` reads it: the text of `-f query=…`, which `gh` sends as
 it is; the file of `-F query=@<path>`; and the string `query` of the JSON object in the file of

@@ -217,6 +217,17 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/issues/3/comments -f body=x"}}, "profile": "@@FIXTURE@@/profiles/other.toml", "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/other-org/r/issues/3/comments -f body=x"}}, "profile": "@@FIXTURE@@/profiles/other.toml", "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own.org/r/issues/3/comments -f body=x"}}, "profile": "@@FIXTURE@@/profiles/dotted.toml", "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PATCH repos/own-org/r.jl/pulls/comments/4699876079 --input reply.json --jq .html_url"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api --method PATCH repos/Own-User/r/issues/comments/5 -f body=x"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PATCH repos/other-org/r/pulls/comments/5 -f body=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PATCH repos/own-org/r/pulls/3 -f state=closed"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PUT repos/own-org/r/issues/comments/5 -f body=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PATCH repos/own-org/r/issues/comments/5/reactions -f content=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r.jl/pulls -f title=t -f head=topic -f base=main -F body=@pr.md --jq .html_url"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X POST repos/own-org/r/issues -f title=t -F body=@issue.md"}}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/other-org/r/pulls -f title=t -f head=topic -f base=main"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api --hostname example.com repos/own-org/r/issues -f title=t"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X PATCH repos/own-org/r/pulls -f title=t"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='query { search(query:\"is:pr\", type: ISSUE, first: 5) { issueCount } }'"}}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -f query='{ search(query:\"mutation\", type: ISSUE, first: 1) { issueCount } }'"}}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api graphql -F owner=o -f query='query($owner:String!){ repository(owner:$owner, name:\"r\"){ id } }'"}}, "decision": "pass"}
@@ -311,7 +322,7 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs/heads/main -f sha=s"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/tags -f tag=v1 -f object=s"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X DELETE repos/own-org/r/git/refs/heads/topic"}}, "decision": "deny"}
-{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/issues -f title=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/labels -f name=x"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api -X POST repos/own-org/r/pulls/3/merge"}}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles/missing.toml", "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "gh api repos/own-org/r/git/refs -f ref=refs/heads/topic -f sha=s"}}, "profile": "@@FIXTURE@@/profiles", "decision": "ask"}
