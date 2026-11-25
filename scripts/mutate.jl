@@ -56,12 +56,13 @@
 #       Check each mutant of the list, as the modes above do before they run one, and run
 #       nothing: VALID, or INVALID with the reason.
 #
-# Every mode has a time limit for each mutant. A cold run of a mutant (the edit mode, `--list`, and
-# in warm mode the smoke mutant, the short lists and the runs again cold) has MUTATE_TIME_LIMIT
-# seconds, or 600 s, the limit that a warm worker has before its first baseline: a cold run loads
-# and compiles the copy and runs every unit once, as that worker does. A warm mutant has
-# MUTATE_TIME_LIMIT, or max(60 s, 10 × the baseline). A mutant that passes its limit is killed
-# with SIGKILL, with the julia that run-tests.jl starts, and is UNKNOWN: the time limit of N s.
+# Every mode that runs a mutant has a time limit for each mutant. A cold run of a mutant (the edit
+# mode, `--list`, and in warm mode the smoke mutant, the short lists, the mutants that run cold and
+# the runs again cold) has MUTATE_TIME_LIMIT seconds, or 600 s, the limit that a warm worker has
+# before its first baseline: a cold run loads and compiles the copy and runs every unit once, as
+# that worker does. A warm mutant has MUTATE_TIME_LIMIT, or max(60 s, 10 × the baseline). A mutant
+# that passes its limit is killed with SIGKILL, with the julia that run-tests.jl starts, and is
+# UNKNOWN: the time limit of N s. pins.jl's run on the base has no limit.
 #
 # A run of mutants prints a `start:` line first: the mode, the mutants, the jobs and the units.
 # The list modes print a `progress:` line when the run of a mutant ends: the phase (warm or cold in
@@ -319,15 +320,15 @@ atexit(() -> foreach(p -> process_exited(p) || kill_group(p), RUNNING))
 
 """
 Run the units on the copy, then remove it. Return the exit code of run-tests.jl, or `nothing` when
-the run passed `cold_limit()` and was killed, and its output.
+the run passed `limit` seconds and was killed, and its output.
 """
-function run_units(copy, units; quiet = false)
+function run_units(copy, units; quiet = false, limit = cold_limit())
     out = IOBuffer()
     # `detach`: run-tests.jl leads a process group, so that the kill reaches the julia it starts
     p = run(pipeline(ignorestatus(detach(julia(RUNTESTS, copy, units...)));
         stdout = quiet ? out : stdout, stderr = quiet ? out : stderr); wait = false)
     push!(RUNNING, p)
-    timed_out = timedwait(() -> process_exited(p), cold_limit()) === :timed_out
+    timed_out = timedwait(() -> process_exited(p), limit) === :timed_out
     timed_out && kill_group(p)
     wait(p)
     delete!(RUNNING, p)
@@ -997,7 +998,7 @@ function main(args)
     what = describe(edits)
     code, _ = run_units(copy, units)
     code === nothing && (say("\nUNKNOWN — the time limit of $(round(Int, cold_limit())) s, so no verdict: $what"); return 3)
-    code in (0, 1) ||(say("\nUNKNOWN — run-tests.jl exited $code, so no verdict: $what"); return 3)
+    code in (0, 1) || (say("\nUNKNOWN — run-tests.jl exited $code, so no verdict: $what"); return 3)
     say("\n", code == 0 ? "SURVIVED — no unit sees the mutant" : "CAUGHT", ": $what")
     return 0
 end

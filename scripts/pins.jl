@@ -42,7 +42,8 @@ function main(args)
     copy = Mutate.fresh_copy(pkg)
     dirs = put_base!(copy, pkg, base)
     what = "$(join(dirs, " and ")) of $base under the branch's tests"
-    code, _ = Mutate.run_units(copy, units)
+    # the time limit is for a mutant; a run of the branch's tests on the base has none
+    code, _ = Mutate.run_units(copy, units; limit = Inf)
     code in (0, 1) || (println("\nUNKNOWN — run-tests.jl exited $code, so no verdict: $what"); return 3)
     println("\n", code == 0 ? "PINS — every unit passes on $base" : "FAILS on $base", ": $what")
     return 0
