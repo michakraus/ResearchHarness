@@ -15,7 +15,7 @@ one bullet each, in seven sections, one for each kind of part:
 | kind of part | entries |
 |:--|--:|
 | a part that predicts what another tool reads or does | 55 |
-| a numerical method | 52 |
+| a numerical method | 53 |
 | a type or an interface | 37 |
 | a tool that reads files or a tree | 70 |
 | a step that runs a user's script | 20 |
