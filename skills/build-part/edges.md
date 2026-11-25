@@ -502,6 +502,13 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   reference first, run the full suite on that head in the same round, and search the tests for
   counts and cell sets that read the changed solver's outcomes before the critic (RL round 1 and
   verify 2, the solver package)
+- **a widened exponent that a reader outside the part takes as one power of two:** a fix let a
+  factor's scale exponent go below `-emax` for a subnormal matrix, and an elimination helper
+  outside the part's scope built `ldexp(one(R), -e)` from it, which is `Inf`, so the solve returned
+  NaN where the base was finite. The critics judged the files of the part and passed it; only the
+  verifier's read of the field's other readers found it, after the PASS. Before round 1, list every
+  reader of a field or a return value whose range the part widens, and probe each one at the new
+  ends of the range (SN finish, the solver package)
 
 ## A type or an interface
 
