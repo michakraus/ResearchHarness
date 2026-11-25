@@ -34,9 +34,9 @@
 #       Run the list in warm worker processes (mutate-worker.jl), one copy each. `--jobs <n>` deals
 #       the mutants out to n workers and runs the cold runs n at a time; one worker by default.
 #       Every SURVIVED runs again cold, and the cold verdict counts. Warm mode adds two verdicts:
-#         UNKNOWN      the baseline failed after the mutant, the mutant passed its time limit, a
-#                      sampled warm kill was not caught cold (then every other warm kill), or the
-#                      smoke mutant was not CAUGHT (then every mutant)
+#         UNKNOWN      the baseline failed after the mutant, the mutant passed its warm time
+#                      limit, a sampled warm kill was not caught cold (then every other warm
+#                      kill), or the smoke mutant was not CAUGHT (then every mutant)
 #         NO-COVERAGE  the coverage lists the lines of the mutant, but no unit runs them; a
 #                      finding, as SURVIVED is
 #       The docstring of `run_warm` states the rules of warm mode.
@@ -55,6 +55,14 @@
 #   julia --startup-file=no mutate.jl <package> --check <mutants.toml>
 #       Check each mutant of the list, as the modes above do before they run one, and run
 #       nothing: VALID, or INVALID with the reason.
+#
+# Every mode that runs a mutant has a time limit for each mutant. A cold run of a mutant (the edit
+# mode, `--list`, and in warm mode the smoke mutant, the short lists, the mutants that run cold and
+# the runs again cold) has MUTATE_TIME_LIMIT seconds, or 600 s, the limit that a warm worker has
+# before its first baseline: a cold run loads and compiles the copy and runs every unit once, as
+# that worker does. A warm mutant has MUTATE_TIME_LIMIT, or max(60 s, 10 × the baseline). A mutant
+# that passes its limit is killed with SIGKILL, with the julia that run-tests.jl starts, and is
+# UNKNOWN: the time limit of N s. pins.jl's run on the base has no limit.
 #
 # A run of mutants prints a `start:` line first: the mode, the mutants, the jobs and the units.
 # The list modes print a `progress:` line when the run of a mutant ends: the phase (warm or cold in
@@ -293,13 +301,39 @@ function default_units(pkg)
     return [m.captures[1] for m in eachmatch(r"^  test/(\S+) — "m, listing)]
 end
 
-"Run the units on the copy, then remove it. Return the exit code of run-tests.jl and its output."
-function run_units(copy, units; quiet = false)
+"""
+The time limit of a cold run of a mutant, in seconds: MUTATE_TIME_LIMIT, or 600 s. A cold run
+loads and compiles the copy and runs every unit once, as a warm worker does before its first
+baseline, which has 600 s; the warm rule's 10 × the baseline has no cold baseline to scale.
+"""
+cold_limit() = parse(Float64, get(ENV, "MUTATE_TIME_LIMIT", "600"))
+
+# SIGKILL to the process group of a cold run: run-tests.jl starts a julia of its own, which a kill
+# of run-tests.jl alone leaves running, and a julia that gets SIGTERM inside a test run can hang
+# in its exit hooks
+kill_group(p) = ccall(:kill, Cint, (Cint, Cint), -getpid(p), Base.SIGKILL)
+
+# the cold runs that still run; a cold run is detached from the terminal, so an interrupt of
+# mutate.jl does not reach it, and the exit kills it
+const RUNNING = Set{Base.Process}()
+atexit(() -> foreach(p -> process_exited(p) || kill_group(p), RUNNING))
+
+"""
+Run the units on the copy, then remove it. Return the exit code of run-tests.jl, or `nothing` when
+the run passed `limit` seconds and was killed, and its output.
+"""
+function run_units(copy, units; quiet = false, limit = cold_limit())
     out = IOBuffer()
-    p = run(pipeline(ignorestatus(julia(RUNTESTS, copy, units...));
-        stdout = quiet ? out : stdout, stderr = quiet ? out : stderr))
+    # `detach`: run-tests.jl leads a process group, so that the kill reaches the julia it starts
+    p = run(pipeline(ignorestatus(detach(julia(RUNTESTS, copy, units...)));
+        stdout = quiet ? out : stdout, stderr = quiet ? out : stderr); wait = false)
+    push!(RUNNING, p)
+    timed_out = timedwait(() -> process_exited(p), limit) === :timed_out
+    timed_out && kill_group(p)
+    wait(p)
+    delete!(RUNNING, p)
     rm(copy; recursive = true)
-    return p.exitcode, String(take!(out))
+    return timed_out ? nothing : p.exitcode, String(take!(out))
 end
 
 "Run a checked mutant cold, in a copy and a new process of its own: its verdict and the detail."
@@ -309,6 +343,7 @@ function cold(pkg, edits, units)
     code, out = run_units(copy, units; quiet = true)
     log = match(r"log: (\S+)", out)
     detail = describe(edits) * (log === nothing ? "" : " — log: $(log.captures[1])")
+    code === nothing && return "UNKNOWN", detail * " — the time limit of $(round(Int, cold_limit())) s"
     code in (0, 1) || return "UNKNOWN", "run-tests.jl exited $code; " * detail
     return code == 0 ? "SURVIVED" : "CAUGHT", detail
 end
@@ -745,8 +780,9 @@ survivor and a sample of the kills again cold, `n` at a time. The rules:
   * In a worker, each mutant is included into its module, tested with failfast, fastest unit
     first, and restored. The baseline runs again every 20 mutants and after the last. When it
     fails, every verdict since the last baseline that passed is UNKNOWN.
-  * A mutant that passes its time limit, max(60 s, 10 × the baseline) or MUTATE_TIME_LIMIT, is
-    UNKNOWN, and a new worker goes on.
+  * A warm mutant that passes its time limit, max(60 s, 10 × the baseline) or MUTATE_TIME_LIMIT,
+    is UNKNOWN, and a new worker goes on. A cold run that passes its time limit, 600 s or
+    MUTATE_TIME_LIMIT (`cold_limit`), is UNKNOWN too.
   * Every SURVIVED runs again cold, and the cold verdict counts. So do COLD_SAMPLE (10) of the
     CAUGHT, at even steps. If one of those is not caught cold, every other warm kill is UNKNOWN.
   * A mutant of several files, of a file that defines a module, or that deletes a top-level
@@ -961,6 +997,7 @@ function main(args)
     apply!(copy, edits)
     what = describe(edits)
     code, _ = run_units(copy, units)
+    code === nothing && (say("\nUNKNOWN — the time limit of $(round(Int, cold_limit())) s, so no verdict: $what"); return 3)
     code in (0, 1) || (say("\nUNKNOWN — run-tests.jl exited $code, so no verdict: $what"); return 3)
     say("\n", code == 0 ? "SURVIVED — no unit sees the mutant" : "CAUGHT", ": $what")
     return 0

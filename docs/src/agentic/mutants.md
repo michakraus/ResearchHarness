@@ -66,7 +66,7 @@ the units that the diff against `origin/main` reaches.
 | `CAUGHT` | a unit fails |
 | `SURVIVED` | every unit passes |
 | `NO-COVERAGE` | in warm mode: the coverage lists the mutant's lines, but no unit runs them; a finding, as `SURVIVED` is |
-| `UNKNOWN` | no verdict: `run-tests.jl` itself failed; in warm mode also a baseline that failed after the mutant, a time-out, a smoke mutant that was not caught, or a sampled kill that a cold run does not catch |
+| `UNKNOWN` | no verdict: `run-tests.jl` itself failed, or the mutant passed its time limit (MUTATE_TIME_LIMIT seconds, else 600 s for a cold run and max(60 s, 10 × the baseline) for a warm one); in warm mode also a baseline that failed after the mutant, a smoke mutant that was not caught, or a sampled kill that a cold run does not catch |
 | `INVALID` | the mutant does not apply, does not parse, or adds an undefined name; it does not run |
 
 The mode `--warm` runs the list in warm worker processes, so each mutant does not pay for a new

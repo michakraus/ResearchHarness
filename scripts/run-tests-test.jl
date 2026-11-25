@@ -920,6 +920,41 @@ end
     @test occursin("CAUGHT: g is wrong", s)
 end
 
+@testset "a cold run stops a mutant at the time limit, with the julia that run-tests.jl starts" begin
+    withenv("MUTATE_TIME_LIMIT" => nothing) do
+        @test M.cold_limit() == 600
+    end
+    dir = mktempdir(mkpath(expanduser("~/Research/.scratch/run-tests-test")))
+    list = joinpath(dir, "mutants.toml")
+    # the mutant writes the process ID of the test's julia and its directory in the copy, then spins
+    seen = joinpath(dir, "spinning.txt")
+    write(list, """
+    [[mutant]]
+    name = "g never returns"
+    file = "src/base/options.jl"
+    from = "g() = 2"
+    to = 'g() = (write($(repr(seen)), string(getpid(), " ", @__DIR__)); while true end; 2)'
+    """)
+    code, out = withenv("MUTATE_TIME_LIMIT" => "30") do
+        script(MUTATE, fixture(), "--list", list, "base/options.jl")
+    end
+    @test code == 3
+    @test occursin(r"UNKNOWN: g never returns — [^\n]* — the time limit of 30 s\n", out)
+    @test occursin("0 CAUGHT, 0 SURVIVED, 1 UNKNOWN, 0 INVALID, of 1 mutants", out)
+    # the fixture loads well inside the limit, so the mutant ran
+    @test isfile(seen)
+    if isfile(seen)
+        pid, src = split(read(seen, String), ' '; limit = 2)
+        # a killed julia whose parent run-tests.jl died too is reaped by the system, soon after the
+        # kill; one that outlived the kill is killed here, so that the test leaves no process
+        alive() = ccall(:kill, Cint, (Cint, Cint), parse(Cint, pid), 0) == 0
+        gone = timedwait(!alive, 30.0) === :ok
+        @test gone
+        gone || ccall(:kill, Cint, (Cint, Cint), parse(Cint, pid), Base.SIGKILL)
+        @test !isdir(dirname(dirname(src)))
+    end
+end
+
 @testset "a failing final baseline makes every verdict since the last good one UNKNOWN" begin
     dir = mktempdir(mkpath(expanduser("~/Research/.scratch/run-tests-test")))
     list = joinpath(dir, "mutants.toml")
