@@ -3183,6 +3183,12 @@ def server_cases(case: Case, root: pathlib.Path) -> None:
             False,
         ),
         ("an older Kaimon", good.replace("after=1.0.0", "after=1.1.0"), f"{bindir}/julia", True),
+        (
+            "older Kaimon dependencies",
+            good + "deps=Tachikoma 2.8.0 -> 2.8.1\n",
+            f"{bindir}/julia",
+            True,
+        ),
     ):
         p, calls = server(text, STUB_PID="4242", STUB_EXE=exe)
         case(
@@ -3203,7 +3209,7 @@ def server_cases(case: Case, root: pathlib.Path) -> None:
     touch = f"$(touch {marker})"
     injected = "".join(
         f"{key}={value}\n"
-        for key in ("before", "after", "bindir", "failure")
+        for key in ("before", "after", "bindir", "deps", "failure")
         for value in (touch, f"`touch {marker}`")
     )
     p, calls = server(injected, STUB_PID="4242", STUB_EXE=f"{bindir}/julia")
@@ -3368,8 +3374,12 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         timeout=JULIA_TIMEOUT,
         check=False,
     ).stdout.split("\n")
-    home, stubs, log = root / "update-home", root / "update-stubs", root / "update.log"
-    depot = root / "update-depot"
+    home, stubs, log, depot = (
+        root / "update-home",
+        root / "update-stubs",
+        root / "update.log",
+        root / "update-depot",
+    )
     for d in (".juliaup/bin", ".julia/juliaup", ".julia/environments/apps/Kaimon"):
         (home / d).mkdir(parents=True)
     for d in (stubs, depot):
@@ -3458,6 +3468,7 @@ def update_cases(case: Case, root: pathlib.Path) -> None:
         and held[2] == f"bindir={bindir}",
     )
     project.write_text('version = "1.0.0"\n', encoding="utf-8")
+    update_deps_case(case, update, home, bindir)
     marker = planted_dates(root, minor, (depot, home / ".julia"))
     p, calls = update()
     case(
@@ -3505,6 +3516,44 @@ def update_bindir_case(
     launcher.write_text(
         f"#!/bin/sh\ncase \"$*\" in *Sys.BINDIR*) printf '%s' '{bindir}' ;; esac\n", encoding="utf-8"
     )
+
+
+def update_deps_case(
+    case: Case,
+    update: Callable[..., tuple[subprocess.CompletedProcess[str], list[str]]],
+    home: pathlib.Path,
+    bindir: pathlib.Path,
+) -> None:
+    """The update phase when `Pkg.Apps.update("Kaimon")` upgrades a dependency in `Manifest.toml`
+    without changing Kaimon's own version: `STATE` gains a `deps=` line naming the change, and the
+    launcher and manifest are restored afterwards."""
+    launcher = home / ".juliaup" / "bin" / "julia"
+    manifest = home / ".julia" / "environments" / "apps" / "Kaimon" / "Manifest.toml"
+    state = home / ".cache" / "julia-update" / "state"
+    manifest.write_text(
+        'manifest_format = "2.1"\n\n[[deps.Tachikoma]]\nuuid = "468859d6-42d8-48b7-8ad9-1d312e0e3b0a"\n'
+        'version = "2.8.0"\n',
+        encoding="utf-8",
+    )
+    launcher.write_text(
+        f"#!/bin/sh\ncase \"$*\" in *Sys.BINDIR*) printf '%s' '{bindir}' ;; esac\n"
+        'case "$*" in *\'Pkg.Apps.update("Kaimon")\'*) '
+        "printf '%s' 'manifest_format = \"2.1\"\n\n[[deps.Tachikoma]]\n"
+        'uuid = "468859d6-42d8-48b7-8ad9-1d312e0e3b0a"\nversion = "2.8.1"\n\' '
+        f'> "{manifest}" ;; esac\n',
+        encoding="utf-8",
+    )
+    p, _ = update()
+    held = state.read_text(encoding="utf-8").splitlines() if state.is_file() else []
+    case(
+        f"a Kaimon dependency upgrade writes deps into the state: exit {p.returncode} {held!r}",
+        ok=p.returncode == 0
+        and held == ["before=1.0.0", "after=1.0.0", f"bindir={bindir}", "deps=Tachikoma 2.8.0 -> 2.8.1"],
+    )
+    launcher.write_text(
+        f"#!/bin/sh\ncase \"$*\" in *Sys.BINDIR*) printf '%s' '{bindir}' ;; esac\n", encoding="utf-8"
+    )
+    manifest.unlink()
 
 
 def planted_dates(root: pathlib.Path, minor: str, depots: Sequence[pathlib.Path]) -> pathlib.Path:

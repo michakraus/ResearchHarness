@@ -11,16 +11,18 @@
 # directly in the home, however the home and the entry are spelled. The update phase writes its
 # state into ~/.cache/julia-update/state, one `key=value` per line: `before` and `after`, the
 # Kaimon versions before and after the update, `bindir`, the Sys.BINDIR of the default release,
-# and a `failure` per failed step. This script reads the four keys as data, runs no value and no
-# path of the file, and removes the file after it reads it: a later run whose update phase never
-# started then finds no file, which it reports as a failure of the update phase.
+# an optional `deps` summary when Kaimon's manifest dependencies changed, and a `failure` per
+# failed step. This script reads the five keys as data, runs no value and no path of the file, and
+# removes the file after it reads it: a later run whose update phase never started then finds no
+# file, which it reports as a failure of the update phase.
 #
 # The server is the process that listens on port 2828, as lsof finds it; its binary is the link
 # /proc/<pid>/exe, without its " (deleted)" suffix. A server whose binary no longer exists is
 # restarted with `systemctl --user restart kaimon.service`: it cannot start a session and never
-# recovers. A server of another Kaimon version or of a release that is not the default is reported
-# as a restart that is due. A due restart sends a notification with notify-send, and so do the
-# failures, one for all of them. The script exits 1 when a step of either phase failed, else 0.
+# recovers. A server of another Kaimon version, with updated Kaimon dependencies, or of a release
+# that is not the default is reported as a restart that is due. A due restart sends a notification
+# with notify-send, and so do the failures, one for all of them. The script exits 1 when a step of
+# either phase failed, else 0.
 set -u
 
 PORT=2828
@@ -88,12 +90,14 @@ state="$HOME/.cache/julia-update/state"
 before=
 after=
 bindir=
+deps=
 if [ -f "$state" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             before=*) before=${line#before=} ;;
             after=*) after=${line#after=} ;;
             bindir=*) bindir=${line#bindir=} ;;
+            deps=*) deps=${line#deps=} ;;
             failure=*) failure "${line#failure=}" ;;
         esac
     done <"$state"
@@ -136,6 +140,9 @@ else
             fi
         else
             [ "$before" = "$after" ] || due="Kaimon $before -> $after; the server runs $before"
+            if [ -n "$deps" ]; then
+                due="${due:+$due; }Kaimon dependencies changed ($deps)"
+            fi
             if [ -n "$bindir" ] && [ "$server" != "$bindir/julia" ]; then
                 due="${due:+$due; }the server runs $server, not the default release"
             fi
