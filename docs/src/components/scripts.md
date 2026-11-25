@@ -889,8 +889,9 @@ places:
 
 On Linux the unit's `ExecStart` runs `julia-update.jl`, steps 1 to 3, the update phase, under
 `bwrap` through `jobbox`, where the job sees no other process, no service manager and no session
-bus. That phase writes its failures, the Kaimon versions before and after the update and the
-`Sys.BINDIR` of the default release into `~/.cache/julia-update/state`, one `key=value` per line.
+bus. That phase writes its failures, the Kaimon versions before and after the update, any changed
+Kaimon dependencies from `Manifest.toml` and the `Sys.BINDIR` of the default release into
+`~/.cache/julia-update/state`, one `key=value` per line.
 The unit's `ExecStopPost` then runs the installed copy of `julia-update-server` outside `bwrap`,
 a POSIX `sh` script that runs no Julia, because the jobs write the depot and the releases. Its
 `PATH` is the physical path of each absolute entry of the unit's that resolves, without each one

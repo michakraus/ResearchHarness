@@ -321,24 +321,30 @@ end
     @testset "a Kaimon dependency upgrade with the same Kaimon version: restart due" begin
         fx = fixture()
         manifest = joinpath(fx.home, ".julia", "environments", "apps", "Kaimon", "Manifest.toml")
-        manifest_text(ver) = """
+        manifest_text(kaimon_ver, tachikoma_ver) = """
             manifest_format = "2.1"
 
             [[deps.Kaimon]]
             uuid = "d3856c55-31fd-4246-b7e8-380411123c01"
-            version = "1.0.0"
+            version = "$kaimon_ver"
 
             [[deps.Tachikoma]]
             git-tree-sha1 = "aaa"
             uuid = "468859d6-42d8-48b7-8ad9-1d312e0e3b0a"
-            version = "$ver"
+            version = "$tachikoma_ver"
             """
-        write(manifest, manifest_text("2.8.0"))
-        code, out, calls = with_server(identity, fx, "STUB_KAIMON_MANIFEST" => manifest_text("2.8.1"))
+        write(manifest, manifest_text("1.0.0", "2.8.0"))
+        # Changing Kaimon's own entry in Manifest.toml tests that kaimon_deps() skips Kaimon itself.
+        code, out, calls = with_server(
+            identity,
+            fx,
+            "STUB_KAIMON_MANIFEST" => manifest_text("1.0.1", "2.8.1"),
+        )
         @test code == 0
         @test restarts(calls) == 0 && others(calls) == 0
         @test occursin("RESTART DUE", out)
         @test occursin("Kaimon dependencies changed (Tachikoma 2.8.0 -> 2.8.1)", out)
+        @test !occursin("Kaimon 1.0.0 -> 1.0.1", out)
         @test occursin("Run: $RESTART_HINT", out)
         @test length(alerts(calls)) == 1
     end
