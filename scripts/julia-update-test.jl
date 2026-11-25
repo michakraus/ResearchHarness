@@ -84,10 +84,18 @@ function fixture()
     log = joinpath(root, "calls.log")
     touch(log)
 
-    # The launcher prints a BINDIR when asked for one, and fails a call that names $STUB_FAIL. For
-    # the load check of Kaimon it logs KAIMON_CONFIG_DIR, and whether that is an empty directory.
+    # The launcher prints a BINDIR when asked for one, writes $STUB_KAIMON_MANIFEST into the
+    # Kaimon app manifest during Pkg.Apps.update("Kaimon"), and fails a call that names
+    # $STUB_FAIL. For the load check of Kaimon it logs KAIMON_CONFIG_DIR, and whether that is an
+    # empty directory.
     stub(joinpath(jbin, "julia"), LOG_LINE * raw"""
         case "$*" in *Sys.BINDIR*) printf '%s' "$STUB_BINDIR" ;; esac
+        case "$*" in *'Pkg.Apps.update("Kaimon")'*)
+            if [ -n "$STUB_KAIMON_MANIFEST" ]; then
+                printf '%s' "$STUB_KAIMON_MANIFEST" > "$HOME/.julia/environments/apps/Kaimon/Manifest.toml"
+            fi
+            ;;
+        esac
         case "$*" in *"using Kaimon"*)
             if [ -z "${KAIMON_CONFIG_DIR+x}" ]; then
                 state=unset
@@ -308,6 +316,76 @@ end
         @test occursin("RESTART DUE", out)
         @test occursin("Run: $RESTART_HINT", out)
         @test length(alerts(calls)) == 1
+    end
+
+    @testset "a Kaimon dependency upgrade with the same Kaimon version: restart due" begin
+        fx = fixture()
+        manifest = joinpath(fx.home, ".julia", "environments", "apps", "Kaimon", "Manifest.toml")
+        manifest_text(kaimon_ver, tachikoma_ver) = """
+            manifest_format = "2.1"
+
+            [[deps.Kaimon]]
+            uuid = "d3856c55-31fd-4246-b7e8-380411123c01"
+            version = "$kaimon_ver"
+
+            [[deps.Tachikoma]]
+            git-tree-sha1 = "aaa"
+            uuid = "468859d6-42d8-48b7-8ad9-1d312e0e3b0a"
+            version = "$tachikoma_ver"
+            """
+        write(manifest, manifest_text("1.0.0", "2.8.0"))
+        # Changing Kaimon's own entry in Manifest.toml tests that kaimon_deps() skips Kaimon itself.
+        code, out, calls = with_server(
+            identity,
+            fx,
+            "STUB_KAIMON_MANIFEST" => manifest_text("1.0.1", "2.8.1"),
+        )
+        @test code == 0
+        @test restarts(calls) == 0 && others(calls) == 0
+        @test occursin("RESTART DUE", out)
+        @test occursin("Kaimon dependencies changed (Tachikoma 2.8.0 -> 2.8.1)", out)
+        @test !occursin("Kaimon 1.0.0 -> 1.0.1", out)
+        @test occursin("Run: $RESTART_HINT", out)
+        @test length(alerts(calls)) == 1
+    end
+
+    @testset "an unchanged Kaimon manifest: no restart" begin
+        fx = fixture()
+        manifest = joinpath(fx.home, ".julia", "environments", "apps", "Kaimon", "Manifest.toml")
+        write(manifest, """
+            manifest_format = "2.1"
+
+            [[deps.Tachikoma]]
+            git-tree-sha1 = "aaa"
+            uuid = "468859d6-42d8-48b7-8ad9-1d312e0e3b0a"
+            version = "2.8.1"
+            """)
+        code, out, calls = with_server(identity, fx)
+        @test code == 0
+        @test restarts(calls) == 0 && others(calls) == 0
+        @test occursin("No restart due", out)
+        @test isempty(alerts(calls))
+    end
+
+    @testset "dependency diff formats upgrades, additions, removals, tree changes and truncation" begin
+        m = script_definitions(:dep_changes, :summarize_deps)
+        before = Dict(
+            ("A", "1") => ("1.0.0", "sha1", ""),
+            ("B", "2") => ("2.0.0", "sha2", ""),
+            ("C", "3") => ("3.0.0", "sha3", ""),
+            ("Same", "4") => ("4.0.0", "sha4", ""),
+        )
+        after = Dict(
+            ("A", "1") => ("1.1.0", "sha1b", ""),
+            ("C", "3") => ("3.0.0", "sha3b", ""),
+            ("D", "5") => ("0.1.0", "sha5", ""),
+            ("Same", "4") => ("4.0.0", "sha4", ""),
+        )
+        @test m.dep_changes(before, after) ==
+              ["A 1.0.0 -> 1.1.0", "-B 2.0.0", "C 3.0.0 (updated)", "+D 0.1.0"]
+        @test isempty(m.dep_changes(before, before))
+        @test m.summarize_deps(["A", "B", "C"]; limit = 3) == "A, B, C"
+        @test m.summarize_deps(["A", "B", "C", "D"]; limit = 2) == "A, B and 2 more"
     end
 
     @testset "no process listens: no restart" begin

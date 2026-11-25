@@ -18,7 +18,8 @@
 # 4. The server check. If the Kaimon server runs from a Julia binary that no longer exists, it
 #    cannot start a session and never recovers, so the job restarts it. That stops every live
 #    session, which have lost nothing that a restart could keep. Any other reason for a restart —
-#    a new Kaimon version, a new default release — is reported and left to a person.
+#    a new Kaimon version, a changed Kaimon dependency in Manifest.toml, a new default release — is
+#    reported and left to a person.
 #
 # The job runs on macOS under launchd and on Linux under `systemd --user`. On macOS one run does
 # the four steps; the service manager, the restart, the notifier, the log and how the server's
@@ -27,12 +28,12 @@
 #
 # On Linux the script is the update phase, steps 1 to 3, which the unit's `ExecStart` runs under
 # `bwrap`, where no other process, no service manager and no session bus is in sight. It writes
-# its failures, the Kaimon versions before and after the update and the Sys.BINDIR of the default
-# release into STATE, one `key=value` per line. The unit's `ExecStopPost` then runs
-# `julia-update-server`, a POSIX `sh` script outside `bwrap`, which reads STATE as data, runs
-# step 4 and sends the alerts; it runs no Julia, because the jobs write the depots and the
-# releases. JULIA_UPDATE_SYSTEM, `Darwin` or `Linux`, takes the place of the system's own name, so
-# that the cases of lib/harness/jobsandbox.py run the Linux phase on macOS.
+# its failures, the Kaimon versions before and after the update, any changed Kaimon dependencies,
+# and the Sys.BINDIR of the default release into STATE, one `key=value` per line. The unit's
+# `ExecStopPost` then runs `julia-update-server`, a POSIX `sh` script outside `bwrap`, which reads
+# STATE as data, runs step 4 and sends the alerts; it runs no Julia, because the jobs write the
+# depots and the releases. JULIA_UPDATE_SYSTEM, `Darwin` or `Linux`, takes the place of the
+# system's own name, so that the cases of lib/harness/jobsandbox.py run the Linux phase on macOS.
 #
 # The app environment at ~/.julia/environments/apps/Kaimon is a derived artefact: every upgrade
 # regenerates its Project.toml from Kaimon's own, so nothing added there survives. Tools reach
@@ -140,6 +141,64 @@ function kaimon_version()
 end
 
 """
+The packages recorded in Kaimon's app manifest, excluding Kaimon itself, keyed by `(name, uuid)`
+with value `(version, git-tree-sha1, path)`. Empty when no manifest exists.
+"""
+function kaimon_deps()
+    manifest = joinpath(APP, "Manifest.toml")
+    result = Dict{Tuple{String,String},Tuple{String,String,String}}()
+    isfile(manifest) || return result
+    deps = get(TOML.parsefile(manifest), "deps", nothing)
+    deps isa AbstractDict || return result
+    for (name, entries) in deps
+        name == "Kaimon" && continue
+        entries isa AbstractVector || continue
+        for entry in entries
+            entry isa AbstractDict || continue
+            uuid = string(get(entry, "uuid", ""))
+            ver = string(get(entry, "version", ""))
+            sha = string(get(entry, "git-tree-sha1", ""))
+            path = string(get(entry, "path", ""))
+            result[(String(name), uuid)] = (ver, sha, path)
+        end
+    end
+    return result
+end
+
+"""
+Human-readable descriptions of every package that was added, removed or changed between two
+`kaimon_deps()` snapshots, sorted by `(name, uuid)`.
+"""
+function dep_changes(before::AbstractDict, after::AbstractDict)
+    changes = String[]
+    for key in sort(collect(union(keys(before), keys(after))))
+        name = key[1]
+        old = get(before, key, nothing)
+        new = get(after, key, nothing)
+        old == new && continue
+        if old === nothing
+            v2 = new[1]
+            push!(changes, isempty(v2) ? "+$name" : "+$name $v2")
+        elseif new === nothing
+            v1 = old[1]
+            push!(changes, isempty(v1) ? "-$name" : "-$name $v1")
+        elseif old[1] != new[1] && !isempty(old[1]) && !isempty(new[1])
+            push!(changes, "$name $(old[1]) -> $(new[1])")
+        else
+            v2 = new[1]
+            push!(changes, isempty(v2) ? "$name (updated)" : "$name $v2 (updated)")
+        end
+    end
+    return changes
+end
+
+"""Join dependency change descriptions into one compact summary, capping at `limit` entries."""
+function summarize_deps(changes::AbstractVector{<:AbstractString}; limit::Int = 5)
+    length(changes) <= limit && return join(changes, ", ")
+    return join(changes[1:limit], ", ") * " and $(length(changes) - limit) more"
+end
+
+"""
 A failure to read the server: the `reason`, for the log. Never "no server".
 """
 struct Unreadable
@@ -197,7 +256,8 @@ function alert(message)
 end
 
 """
-Steps 1 to 3: the failures, and the Kaimon versions before and after the update.
+Steps 1 to 3: the failures, the Kaimon versions before and after the update, and the dependency
+changes in Kaimon's app manifest.
 """
 function update_phase()
     failures = String[]
@@ -220,9 +280,11 @@ function update_phase()
 
     before = kaimon_version()
     before === nothing && error("no Kaimon app project at $APP")
+    before_deps = kaimon_deps()
     update = `$JULIA --startup-file=no -e 'using Pkg; Pkg.Apps.update("Kaimon")'`
     step("Pkg.Apps.update(\"Kaimon\")", update) || push!(failures, "Kaimon update")
     after = kaimon_version()
+    deps = dep_changes(before_deps, kaimon_deps())
     # Kaimon reads its config.json from KAIMON_CONFIG_DIR as it loads. The load check names an
     # empty directory there: the job's profile refuses ~/.config/kaimon, which holds the server's
     # keys, and Kaimon loads without a config.
@@ -234,14 +296,14 @@ function update_phase()
     if !loaded
         push!(failures, "Kaimon $after does not load; reinstall with Pkg.Apps.add(\"Kaimon\")")
     end
-    return failures, before, string(after)
+    return failures, before, string(after), deps
 end
 
 """
-Step 4 and the alerts, after the update phase's `failures` and the Kaimon versions `before` and
-`after` it: 1 when a step failed, else 0.
+Step 4 and the alerts, after the update phase's `failures`, the Kaimon versions `before` and
+`after` it, and any dependency changes `deps`: 1 when a step failed, else 0.
 """
-function server_phase(failures, before, after)
+function server_phase(failures, before, after, deps = String[])
     failures = copy(failures)
     println("--- server check")
     server = server_julia()
@@ -270,6 +332,7 @@ function server_phase(failures, before, after)
         end
     else
         before == after || push!(due, "Kaimon $before -> $after; the server runs $before")
+        isempty(deps) || push!(due, "Kaimon dependencies changed ($(summarize_deps(deps)))")
         server == default_julia() || push!(due, "the server runs $server, not the default release")
     end
 
@@ -297,13 +360,13 @@ one_line(value) = replace(string(value), r"[\r\n]" => " ")
 """
 The update phase on Linux: STATE of an earlier run removed first, so that a run that ends in an
 error leaves none, then steps 1 to 3, then STATE written whole, through a new file that is then
-renamed, with `before`, `after`, `bindir` and a `failure` per failed step. A launcher that does
-not print the default release's Sys.BINDIR gives an empty `bindir` and a failure of its own. 1
-when a step failed, else 0.
+renamed, with `before`, `after`, `bindir`, an optional `deps` summary when Kaimon's manifest
+dependencies changed, and a `failure` per failed step. A launcher that does not print the default
+release's Sys.BINDIR gives an empty `bindir` and a failure of its own. 1 when a step failed, else 0.
 """
 function update_only()
     rm(STATE; force = true)
-    failures, before, after = update_phase()
+    failures, before, after, deps = update_phase()
     bindir = try
         default_bindir()
     catch e
@@ -311,8 +374,9 @@ function update_only()
         push!(failures, "the Sys.BINDIR of the default release, which $JULIA did not print")
         ""
     end
-    lines = ["before=$(one_line(before))", "after=$(one_line(after))", "bindir=$(one_line(bindir))",
-             ("failure=$(one_line(f))" for f in failures)...]
+    lines = ["before=$(one_line(before))", "after=$(one_line(after))", "bindir=$(one_line(bindir))"]
+    isempty(deps) || push!(lines, "deps=$(one_line(summarize_deps(deps)))")
+    append!(lines, ("failure=$(one_line(f))" for f in failures))
     mkpath(dirname(STATE))
     write(STATE * ".new", join(lines, "\n") * "\n")
     mv(STATE * ".new", STATE; force = true)
