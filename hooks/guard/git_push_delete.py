@@ -5,8 +5,10 @@ branches. The check finds each `git` call of each part of the command, after the
 `git` such as `-C`, also behind another command as in `find -exec`, and reads each refspec of a
 `push`: each argument after the remote that is neither an option nor the value of one
 (`git_writes.positional`). A refspec whose source is empty asks. A command that holds `push` and
-that the check cannot read asks too. It reads the command as `shell.readings` does with `nested`,
-so a push in the script of `sh -c`, `bash -c` or `eval` is read as well.
+that the check cannot read asks too when it can hold a `git push`, as `git_writes.unread_write`
+finds it; a Julia heredoc with `push!` and a range `1:n` passes. It reads the command as
+`shell.readings` does with `nested`, so a push in the script of `sh -c`, `bash -c` or `eval` is
+read as well.
 
 A permission rule cannot state this without a warning of Claude Code: a literal `:` followed by a
 wildcard is a `:*` that is not at the end of the rule, which Claude Code reports at each start. The
@@ -16,7 +18,7 @@ wildcard is a `:*` that is not at the end of the rule, which Claude Code reports
 from pathlib import PurePosixPath
 
 from .contract import PASS, Call, Verdict, strongest
-from .git_writes import positional
+from .git_writes import positional, unread_write
 from .rm_scope import TAKES_VALUE
 from .shell import Tokens, joined, parts, readings
 
@@ -79,5 +81,5 @@ def check(call: Call) -> Verdict:
         return PASS
     found = readings(command, nested=True)
     if found is None:
-        return Verdict("ask", UNREAD)
+        return Verdict("ask", UNREAD) if unread_write(command, keywords) else PASS
     return strongest(verdict_of(tokens) for tokens in found)
