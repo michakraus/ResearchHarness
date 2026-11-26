@@ -186,10 +186,10 @@ between calls keeps a function or an alias that an earlier call defines, and a f
 `/usr/bin/env` would run in place of the program, outside the sandbox. Antigravity, the app and
 `agy` alike, runs each `run_command` in a new shell: a probe that exports a variable and defines a
 function in one call finds neither in the next. Antigravity has no worktree hook, and the sandbox
-of its terminal
-denies the writes to `.git` and `.githooks` that a worktree needs. Its sandbox mounts only the
-workspace and the paths that a grant names, so it cannot write the hook or the interpreter, and
-the lifted program is the installed one. The hook takes its working directory from the call's
+of its terminal denies the writes to `.git` and `.githooks` that a worktree needs. Its sandbox
+mounts only the workspace and the paths that a grant names, so it cannot write the hook or the
+interpreter. With the new shell of each call, the lifted program is the installed one. The hook
+takes its working directory from the call's
 `Cwd`, and checks the name, the path and the repository itself.
 
 ### The `gh api` check
