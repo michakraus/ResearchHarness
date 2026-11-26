@@ -170,14 +170,18 @@ that works, for example a separate Bash call.
 installed worktree hook's `add <name>` or `remove <path>`, exactly
 
 ```text
-<home>/.local/share/research-harness/python/bin/python <home>/.claude/hooks/worktree.py add <name>
-<home>/.local/share/research-harness/python/bin/python <home>/.claude/hooks/worktree.py remove <path>
+/usr/bin/env -i HOME=<home> PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin <home>/.local/share/research-harness/python/bin/python -E -s <home>/.claude/hooks/worktree.py add <name>
+/usr/bin/env -i HOME=<home> PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin <home>/.local/share/research-harness/python/bin/python -E -s <home>/.claude/hooks/worktree.py remove <path>
 ```
 
 with `<home>` the guard's home directory written out, single spaces, and one argument of letters,
-digits, `.`, `_`, `-` and `/`. A `~`, a `$`, a quote, a `cd`, an assignment, a redirection, a pipe,
-a second command or a second argument keeps the line inside, and so does any other interpreter or
-hook path, `sweep` included. Antigravity has no worktree hook, and the sandbox of its terminal
+digits, `.`, `_`, `-` and `/`. A `~`, a `$`, a quote, a `cd`, another assignment, a redirection, a
+pipe, a second command or a second argument keeps the line inside, and so does any other
+interpreter or hook path, another `HOME` or `PATH`, a missing `-i`, `-E` or `-s`, and `sweep`. The
+lifted call runs with the environment of the agent's shell, which a persistent terminal keeps from
+an earlier `export`. `env -i` clears every inherited variable, so no session-set `PATH`, `HOME`,
+`XDG_CONFIG_HOME` or `GIT_*` reaches the hook's `git`; `-E` makes the interpreter ignore the
+`PYTHON*` variables, and `-s` the user site directory. The `PATH` is that of the nightly sweep. Antigravity has no worktree hook, and the sandbox of its terminal
 denies the writes to `.git` and `.githooks` that a worktree needs. Its sandbox mounts only the
 workspace and the paths that a grant names, so it cannot write the hook or the interpreter, and
 the lifted program is the installed one. The hook takes its working directory from the call's
@@ -604,8 +608,8 @@ gives both events 480 seconds, more than a fetch (300) and the broker's answer (
 is the `WorktreeCreate` of `name` with the working directory as `cwd`. `worktree.py remove <path>`
 is the `WorktreeRemove` of `path`, placed against the working directory where it is relative.
 `worktree.py sweep [--apply]` is the sweep. Any other arguments exit 1 with the usage line. The
-guard lifts the first two, on the harness's interpreter and by absolute paths, out of
-Antigravity's terminal sandbox ([the sandbox check](#the-sandbox-check)).
+guard lifts the first two, under `/usr/bin/env -i` on the harness's interpreter with `-E -s` and
+by absolute paths, out of Antigravity's terminal sandbox ([the sandbox check](#the-sandbox-check)).
 
 **The sweep removes the worktrees that are finished.** It lists each directory directly below
 `~/Research/.worktrees`, hidden names left out, one line each, `<kind>  <path>  <why>`:

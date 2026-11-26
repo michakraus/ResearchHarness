@@ -47,16 +47,13 @@ your home written out: no `~`, `$HOME`, `cd` or other word. Set the call's `Cwd`
 repository's main checkout:
 
 ```bash
-<home>/.local/share/research-harness/python/bin/python <home>/.claude/hooks/worktree.py add <branch>
+/usr/bin/env -i HOME=<home> PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin <home>/.local/share/research-harness/python/bin/python -E -s <home>/.claude/hooks/worktree.py add <branch>
 ```
 
 It makes `~/Research/.worktrees/<Repository>-<slug>` on `<branch>` (letters, digits, `.`, `_`, `-`,
 `/`) from `origin/HEAD` and prints its path. The nightly sweep removes a merged worktree. To
-remove one now:
-
-```bash
-<home>/.local/share/research-harness/python/bin/python <home>/.claude/hooks/worktree.py remove <home>/Research/.worktrees/<Repository>-<slug>
-```
+remove one now, run the same line with `remove <home>/Research/.worktrees/<Repository>-<slug>` in
+place of `add <branch>`.
 
 Where a text says that your caller made the worktree, read it as the worktree that you or your
 caller made with this command. Report its path.

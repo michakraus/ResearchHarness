@@ -24,11 +24,18 @@ can name a program to run or another repository.
 One more line is lifted, which Claude Code's rule keeps inside: the installed worktree hook's
 `add <name>` or `remove <path>` (`worktree_call`), so that Antigravity can make and remove a
 worktree, whose git writes `.git` and `.githooks`, which its sandbox denies. The line is exactly
-`<python> <hook> add|remove <word>`, single spaces, with `<python>` the interpreter of the
-harness's Python environment and `<hook>` the installed hook, each by its absolute path below the
-home of this process, and `<word>` of WORKTREE_WORD: no `cd`, assignment, redirection, pipe, quote,
-`~` or second argument. Antigravity's sandbox cannot write either file, so the lifted program is
-the installed one; the hook itself checks the name, the path and the repository.
+
+    /usr/bin/env -i HOME=<home> PATH=<WORKTREE_PATH> <python> -E -s <hook> add|remove <word>
+
+single spaces, with `<home>` the home of this process, `<python>` the interpreter of the harness's
+Python environment and `<hook>` the installed hook, each by its absolute path below that home, and
+`<word>` of WORKTREE_WORD: no `cd`, other assignment, redirection, pipe, quote, `~` or second
+argument. The lifted call runs with the environment of the agent's shell, which a persistent
+terminal keeps from an earlier `export`: `env -i` clears every inherited variable, so no PATH,
+HOME, XDG_CONFIG_HOME or GIT_* of the session reaches the hook's git; `-E` ignores the PYTHON*
+variables and `-s` the user site directory. Antigravity's sandbox cannot write the interpreter, the
+hook or a directory of WORKTREE_PATH, so the lifted program is the installed one; the hook itself
+checks the name, the path and the repository.
 """
 
 import re
@@ -54,19 +61,27 @@ LIFT = Verdict("pass", sandbox="lift")
 # The one argument of a lifted worktree hook call: a branch name or a path of plain characters,
 # which no shell expands.
 WORKTREE_WORD = r"[A-Za-z0-9._/-]+"
+# The PATH of a lifted worktree hook call, that of launchagents/worktree-sweep.plist: directories
+# that no session can write.
+WORKTREE_PATH = "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 
 def worktree_call(command: str) -> bool:
-    """Whether `command` is exactly `<python> <hook> add <name>` or `... remove <path>`, with the
-    interpreter of the harness's Python environment and the installed worktree hook, each by its
-    absolute path below the home of this process, with one leading `/`."""
+    """Whether `command` is exactly `/usr/bin/env -i HOME=<home> PATH=<WORKTREE_PATH> <python> -E
+    -s <hook> add <name>` or `... remove <path>`, with `<home>` the home of this process, with one
+    leading `/`, and `<python>` and `<hook>` the interpreter of the harness's Python environment and
+    the installed worktree hook, each by its absolute path below that home."""
     home = Path.home()
     if not home.is_absolute():
         return False
     home = Path("/" + str(home).lstrip("/"))
     python = home / ".local" / "share" / "research-harness" / "python" / "bin" / "python"
     hook = home / ".claude" / "hooks" / "worktree.py"
-    line = rf"{re.escape(str(python))} {re.escape(str(hook))} (?:add|remove) {WORKTREE_WORD}"
+    env = f"/usr/bin/env -i HOME={home} PATH={WORKTREE_PATH}"
+    line = (
+        rf"{re.escape(env)} {re.escape(str(python))} -E -s {re.escape(str(hook))} "
+        rf"(?:add|remove) {WORKTREE_WORD}"
+    )
     return re.fullmatch(line, command) is not None
 
 

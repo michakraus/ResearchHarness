@@ -8,7 +8,7 @@ This agent is ported from Claude Code. Where the text below names a Claude Code 
 
 ## worktree
 
-**Nothing makes a worktree for you.** Antigravity has no `isolation: worktree`. If your caller names an existing worktree, work in it and make none. Otherwise make it yourself before anything else, in the repository your caller names, with the worktree hook's `add`, as the global `GEMINI.md` says, and a short slug of your own. Where the text below says that your caller made the worktree, or that `pwd` is already in it, read it as the worktree that you made. Report its path; your caller removes it.
+**Nothing makes a worktree for you.** Antigravity has no `isolation: worktree`. If your caller names an existing worktree, work in it and make none. Otherwise make it yourself before anything else, in the repository your caller names, with the `/usr/bin/env -i … worktree.py add` line of the global `GEMINI.md`, word for word, and a short slug of your own. Where the text below says that your caller made the worktree, or that `pwd` is already in it, read it as the worktree that you made. Report its path; your caller removes it.
 
 ## agent
 

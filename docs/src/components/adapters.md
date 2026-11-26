@@ -489,7 +489,7 @@ that raises prints no decision, which Antigravity reads as a block. A `run_comma
 not deny, a `force_ask` included, also gets `"overwrite": {"BypassSandbox": …}`: true only when
 the guard's lift check lifts the command, where Claude Code's sandbox rule lifts it, the whole line
 matches a closed grammar and none of the screens applies, or where the line is the installed
-worktree hook's `add` or `remove` alone, else false; a deny and a call of any other tool carry no
+worktree hook's `add` or `remove` alone, under `env -i`, else false; a deny and a call of any other tool carry no
 `overwrite`.
 
 Last in `deny`, each entry of the template's `sandbox.filesystem.denyWrite`, the paths that Claude
@@ -551,9 +551,10 @@ It states the facts of Antigravity:
   main agent does;
 - Antigravity runs no RTK rewrite, so a command runs as typed;
 - there is no worktree hook, and a `git worktree add` fails in the sandbox: make the worktree with
-  the installed hook's `worktree.py add <branch>` on the harness's interpreter, both by absolute
-  path, with the call's `Cwd` in the repository, which the guard lifts out of the sandbox, and
-  leave it to the nightly worktree sweep;
+  the installed hook's `worktree.py add <branch>` on the harness's interpreter with `-E -s`, both
+  by absolute path, under `/usr/bin/env -i HOME=<home> PATH=<the sweep's PATH>`, with the call's
+  `Cwd` in the repository, which the guard lifts out of the sandbox, and leave it to the nightly
+  worktree sweep;
 - the `Agent` tool is `invoke_subagent`, a subagent replies through `send_message`, and no agent
   sets an effort;
 - each agent's model is the Antigravity tier of `[antigravity]`, and a council has no seat;
