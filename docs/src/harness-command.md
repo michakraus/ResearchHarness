@@ -1802,7 +1802,9 @@ session-writable directory on the `PATH`. Last, they check that `render` gives
 `autocommit_branch` its default when the profile has no such key: `main`, and
 `memory/<short host name>` on a host that is not the template host. One case checks that the
 plist and the unit of `claude-autocommit` start the interpreter that `bin/harness` names by
-default for the profile's home, with the installed copy of the script as its argument.
+default for the profile's home, with the installed copy of the script as its argument; another,
+that those of `worktree-sweep` start the same interpreter on the installed worktree hook with
+`sweep --apply`, and that the job is no job of `jobsandbox.py`.
 [Jobs and configuration](components/other.md) describes the units.
 
 ### `autocommit.py`

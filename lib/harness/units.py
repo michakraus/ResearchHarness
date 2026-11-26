@@ -64,6 +64,7 @@ JOBS = [
         "systemd/claude-autocommit.timer",
         "launchagents/claude-autocommit.plist",
     ),
+    ("systemd/worktree-sweep.service", "systemd/worktree-sweep.timer", "launchagents/worktree-sweep.plist"),
 ]
 # The start of a plist's ProgramArguments that runs its program under a Seatbelt profile, the
 # third element: macOS only, so ExecStart is compared with what follows the profile.
@@ -454,6 +455,22 @@ def selftest():
         plist_args == want and shlex.split(exec_start) == want,
         f"claude-autocommit runs on the interpreter of the Python environment "
         f"-> {plist_args}, {exec_start!r}",
+    )
+    # The plist and the unit of worktree-sweep start that interpreter on the installed worktree hook,
+    # which no session can write, never `harness`, and outside every job sandbox.
+    hook = [want[0], f"{dummy.home}/.claude/hooks/worktree.py", "sweep", "--apply"]
+    plist_args = cast(
+        "list[str]",
+        plistlib.loads(render("launchagents/worktree-sweep.plist", dummy).encode())["ProgramArguments"],
+    )
+    exec_start = cast(
+        "str", one(parse_unit(render("systemd/worktree-sweep.service", dummy)), "Service", "ExecStart")
+    )
+    boxed: set[str] = set(jobsandbox.JOBS)
+    check(
+        plist_args == hook and shlex.split(exec_start) == hook and "worktree-sweep" not in boxed,
+        f"worktree-sweep runs the installed hook's sweep on the interpreter of the Python environment, "
+        f"with no job sandbox -> {plist_args}, {exec_start!r}",
     )
 
     # Each mutant changes one or more rendered templates, (path, old, new) each, and must give a

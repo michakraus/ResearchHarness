@@ -1,0 +1,14 @@
+# Starts worktree-sweep.service daily at 05:00, after julia-update at 04:30, as
+# launchagents/worktree-sweep.plist does, and not at login. Persistent=true runs a start missed
+# while the machine slept or was off when the timer starts again, as launchd runs a missed calendar
+# start at wake. Enable it with `systemctl --user enable --now worktree-sweep.timer`.
+
+[Unit]
+Description=Remove the finished worktrees of ~/Research daily
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

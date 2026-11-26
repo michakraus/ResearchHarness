@@ -1,0 +1,19 @@
+# Removes the finished worktrees below ~/Research/.worktrees, the Linux twin of
+# launchagents/worktree-sweep.plist. worktree-sweep.timer starts it; it has no [Install] section of
+# its own. Its output goes to the journal: `journalctl --user -u worktree-sweep.service`.
+
+[Unit]
+Description=Remove the finished worktrees of ~/Research
+
+[Service]
+Type=oneshot
+# The interpreter of the harness's Python environment runs the installed worktree hook, not
+# `harness`: a session can write ~/Research/Harness, and this job runs outside every sandbox, so it
+# runs only files that no session can write. No jobbox: the removals delete `.githooks` and
+# `.claude` directories of worktrees, which the session sandboxes deny, and a `git worktree remove`
+# that cannot delete them leaves the worktree without its record.
+ExecStart={home}/.local/share/research-harness/python/bin/python {home}/.claude/hooks/worktree.py sweep --apply
+Nice=5
+IOSchedulingClass=idle
+# PATH holds no directory a session can write: the hook runs the git it finds there.
+Environment=PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin

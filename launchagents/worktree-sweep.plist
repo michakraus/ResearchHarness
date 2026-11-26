@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{launchd_prefix}.worktree-sweep</string>
+
+    <!-- The interpreter of the harness's Python environment runs the installed worktree hook,
+         ~/.claude/hooks/worktree.py, not `harness`: a session can write ~/Research/Harness, and
+         this job runs outside every sandbox, so it runs only files that no session can write.
+         It runs without a Seatbelt profile, like claude-autocommit: its removals delete
+         `.githooks` and `.claude` directories of worktrees, which the session sandboxes and the
+         daemon profile of sandbox/daemon.toml deny, and a `git worktree remove` that cannot
+         delete them leaves the worktree without its record. The hook reads each worktree's
+         repository and git config before any git runs, and removes only a worktree that is
+         clean, whose HEAD is in origin/HEAD and that is unused for 12 hours. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>{home}/.local/share/research-harness/python/bin/python</string>
+        <string>{home}/.claude/hooks/worktree.py</string>
+        <string>sweep</string>
+        <string>--apply</string>
+    </array>
+
+    <!-- Daily at 05:00, after julia-update at 04:30. An interval job: no KeepAlive, and
+         nothing at login. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>5</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>{home}/Library/Logs/worktree-sweep/launchd.out</string>
+    <key>StandardErrorPath</key>
+    <string>{home}/Library/Logs/worktree-sweep/launchd.err</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+    <key>LowPriorityIO</key>
+    <true/>
+    <key>Nice</key>
+    <integer>5</integer>
+
+    <!-- PATH holds no directory a session can write: the hook runs the git it finds there. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>

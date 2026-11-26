@@ -159,7 +159,7 @@ NPM_ERROR = "npm error"
 NPM_KEYS = ("code ", "syscall ", "errno ", "file ", "path ", "dest ")
 NPM_LOG = "A complete log of this run can be found in:"
 DOCTOR = "harness doctor"
-JOBS = ("kaimon", "julia-update", "claude-autocommit")
+JOBS = ("kaimon", "julia-update", "claude-autocommit", "worktree-sweep")
 # The directory below the home directory of the Seatbelt profiles of the jobs of jobsandbox.JOBS,
 # which the plists name, and of their `bwrap` arguments, which jobbox reads; no session can write
 # below ~/.config.
@@ -188,8 +188,10 @@ UNITS = (
     "julia-update.timer",
     "claude-autocommit.service",
     "claude-autocommit.timer",
+    "worktree-sweep.service",
+    "worktree-sweep.timer",
 )
-ENABLED = ("kaimon.service", "julia-update.timer", "claude-autocommit.timer")
+ENABLED = ("kaimon.service", "julia-update.timer", "claude-autocommit.timer", "worktree-sweep.timer")
 
 JULIAUP = "curl -fsSL https://install.julialang.org | sh -s -- --yes"
 CLAUDE = "curl -fsSL https://claude.ai/install.sh | bash"
@@ -1613,7 +1615,9 @@ EXPLAINED: dict[str, tuple[str, ...]] = {
     "julia": ("juliaup, Julia, fatou, Kaimon and the Julia environment of the harness's scripts",),
     "rtk": ("RTK, a proxy that shortens the output of shell commands",),
     "jq": ("jq, the command-line JSON processor",),
-    "jobs": ("Kaimon, the Julia update and the autocommit of ~/.claude, as background jobs",),
+    "jobs": (
+        "Kaimon, the Julia update, the autocommit of ~/.claude and the worktree sweep, as background jobs",
+    ),
     "dotfiles": ("chezmoi, which applies a repository of dotfiles",),
     "claude_remote": (
         "The URL of the git repository of ~/.claude, starting with https:// or git@: harness setup clones",
@@ -2554,7 +2558,7 @@ def macos_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
     order = [c.split()[1] for c in harness]
     case(
         f"the harness steps run in their order: {order}",
-        ok=order == ["install", "trust", *["render"] * 5, "doctor"]
+        ok=order == ["install", "trust", *["render"] * 6, "doctor"]
         and harness[0] == "harness install --apply"
         and harness[1] == "harness trust --apply",
     )
@@ -4786,7 +4790,8 @@ def no_remote_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         f"macOS without claude_remote: no plist of the autocommit job is rendered or bootstrapped, and "
         f"a line by hand names claude_remote: {code} {agents} {boots}",
         ok=code == "0"
-        and agents == ["org.example.julia-update.plist", "org.example.kaimon.plist"]
+        and agents
+        == ["org.example.julia-update.plist", "org.example.kaimon.plist", "org.example.worktree-sweep.plist"]
         and not any("claude-autocommit" in c for c in boots)
         and len(boots) == len(JOBS) - 1
         and "set claude_remote in the profile" in out
@@ -4801,9 +4806,17 @@ def no_remote_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         f"Linux without claude_remote: no unit of the autocommit job is rendered or enabled, and a "
         f"line by hand names claude_remote: {code} {units} {systemctl}",
         ok=code == "0"
-        and units == ["julia-update.service", "julia-update.timer", "kaimon.service"]
+        and units
+        == [
+            "julia-update.service",
+            "julia-update.timer",
+            "kaimon.service",
+            "worktree-sweep.service",
+            "worktree-sweep.timer",
+        ]
         and not any("claude-autocommit" in c for c in systemctl)
-        and "systemctl --user enable --now kaimon.service julia-update.timer" in systemctl
+        and "systemctl --user enable --now kaimon.service julia-update.timer worktree-sweep.timer"
+        in systemctl
         and "set claude_remote in the profile" in out,
     )
 
@@ -5437,10 +5450,11 @@ def doctor_cases(case: Case, tmp: pathlib.Path, pins: Pins) -> None:
         code, out = attempt(s.machine(), s.options(), pins=pins)
         calls = [c.split()[1] for c in s.calls() if c.startswith("harness ")]
         # Without claude_remote, the launch agent of the autocommit job is not rendered; the
-        # Kaimon and julia-update jobs render their profile and their plist each.
+        # Kaimon and julia-update jobs render their profile and their plist each, and the
+        # worktree-sweep job its plist.
         case(
             f"a harness doctor that exits {status} gives {want}, after every earlier step: {code} {calls}",
-            ok=code.startswith(want) and calls == ["install", "trust", *["render"] * 4, "doctor"],
+            ok=code.startswith(want) and calls == ["install", "trust", *["render"] * 5, "doctor"],
         )
         if status == "1":
             case(

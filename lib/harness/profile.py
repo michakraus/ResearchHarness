@@ -109,6 +109,9 @@ TEMPLATES = [
     "systemd/julia-update.timer",
     "systemd/claude-autocommit.service",
     "systemd/claude-autocommit.timer",
+    "launchagents/worktree-sweep.plist",
+    "systemd/worktree-sweep.service",
+    "systemd/worktree-sweep.timer",
 ]
 
 
