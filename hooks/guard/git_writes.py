@@ -50,8 +50,9 @@ the branch onto another remote branch. Any other command that holds one of these
 `deny` rule of the settings template still refuses those it names, such as a plain `--force`.
 `git` that cannot be run, or that fails, asks. A command that `shell.readings` cannot read, such as
 one with an open quote in a heredoc body, asks when it holds a word `git` and after it `push`,
-`worktree` or `cherry-pick` as a word of its own (`unread_write`); without them it passes, as
-Julia's `push!` or a path below `.worktrees/` do.
+`worktree` or `cherry-pick` as a word of its own, or a `$` before a quote or a backslash, which can
+open an ANSI-C quote that decodes into either (`unread_write`); without them it passes, as Julia's
+`push!` or a path below `.worktrees/` do.
 
 The own organisations are the `org` list of the profile, as `gh_api_writes.own_organisations` reads
 it. Each `git` runs with `core.fsmonitor` off, so that `git status` starts no monitor program that
@@ -105,6 +106,9 @@ GIT_WORD = re.compile(r"(?<![\w.-])git(?![\w.-])")
 # A keyword of the check as a word of its own: one inside a longer word, such as Julia's `push!`
 # or the path `.worktrees/`, is none (`unread_write`).
 KEYWORD_WORD = re.compile(r"(?<![\w./-])(?:push|worktree|cherry-pick)(?![\w./!-])")
+# A `$` before a quote or a backslash, which opens an ANSI-C quote, also one that the script of
+# `eval` or `sh -c` forms, as `\$\'` does (`unread_write`).
+ANSI_C_OPENER = re.compile(r"\$[\\'\"]")
 
 DENY_DEFAULT = """Refused: {command}
 
@@ -423,12 +427,17 @@ def decide(tokens: Tokens, cwd: str | None) -> Verdict:
     return lease_push(arguments, cwd)
 
 
-def unread_write(keywords: str) -> bool:
-    """True when the `joined` text of a command that `readings` cannot read may hold a write of the
-    check: a word `git` (GIT_WORD), and after it, on any line, a keyword as a word of its own
-    (KEYWORD_WORD). A keyword in a heredoc body or a path with no `git` before it is none. A `git`
-    call with a write of `writes` holds both words in this order in the `joined` text, so the
-    narrowing keeps each write that the check reads."""
+def unread_write(command: str, keywords: str) -> bool:
+    """True when `command`, which `readings` cannot read, may hold a write of the check: a `$`
+    before a quote or a backslash (ANSI_C_OPENER), or in its `joined` text `keywords` a word `git`
+    (GIT_WORD) and after it, on any line, a keyword as a word of its own (KEYWORD_WORD). A keyword
+    in a heredoc body or a path with no `git` before it is none. An ANSI-C quote decodes its
+    escapes into a word, as `$'\\x67it'` gives `git`, and `joined` decodes it only where its quotes
+    pair as the shell pairs them; with no ANSI-C quote, a `git` call with a write of `writes` holds
+    both words in this order in the `joined` text, so the narrowing keeps each write that the
+    check reads."""
+    if ANSI_C_OPENER.search(command) is not None:
+        return True
     first_git = GIT_WORD.search(keywords)
     if first_git is None:
         return False
@@ -444,7 +453,7 @@ def check(call: Call) -> Verdict:
         return PASS
     found = readings(command, nested=True)
     if found is None:
-        if not unread_write(keywords):
+        if not unread_write(command, keywords):
             return PASS
         return Verdict("ask", "The check cannot read a command that may hold a git write.")
     verdict = strongest(decide(tokens, call.cwd) for tokens in found)

@@ -694,6 +694,8 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "bash <<'EOF'\ngit push --force-with-lease origin topic\necho it's\nEOF"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git cherry-pick abc123; echo '"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C \"/a\nb\" worktree remove --force x; echo '"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\ncost $'\nEOF\n$'\\x67it' push --force-with-lease origin topic"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\ncost $'\nEOF\n$'\\147it' cherry-pick abc123"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git log --grep cherry-pick"}, "cwd": "@@R@@/Packages/Foreign"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "allow"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin HEAD:refs/heads/pushed"}, "cwd": "@@R@@/.worktrees/Own-pushed"}, "decision": "allow"}

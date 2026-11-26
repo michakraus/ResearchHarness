@@ -733,7 +733,8 @@
 
 - location: `hooks/guard/shell.py:336`
 - evidence: `readings` returns None when a quote of bash's reading is open, and drops the `plain`
-  reading, which can be closed. `rm_scope` and `git_writes` ask on None; the other checks pass.
+  reading, which can be closed. `rm_scope` asks on None, and `git_writes` when the text can hold
+  one of its writes (`unread_write`); the other checks pass.
   `guard --from claude` answers `pass` to `git add -A $'\'' $'`,
   `gh api -X DELETE repos/a/b $'\'' $'`, `git archive -o x.tar HEAD $'\'' $'`,
   `gh pr create … $'\'' $'` and
@@ -883,8 +884,8 @@
 
 ### K155 · The docstring of `git_writes.py` and *Guard hooks* say that the settings template holds no rule for the lease push, but the template allows one form and denies three.
 
-- location: `hooks/guard/git_writes.py:58`
-- evidence: the docstring (lines 58-60) says "a hook's `allow` does not lift a matching `ask` or
+- location: `hooks/guard/git_writes.py:62`
+- evidence: the docstring (lines 62-64) says "a hook's `allow` does not lift a matching `ask` or
   `deny` rule, so the template holds no rule for these forms and the check answers both ways";
   `docs/src/safeguards/guard-hooks.md:287-289` says the same of the settings. The template's
   `permissions.allow` holds `Bash(git push --force-with-lease=* origin HEAD:refs/heads/*)`

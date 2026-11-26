@@ -3,4 +3,6 @@
   and the check then asked for any command with `push`, `worktree` or `cherry-pick` in its text:
   each heredoc probe with `push!` and each path below `.worktrees/` stopped a sub-agent for
   approval. Such a command now asks only when it holds a word `git` and after it one of these
-  keywords as a word of its own; a readable command is decided as before.
+  keywords as a word of its own, or a `$` before a quote or a backslash, which can open an ANSI-C
+  quote such as `$'\x67it'` that the shell decodes into `git`; a readable command is decided as
+  before.
