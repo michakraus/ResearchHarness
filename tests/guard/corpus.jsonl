@@ -741,6 +741,28 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin HEAD:refs/heads/feature"}, "cwd": "@@R@@/Packages/Mapped"}, "decision": "allow"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin refs/heads/main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push --force-with-lease origin feature --force-if-includes"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git 2>&1 push --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git >/dev/null push --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git 2>&1 push --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git 2>/dev/null cherry-pick abc123"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "diff <(git push --force-with-lease origin main) x"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GIT push --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "Git push --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/usr/bin/GIT cherry-pick abc123"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git pus{h,} --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git pus{h,} --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git ${x}push --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C . cherry-pic{k,} abc123"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git work`echo tree` remove --force x"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -c alias.p=push p --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git --config-env=alias.p=P p abc123"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -c core.pager=cat log -1"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git log -1 --format=%H 2>/dev/null"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -C \"$d\" log -1 {a,b}"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\ngit pus{h,} --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\nGIT push --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\ngit -c alias.p=push p --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd x.git && julia --startup-file=no <<'EOF'\nx = [1, 2]'\ns = \"$x\"\nEOF"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin +:topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin feature :refs/heads/topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
@@ -749,6 +771,13 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/usr/bin/git push -u origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git fetch && git push origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sh -c 'git push origin :topic'"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git 2>&1 push origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GIT push origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/usr/bin/Git push origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git pus{h,} origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git {push,} origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git -c alias.p=push p origin :topic"}, "cwd": "@@CWD@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git 2>&1 push origin feature:topic"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin HEAD:refs/heads/topic"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push origin feature:topic"}, "cwd": "@@CWD@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git push -o :x origin feature"}, "cwd": "@@CWD@@"}, "decision": "pass"}
@@ -962,7 +991,7 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git status#x; julia --version"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr view $(echo 1)"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh pr view '$(echo 1)'"}, "decision": "ask", "bypass": false}
-{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -c alias.x='!julia -e 1' x"}, "decision": "ask", "bypass": false}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -c alias.x='!julia -e 1' x"}, "decision": "force_ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git --git-dir=x status"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C x -c a=b log"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git -C log -c a=b log"}, "decision": "ask", "bypass": false}

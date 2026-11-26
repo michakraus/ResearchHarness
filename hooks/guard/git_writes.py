@@ -38,10 +38,16 @@ reads the state of the repository with `git` in the call's working directory, th
     such as `-vo`, and of `--push-option`, `--repo`, `--receive-pack`, `--exec` and
     `--recurse-submodules`, also of a prefix of each, is no refspec.
 
-The check finds the subcommand as `git` does, after its global options. It takes a `worktree
-remove` with any option as forced, since `git` reads `-ff` and a prefix of `--force` as force, and a
-`push` with an option that begins with `--force-w` as a lease push, as well as an option that the
-shell expands, where the text before the expansion begins as a lease does (`--force-$w`, `--$x`).
+The check finds the subcommand as `git` does, after its global options (`subcommand`). It reads a
+program whose last name is `git` in any case as `git` (`is_git`), since a file system that ignores
+case runs git for `GIT`, and it reads no redirection's target as a word of a call
+(`shell.unredirected`), so `git 2>&1 push` is a push. A subcommand that the shell expands, as in
+`git pus{h,}`, or that a `-c alias.*` or `--config-env=alias.*` option can make an alias, is
+unknown: the call asks, and a lease push with it is read for a default branch as any other. It
+takes a `worktree remove` with any option as forced, since `git` reads `-ff` and a prefix of
+`--force` as force, and a `push` with an option that begins with `--force-w` as a lease push, as
+well as an option that the shell expands, where the text before the expansion begins as a lease
+does (`--force-$w`, `--$x`).
 It reads the command as `shell.readings` does with `nested`, so a write in the script of
 `sh -c`, `bash -c` or `eval` is read as well; such a write is never alone. In the `<branch>` form the
 branch must be a local one, and `origin` must have no `remote.origin.push` refspec, which can map
@@ -49,10 +55,11 @@ the branch onto another remote branch. Any other command that holds one of these
 `-C`, a `cd` before it, a pipeline, `-f` twice, a lease after the remote, a second refspec. A
 `deny` rule of the settings template still refuses those it names, such as a plain `--force`.
 `git` that cannot be run, or that fails, asks. A command that `shell.readings` cannot read, such as
-one with an open quote in a heredoc body, asks when it holds a word that ends in `git` and after it `push`,
-`worktree` or `cherry-pick` as a word of its own, or a `$` before a quote or a backslash, which can
-open an ANSI-C quote that decodes into either (`unread_write`); without them it passes, as Julia's
-`push!` or a path below `.worktrees/` do.
+one with an open quote in a heredoc body, asks when it holds a word that ends in `git`, in any
+case, and after it `push`, `worktree` or `cherry-pick` as a word of its own or an alias option;
+when the word right after such a `git` holds `$`, a backtick or a brace; or when it holds a `$`
+before a quote or a backslash, which can open an ANSI-C quote that decodes into either
+(`unread_write`). Without them it passes, as Julia's `push!` or a path below `.worktrees/` do.
 
 The own organisations are the `org` list of the profile, as `gh_api_writes.own_organisations` reads
 it. Each `git` runs with `core.fsmonitor` off, so that `git status` starts no monitor program that
@@ -75,7 +82,7 @@ from .gh_api_writes import own_organisations
 from .paths import Place, place
 from .rm_scope import TAKES_VALUE, WORKTREES, below, expand, resolve
 from .sandbox_lift import PLAIN
-from .shell import Tokens, joined, parts, readings
+from .shell import Tokens, joined, parts, readings, unredirected
 
 # Seconds for each `git` the check runs.
 TIMEOUT = 5
@@ -104,13 +111,26 @@ NAMED = 5
 # A word that ends in `git`, such as `git` or a path to it (`unread_write`). It has no left
 # boundary: `joined` removes each backslash-newline, also one that the shell keeps as two lines (a
 # `\\` or a `\` that ends a comment), and then glues the `git` of the next line to the word before.
-GIT_WORD = re.compile(r"git(?![\w.-])")
+# In any case, since a file system that ignores case, as macOS's does, runs git for `GIT`.
+GIT_WORD = re.compile(r"git(?![\w.-])", re.IGNORECASE)
 # A keyword of the check as a word of its own: one inside a longer word, such as Julia's `push!`
 # or the path `.worktrees/`, is none (`unread_write`).
 KEYWORD_WORD = re.compile(r"(?<![\w./-])(?:push|worktree|cherry-pick)(?![\w./!-])")
 # A `$` before a quote or a backslash, which opens an ANSI-C quote, also one that the script of
 # `eval` or `sh -c` forms, as `\$\'` does (`unread_write`).
 ANSI_C_OPENER = re.compile(r"\$[\\'\"]")
+# A word that ends in `git` and, as the next word, one that the shell expands (`unread_write`).
+GIT_EXPANDED = re.compile(r"git(?![\w.-])[ \t]+\S*[$`{]", re.IGNORECASE)
+# An option that defines a git alias, `-c alias.<name>=…` or `--config-env=alias.<name>=…`; git
+# reads the names of a configuration key in any case.
+ALIAS = re.compile(r"alias\.", re.IGNORECASE)
+# The global options of `git` that set a configuration value, `<key>=<value>` in the next word.
+CONFIGURING = ("-c", "--config-env")
+
+UNKNOWN = (
+    "The check cannot tell the subcommand of this `git` call: the shell expands it, or a "
+    "`-c alias.*` option makes it an alias. It can be a `push`, a `worktree` or a `cherry-pick`."
+)
 
 DENY_DEFAULT = """Refused: {command}
 
@@ -331,28 +351,54 @@ def lease_option(argument: str) -> bool:
     return argument.startswith("-") and cut is not None and LEASE.startswith(argument[:cut])
 
 
+def is_git(word: str) -> bool:
+    """True when the program `word` is `git`, by its last name in any case: a file system that
+    ignores case, as macOS's does, runs git for `GIT` and `/usr/bin/Git`."""
+    return PurePosixPath(word).name.lower() == "git"
+
+
+def subcommand(words: list[str], index: int) -> tuple[int, bool]:
+    """(the index of the subcommand, whether the check cannot know it) of the `git` call at
+    `index` of `words`. The subcommand follows the global options, as `git` reads them. It is
+    unknown when its word holds a character by which the shell expands it (EXPANSIONS), as
+    `pus{h,}` or `${x}push` do, or when a `-c` or `--config-env` option defines an alias."""
+    at, alias = index + 1, False
+    while at < len(words) and words[at].startswith("-"):
+        option, _, attached = words[at].partition("=")
+        if option in CONFIGURING:
+            value = attached if attached else (words[at + 1] if at + 1 < len(words) else "")
+            alias = alias or ALIAS.match(value) is not None
+            at += 1 if attached else 2
+        else:
+            at += 2 if words[at] in TAKES_VALUE else 1
+    expanded = at < len(words) and not EXPANSIONS.isdisjoint(words[at])
+    return at, alias or expanded
+
+
 def writes(words: list[str]) -> Iterator[tuple[str, int, int]]:
     """(the write, the index of its `git`, the index of its first argument) for each `git` call of
     `words` that holds a write of the check, in order: `cherry-pick`; `worktree remove` with any
     option after it, since `git` reads `-ff` and a prefix of `--force` as a force flag; or `push`
     with an option after it that begins as a lease does, or that can expand into one
-    (`lease_option`). The arguments of a call run to the end of `words`. It reads each word once
-    for the options, so that a long command costs it no time per `git`."""
+    (`lease_option`). A call whose subcommand the check cannot know (`subcommand`) is a `push`
+    when such an option follows it, and a `cherry-pick` otherwise, which takes any arguments. The
+    arguments of a call run to the end of `words`. It reads each word once for the options, so
+    that a long command costs it no time per `git`."""
     options = [index for index, word in enumerate(words) if word.startswith("-")]
     last_option = options[-1] if options else -1
     last_lease = next((index for index in reversed(options) if lease_option(words[index])), -1)
     for index, word in enumerate(words):
-        if PurePosixPath(word).name != "git":
+        if not is_git(word):
             continue
-        at = index + 1
-        while at < len(words) and words[at].startswith("-"):
-            at += 2 if words[at] in TAKES_VALUE else 1
-        subcommand = words[at] if at < len(words) else None
-        if subcommand == "cherry-pick":
+        at, unknown = subcommand(words, index)
+        name = words[at] if at < len(words) else None
+        if unknown:
+            yield ("push" if last_lease > at else "cherry-pick"), index, at + 1
+        elif name == "cherry-pick":
             yield "cherry-pick", index, at + 1
-        elif subcommand == "worktree" and words[at + 1 : at + 2] == ["remove"] and last_option > at + 1:
+        elif name == "worktree" and words[at + 1 : at + 2] == ["remove"] and last_option > at + 1:
             yield "worktree remove", index, at + 2
-        elif subcommand == "push" and last_lease > at:
+        elif name == "push" and last_lease > at:
             yield "push", index, at + 1
 
 
@@ -384,7 +430,7 @@ def push_refusal(tokens: Tokens, cwd: str | None) -> Verdict | None:
     target, or that can reach one without naming it; or None."""
     command = " ".join(text for _, text in tokens)
     directory = cwd
-    for words in parts(tokens):
+    for words in parts(unredirected(tokens)):
         if words[0] in ("cd", "pushd"):
             directory = moved(directory, words[1] if len(words) > 1 else "~")
         # The first lease push of the part, also after another write, as in `find -exec`.
@@ -404,8 +450,9 @@ def push_refusal(tokens: Tokens, cwd: str | None) -> Verdict | None:
 
 
 def decide(tokens: Tokens, cwd: str | None) -> Verdict:
-    """The verdict on one reading of the command."""
-    words = [text for kind, text in tokens if kind == "word"]
+    """The verdict on one reading of the command. A redirection's target is no word of a call
+    (`unredirected`), but a redirection keeps the call from being alone."""
+    words = [text for kind, text in unredirected(tokens) if kind == "word"]
     found = next(writes(words), None)
     if found is None:
         return PASS
@@ -414,11 +461,14 @@ def decide(tokens: Tokens, cwd: str | None) -> Verdict:
     refusal = push_refusal(tokens, cwd)
     if refusal is not None:
         return refusal
+    unknown = subcommand(words, index)[1]
     alone = len(words) == len(tokens) and index == 0 and words[0] == "git" and words[1] == write.split()[0]
-    if not alone or cwd is None:
+    if unknown or not alone or cwd is None:
         return Verdict(
             "ask",
-            ALONE.format(write=write)
+            UNKNOWN
+            if unknown
+            else ALONE.format(write=write)
             if not alone
             else f"The check reads `git {write}` against the working directory, and the call names none.",
         )
@@ -429,22 +479,39 @@ def decide(tokens: Tokens, cwd: str | None) -> Verdict:
     return lease_push(arguments, cwd)
 
 
+def may_be_unknown(keywords: str) -> bool:
+    """True when the `joined` text `keywords` holds a word that ends in `git` (GIT_WORD) and after
+    it a character by which the shell expands a word (EXPANSIONS) or an alias option (ALIAS), so
+    that a `git` call in it can have a subcommand that the check cannot know (`subcommand`)."""
+    first_git = GIT_WORD.search(keywords)
+    if first_git is None:
+        return False
+    rest = keywords[first_git.end() :]
+    return not EXPANSIONS.isdisjoint(rest) or ALIAS.search(rest) is not None
+
+
 def unread_write(command: str, keywords: str) -> bool:
     """True when `command`, which `readings` cannot read, may hold a write of the check: a `$`
-    before a quote or a backslash (ANSI_C_OPENER), or in its `joined` text `keywords` a word that
-    ends in `git` (GIT_WORD) and after it, on any line, a keyword as a word of its own
-    (KEYWORD_WORD). A keyword in a heredoc body or a path with no `git` before it is none. An ANSI-C
-    quote decodes its escapes into a word, as `$'\\x67it'` gives `git`, and `joined` decodes it
-    only where its quotes pair as the shell pairs them. With no ANSI-C quote, a `git` call with a
-    write of `writes` leaves in the `joined` text a word that ends in `git`, also where `joined`
-    glues it to the line before, and its keyword after it, so the narrowing keeps each write that
-    the check reads."""
-    if ANSI_C_OPENER.search(command) is not None:
+    before a quote or a backslash (ANSI_C_OPENER); or in its `joined` text `keywords` a word that
+    ends in `git` (GIT_WORD), in any case, and after it, on any line, a keyword as a word of its
+    own (KEYWORD_WORD) or an alias option (ALIAS); or such a word and right after it a word that
+    the shell expands (GIT_EXPANDED), as `git pus{h,}` holds. A keyword in a heredoc body or a
+    path with no `git` before it is none, and so is a `$` that does not follow `git` as its next
+    word, as in the Julia line `s = "$x"`. An ANSI-C quote decodes its escapes into a word, as
+    `$'\\x67it'` gives `git`, and `joined` decodes it only where its quotes pair as the shell pairs
+    them. With no ANSI-C quote, a `git` call with a write of `writes` leaves in the `joined` text a
+    word that ends in `git`, also where `joined` glues it to the line before, and its keyword after
+    it, so the narrowing keeps each write that the check reads whose subcommand stands right after
+    `git` or is a keyword."""
+    if ANSI_C_OPENER.search(command) is not None or GIT_EXPANDED.search(keywords) is not None:
         return True
     first_git = GIT_WORD.search(keywords)
     if first_git is None:
         return False
-    return KEYWORD_WORD.search(keywords, first_git.end()) is not None
+    return (
+        KEYWORD_WORD.search(keywords, first_git.end()) is not None
+        or ALIAS.search(keywords, first_git.end()) is not None
+    )
 
 
 def check(call: Call) -> Verdict:
@@ -452,7 +519,9 @@ def check(call: Call) -> Verdict:
     otherwise."""
     command = call.command
     keywords = joined(command)
-    if call.action != "shell" or not any(key in keywords for key in ("cherry-pick", "worktree", "push")):
+    if call.action != "shell" or not (
+        any(key in keywords for key in ("cherry-pick", "worktree", "push")) or may_be_unknown(keywords)
+    ):
         return PASS
     found = readings(command, nested=True)
     if found is None:
