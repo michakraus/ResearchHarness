@@ -1014,8 +1014,8 @@ reports the autocommit job as `SKIP`. On macOS no plist is rendered at all, beca
 every plist of `~/Library/LaunchAgents` at the next login. The script `claude-autocommit` is
 still copied into `~/.local/bin`, but its job is not enabled.
 
-**What it does.** The jobs are three: the Kaimon server, the Julia update job and the autocommit
-job of `~/.claude`. On macOS, launch agents run them: a launch agent is a job that launchd, the
+**What it does.** The jobs are four: the Kaimon server, the Julia update job, the autocommit job
+of `~/.claude` and the [worktree](concepts.md#worktree) sweep. On macOS, launch agents run them: a launch agent is a job that launchd, the
 service manager of macOS, runs for your account while you are logged in. On Linux, the
 `systemd --user` units run them. [components/other.md](components/other.md) says what each job
 runs.
@@ -1050,8 +1050,9 @@ each time that it runs. By hand, skip the line that loads or enables it below.
 error without Kaimon. [Kaimon](#kaimon) installs it.
 
 **Why.** The server must run before the agents of OpenCode, oh-my-pi and Antigravity can use
-Kaimon. The update job keeps the Julia releases and Kaimon current, and the autocommit job commits
-and pushes `~/.claude`.
+Kaimon. The update job keeps the Julia releases and Kaimon current, the autocommit job commits
+and pushes `~/.claude`, and the worktree sweep removes the finished worktrees below
+`~/Research/.worktrees`, which no session can remove.
 
 ### macOS
 
@@ -1075,7 +1076,7 @@ plutil -lint ~/Library/LaunchAgents/"$p".*.plist
 ```
 
 `plutil -lint` prints `OK` after the path of each file. These commands load the launch agents of
-the autocommit job and of the nightly [worktree](concepts.md#worktree) sweep:
+the autocommit job and of the nightly worktree sweep:
 
 ```bash
 launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/"$p".claude-autocommit.plist
