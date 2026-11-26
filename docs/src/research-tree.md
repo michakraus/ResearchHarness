@@ -110,8 +110,9 @@ start with a `.`, so they are not part of the layout above.
 
 - **`.worktrees/`** holds the worktrees: a second checkout of a repository on another branch, for
   a pull request or a part of a plan. The hook [`worktree.py`](safeguards/guard-hooks.md#worktree-py)
-  creates each one as `~/Research/.worktrees/<Repository>-<slug>`, from `origin/HEAD`. Remove a
-  worktree with `git worktree remove` from its main checkout when its branch is merged.
+  creates each one as `~/Research/.worktrees/<Repository>-<slug>`, from `origin/HEAD`. The nightly
+  [worktree sweep](components/other.md#worktree-sweep-plist) removes each worktree whose branch is merged, once it is clean and unused
+  for 12 hours.
 - **`.scratch/`** holds the logs, the probe environments and the results of the tests that run
   outside a repository. It holds no checkout.
 

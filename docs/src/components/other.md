@@ -119,7 +119,7 @@ A launch agent that removes the finished worktrees below `~/Research/.worktrees`
 `~/.claude/hooks/worktree.py sweep --apply`, with the interpreter of the harness's Python
 environment, `~/.local/share/research-harness/python/bin/python`. The hook removes each worktree
 that is clean, whose `HEAD` is in `origin/HEAD` and that is unused for 12 hours, and keeps every
-other one ([`worktree.py`](../safeguards/guard-hooks.md#worktreepy)).
+other one ([`worktree.py`](../safeguards/guard-hooks.md#worktree-py)).
 
 The job runs the installed hook and not `harness`, because a session can write `~/Research/Harness`
 and the job runs outside every sandbox; no session can write the hook or the interpreter. It runs
