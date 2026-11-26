@@ -277,7 +277,11 @@ def moved_to(simple: Simple, cwds: list[Cwd], *, sure: bool) -> list[Cwd]:
 
 
 def same_cwd(one: Cwd, other: Cwd) -> bool:
-    """True when both are one directory, or both the same unknown or missing one."""
+    """True when both are one directory, or both the same unknown or missing one. The memo of
+    `paths.py` gives one `Place` for a walk, so most equal directories are one object, and the test
+    of identity spares `Place.same` the text of a deep path."""
+    if one is other:
+        return True
     if isinstance(one, Place) and isinstance(other, Place):
         return one.same(other)
     return one is other
