@@ -6,9 +6,10 @@ every session and agent of one account shares one API limit. A watcher on a run 
 at the default interval makes thousands of calls and trips GitHub's secondary rate limit, after
 which the REST Actions endpoints answer 403 for every session of the account.
 
-The check finds each top-level `gh run watch` call, and each `gh pr checks` call that carries
-`--watch`, after any assignments such as `GH_REPO=…`, and reads its last `-i` or `--interval`
-value, in each of the forms `-i 60`, `-i60`, `-i=60`, `--interval 60` and `--interval=60`:
+The check finds each `gh run watch` call, and each `gh pr checks` call that carries `--watch`, as
+a simple command (`shell.commands`), also after assignments such as `GH_REPO=…`, and reads its
+last `-i` or `--interval` value, in each of the forms `-i 60`, `-i60`, `-i=60`, `--interval 60`
+and `--interval=60`:
 
   * **No interval**: deny. The reason names `--interval 60`.
   * **An interval that is not a whole number of at least MIN_INTERVAL seconds**: deny.
@@ -18,8 +19,7 @@ The last value counts, because `gh` takes the last one.
 """
 
 from .contract import PASS, Call, Verdict, strongest
-from .rm_scope import ASSIGNMENT
-from .shell import Tokens, joined, parts, readings
+from .shell import Tokens, commands, joined, program, readings
 
 # The shortest refresh interval, in seconds, that a watcher may use.
 MIN_INTERVAL = 30
@@ -63,11 +63,8 @@ def problem(arguments: list[str]) -> str | None:
 def verdict_of(tokens: Tokens) -> Verdict:
     """The strongest verdict of the watcher parts of one reading."""
     verdicts: list[Verdict] = []
-    for found in parts(tokens):
-        words = found
-        while words and ASSIGNMENT.match(words[0]):
-            words = words[1:]
-        if not words or words[0].rsplit("/", 1)[-1] != "gh":
+    for words in commands(tokens):
+        if program(words[0]) != "gh":
             continue
         watches = words[1:3] == ["run", "watch"] or (
             words[1:3] == ["pr", "checks"] and "--watch" in words[3:]
@@ -83,7 +80,7 @@ def verdict_of(tokens: Tokens) -> Verdict:
 def check(call: Call) -> Verdict:
     """Deny a `gh run watch` or `gh pr checks --watch` with an interval below MIN_INTERVAL seconds."""
     command = call.command
-    keywords = joined(command)
+    keywords = joined(command).lower()
     if "gh" not in keywords or "watch" not in keywords:
         return PASS
     return strongest(verdict_of(tokens) for tokens in readings(command, nested=True) or [])

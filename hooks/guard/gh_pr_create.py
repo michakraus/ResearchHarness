@@ -1,9 +1,9 @@
 """Decide `gh pr create` by the repository that it names.
 
-The check finds each top-level `gh pr create` call and each call of its alias `gh pr new`, after
-any assignments such as `GH_REPO=…`, and reads every `-R` and `--repo` value of it, in each of the
-forms `-R x`, `-Rx`, `-R=x`, `--repo x` and `--repo=x`, also at the end of a cluster of
-one-letter flags such as `-dR x`:
+The check finds each `gh pr create` call and each call of its alias `gh pr new` as a simple
+command (`shell.commands`), also after assignments such as `GH_REPO=…`, and reads every `-R`
+and `--repo` value of it, in each of the forms `-R x`, `-Rx`, `-R=x`, `--repo x` and `--repo=x`,
+also at the end of a cluster of one-letter flags such as `-dR x`:
 
   * **No `-R` or `--repo`**: deny. `gh` then opens the pull request in the repository that the
     checkout or `GH_REPO` names, which the command text does not show. The reason tells the agent
@@ -20,8 +20,7 @@ send a call that names an own repository first to another one.
 
 from .contract import PASS, Call, Verdict, strongest
 from .gh_api_writes import own_organisations
-from .rm_scope import ASSIGNMENT
-from .shell import Tokens, joined, parts, readings
+from .shell import Tokens, commands, joined, program, readings
 
 NO_REPOSITORY = """Refused: {command}
 
@@ -104,15 +103,8 @@ def own(repository: str) -> bool:
 def verdict_of(tokens: Tokens) -> Verdict:
     """The strongest verdict of the `gh pr create` parts of one reading."""
     verdicts: list[Verdict] = []
-    for found in parts(tokens):
-        words = found
-        while words and ASSIGNMENT.match(words[0]):
-            words = words[1:]
-        if (
-            not words
-            or words[0].rsplit("/", 1)[-1] != "gh"
-            or words[1:3] not in (["pr", "create"], ["pr", "new"])
-        ):
+    for words in commands(tokens):
+        if program(words[0]) != "gh" or words[1:3] not in (["pr", "create"], ["pr", "new"]):
             continue
         named = repositories(words[3:])
         command = " ".join(words)
@@ -128,7 +120,7 @@ def verdict_of(tokens: Tokens) -> Verdict:
 def check(call: Call) -> Verdict:
     """Deny a `gh pr create` that names no repository; ask for one outside the own organisations."""
     command = call.command
-    keywords = joined(command)
+    keywords = joined(command).lower()
     if "gh" not in keywords or ("create" not in keywords and "new" not in keywords):
         return PASS
     return strongest(verdict_of(tokens) for tokens in readings(command, nested=True) or [])

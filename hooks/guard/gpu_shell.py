@@ -6,9 +6,12 @@ probes a device cannot answer; it only delays the route that works, Kaimon's `ex
 boundary, since anyone can unset it: the check only sends a call that cannot work to the route that
 works.
 
-A part of the command is a `julia` part when its command word has the name `julia`. The command
-word is the first word after the assignments `NAME=value` and after the wrappers of WRAPPERS, each
-with its options and operands; `command` with `-v` or `-V` runs nothing. Once some reading of the
+A simple command of the command is a `julia` part when its command word has the name `julia`, in
+any case (`shell.commands`, `shell.program`). The command word is the first word after the reserved
+words, the assignments `NAME=value` and the wrappers of `shell.WRAPPERS`, such as `env`, `sudo` and
+`xargs`, each with its options and operands; `command` with `-v` or `-V` runs nothing. A command
+inside `( … )`, `$( … )` or backticks is one of its own, the target of a redirection is no word,
+and the string of `env -S` is read as a script. Once some reading of the
 command has a `julia` part, the check denies the call when the command's whole text holds a GPU
 word, or when the first 1 MiB of a `.jl` file that a `julia` part names holds one. A `julia` part
 names each of its words after the command word that ends in `.jl`, a leading `~` expanded and a
@@ -23,13 +26,12 @@ open quote.
 
 import os
 import re
-from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from .contract import PASS, Call, Verdict
 from .path_list import expanded
 from .paths import regular_prefix
-from .shell import parts, readings
+from .shell import commands, program, readings
 
 # The variable that `agentbox` sets in the frontend's environment.
 AGENTBOX = "AGENTBOX"
@@ -39,30 +41,6 @@ GPU_WORD = re.compile(
     r"(?<![A-Za-z0-9_])(?:Metal|Mtl[A-Za-z0-9_]*|CUDA|Cu[A-Z][A-Za-z0-9_]*|AMDGPU|ROC[A-Z][A-Za-z0-9_]*"
     r"|oneAPI|oneArray)(?![A-Za-z0-9_])"
 )
-ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
-
-
-@dataclass(frozen=True, slots=True)
-class Wrapper:
-    """A command that runs the command after its own words: the options that take the next word as
-    their value, the number of operands after its options, and the letters of an option that makes
-    it run nothing. The assignments after `env` are skipped as those before a command word are."""
-
-    valued: frozenset[str] = frozenset()
-    operands: int = 0
-    runs_nothing: str = ""
-
-
-WRAPPERS = {
-    "env": Wrapper(frozenset({"-u", "-C", "-P", "-S", "--unset", "--chdir"})),
-    "timeout": Wrapper(frozenset({"-k", "-s", "--kill-after", "--signal"}), operands=1),
-    "time": Wrapper(),
-    "nice": Wrapper(frozenset({"-n", "--adjustment"})),
-    "nohup": Wrapper(),
-    "exec": Wrapper(frozenset({"-a"})),
-    "command": Wrapper(runs_nothing="vV"),
-}
-
 REFUSED = """Refused: {command}
 
 This session runs under `agentbox`, where the shell has no GPU: a shell `julia` run that loads a
@@ -74,44 +52,15 @@ another command than the `julia` run, such as a `grep`, run the two commands as 
 """
 
 
-def after_wrapper(words: list[str], at: int, wrapper: Wrapper) -> int | None:
-    """The index of the first word after the wrapper at `at` with its options and operands, or None
-    when an option makes it run nothing. Each word that starts with `-` is an option, `--` too."""
-    at += 1
-    while at < len(words) and words[at].startswith("-"):
-        if any(letter in words[at][1:] for letter in wrapper.runs_nothing):
-            return None
-        at += 2 if words[at] in wrapper.valued else 1
-    return at + wrapper.operands
-
-
-def command_word(words: list[str]) -> int | None:
-    """The index of the command word of the part `words`, or None when the part runs nothing."""
-    at = 0
-    while at < len(words):
-        if ASSIGNMENT.match(words[at]):
-            at += 1
-            continue
-        wrapper = WRAPPERS.get(PurePosixPath(words[at]).name)
-        if wrapper is None:
-            return at
-        found = after_wrapper(words, at, wrapper)
-        if found is None:
-            return None
-        at = found
-    return None
-
-
 def julia_parts(command: str) -> list[list[str]]:
     """The words after the command word of each `julia` part of each reading of `command`; none
     when a quote is open."""
-    runs: list[list[str]] = []
-    for tokens in readings(command, nested=True) or []:
-        for words in parts(tokens):
-            at = command_word(words)
-            if at is not None and PurePosixPath(words[at]).name == "julia":
-                runs.append(words[at + 1 :])
-    return runs
+    return [
+        words[1:]
+        for tokens in readings(command, nested=True) or []
+        for words in commands(tokens)
+        if program(words[0]) == "julia"
+    ]
 
 
 def script_path(word: str, cwd: str | None) -> str | None:

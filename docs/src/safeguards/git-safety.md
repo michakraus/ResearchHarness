@@ -36,9 +36,8 @@ another session in the same checkout. So the staging rules are:
 - `git stash` acts on everything that changed, and the stash list is shared by every worktree, so
   its sweeping forms are denied.
 
-The guard catches the common spellings. The rest of the rule is an instruction:
-**known issue (K116)**, the staging check finds no `git add` behind a prefix word or inside a
-compound command, and misses some spellings of `.`.
+The guard catches the common spellings, also behind a prefix word such as `env` or `sudo` and
+inside a compound command. The rest of the rule is an instruction.
 
 ## Worktrees
 

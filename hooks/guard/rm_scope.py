@@ -24,7 +24,7 @@ from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place
-from .shell import Tokens, joined, readings
+from .shell import Tokens, builtin_commands, cut_heredocs, joined, program, readings
 
 HOME = str(Path.home().resolve())
 ROOT = Path(HOME, "Research").resolve()
@@ -32,10 +32,9 @@ WORKTREES = ROOT.joinpath(".worktrees").parts
 SCRATCH = ROOT.joinpath(".scratch").parts
 USERS = PurePosixPath(HOME).parent.parts
 
-HEREDOC = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
-ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 LEADING_HOME = re.compile(r"^\$(?:HOME|\{HOME\})(?=/|$)")
 GLOB = frozenset("*?[{")
+RECURSIVE = "--recursive"
 
 # `git` global options that consume the token after them.
 TAKES_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--exec-path", "--namespace"})
@@ -65,43 +64,6 @@ type Cwd = Place | Missing | None  # None: a `cd` went to a directory that canno
 
 class NeedsCwdError(Exception):
     """An operand or a `git` command that only the call's missing working directory resolves."""
-
-
-def cut_heredocs(command: str) -> str:
-    """The command without its heredoc bodies, which are data, not commands."""
-    kept: list[str] = []
-    pending: list[tuple[bool, str]] = []
-    for line in command.split("\n"):
-        if pending:
-            tabs, delimiter = pending[0]
-            if (line.lstrip("\t") if tabs else line) == delimiter:
-                pending.pop(0)
-            continue
-        pending.extend((match.group(1) == "-", match.group(3)) for match in HEREDOC.finditer(line))
-        kept.append(line)
-    return "\n".join(kept)
-
-
-def segments(tokens: Tokens) -> list[list[str]]:
-    """The command's segments as word lists; redirections and their targets dropped."""
-    result: list[list[str]] = []
-    current: list[str] = []
-    skip = False
-    for kind, token in tokens:
-        if kind == "op":
-            if "<" in token or ">" in token:
-                if current and current[-1].isdigit():
-                    current.pop()
-                skip = True
-                continue
-            result.append(current)
-            current = []
-        elif skip:
-            skip = False
-        else:
-            current.append(token)
-    result.append(current)
-    return [words for words in result if words]
 
 
 def expand(word: str) -> str | None:
@@ -192,7 +154,8 @@ def rm_arguments(words: list[str]) -> tuple[bool, list[str]]:
         if not flags_done and word == "--":
             flags_done = True
         elif not flags_done and word.startswith("--"):
-            recursive = recursive or word == "--recursive"
+            # GNU `rm` takes a unique prefix of a long option; `--r` is one of `--recursive`.
+            recursive = recursive or (len(word) > len("--") and RECURSIVE.startswith(word))
         elif not flags_done and word.startswith("-") and word != "-":
             recursive = recursive or "r" in word or "R" in word
         else:
@@ -274,17 +237,16 @@ def change_directory(words: list[str], cwd: Cwd) -> Cwd:
 
 
 def decide(tokens: Tokens, cwd: Cwd) -> Verdict:
-    """The verdict on one reading of the command."""
-    for found in segments(tokens):
-        words = found
-        while words and (ASSIGNMENT.match(words[0]) or words[0] in ("command", "nohup", "time")):
-            words = words[1:]
-        if not words:
-            continue
-        head = words[0]
+    """The verdict on one reading of the command: each simple command from its command word on
+    (`shell.commands`), so also an `rm` behind `sudo`, `env` or `then`, or spelled `RM`. A `cd`
+    moves the directory only where the shell runs its own `cd` (`shell.builtin_commands`)."""
+    for words, builtin in builtin_commands(tokens):
+        head = program(words[0])
         if head in ("cd", "pushd"):
-            cwd = change_directory(words, cwd)
-        elif head in ("rm", "/bin/rm"):
+            # Only the shell's own `cd` moves it (`shell.builtin_commands`).
+            if builtin and words[0] == head:
+                cwd = change_directory(words, cwd)
+        elif head == "rm":
             recursive, operands = rm_arguments(words)
             if not recursive:
                 continue
@@ -311,7 +273,7 @@ def decide(tokens: Tokens, cwd: Cwd) -> Verdict:
 def check(call: Call) -> Verdict:
     """Deny a recursive `rm` outside the zones; ask for a `git rm` or `git merge` outside a worktree."""
     command = call.command
-    keywords = joined(command)
+    keywords = joined(command).lower()
     if "rm" not in keywords and "merge" not in keywords:
         return PASS
     read = readings(cut_heredocs(command), nested=True)

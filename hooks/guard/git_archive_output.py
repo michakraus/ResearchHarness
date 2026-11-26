@@ -1,15 +1,16 @@
 """Refuse `git archive -o` and `--output`, and name the commands that need no guarded write.
 
-The check finds each top-level `git … archive` call and denies one that writes its archive with
-`-o` or `--output`. An agent writes the archive to read the unmodified tree of a commit; `git`
-runs outside the sandbox, so `-o` can write any path, and the refusal sends the agent to a read
-that needs no prompt. Git takes the option clustered behind other short options (`-vo out.tar`),
-with its value attached (`-oout.tar`), as any unique prefix of `--output` (`--out=x`), and after
-global options (`git -C repo archive`), so no `permissions` glob can state it.
+The check finds each `git … archive` call as a simple command (`shell.commands`) and denies one
+that writes its archive with `-o` or `--output`. An agent writes the archive to read the
+unmodified tree of a commit; `git` runs outside the sandbox, so `-o` can write any path, and the
+refusal sends the agent to a read that needs no prompt. Git takes the option clustered behind
+other short options (`-vo out.tar`), with its value attached (`-oout.tar`), as any unique prefix
+of `--output` (`--out=x`), and after global options (`git -C repo archive`), so no `permissions`
+glob can state it.
 """
 
 from .contract import PASS, Call, Verdict
-from .shell import joined, parts, readings
+from .shell import commands, joined, program, readings
 
 # Global options of `git` that consume the token after them.
 GLOBAL_VALUE = frozenset(
@@ -42,10 +43,9 @@ If the tar file itself is the result, give the user the command to run.
 
 
 def archive_arguments(words: list[str]) -> list[str] | None:
-    """The arguments after `archive` when `words` is a `git … archive` call, else None."""
-    while words and "=" in words[0] and not words[0].startswith("-"):
-        words = words[1:]  # a leading VAR=value assignment
-    if not words or words[0].rsplit("/", 1)[-1] != "git":
+    """The arguments after `archive` when the simple command `words`, from its command word on, is
+    a `git … archive` call, else None."""
+    if program(words[0]) != "git":
         return None
     index = 1
     while index < len(words):
@@ -82,7 +82,7 @@ def check(call: Call) -> Verdict:
     if "archive" not in joined(call.command):
         return PASS
     for tokens in readings(call.command, nested=True) or []:
-        for words in parts(tokens):
+        for words in commands(tokens):
             arguments = archive_arguments(words)
             option = output_option(arguments) if arguments is not None else None
             if option is not None:

@@ -449,14 +449,6 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K114 · The shell-write check reads no `<>` redirection as a write.
-
-- location: `hooks/guard/no_shell_file_write.py:44`
-- evidence: `REDIRECT` matches `<>`, and `split` keeps a target only for an operator that does not
-  start with `<`, so `echo x <> f.txt` in a work tree passes.
-- kind: defect
-- found: 2026-10-29, the critics of the guard core
-
 ### K115 · The shell-write check reads a command substitution inside a heredoc body as data.
 
 - location: `hooks/guard/no_shell_file_write.py:142`
@@ -466,38 +458,9 @@
 - kind: defect
 - found: 2026-10-29, the critics of the guard core
 
-### K116 · The staging check finds no `git add` behind a prefix word or inside a compound command, and misses some spellings of `.`.
-
-- location: `hooks/guard/no_blind_stage.py:41`
-- evidence: from a package work tree, `env git add -A`, `command git add -A`, `time git add -A`,
-  `X=1 git add -A`, `! git add -A`, `{ git add -A; }`, `if true; then git add -A; fi`,
-  `git add $'-A'`, `git add ./.` and `git add .//` pass the guard. The corpus holds no `$'…'` record for the staging check.
-- kind: defect
-- found: 2026-10-29, the critics of the guard core
-
-### K117 · The rm check reads no recursive `rm` behind `sudo`, and none in `rm --r`.
-
-- location: `hooks/guard/rm_scope.py:187`
-- evidence: `decide` skips only assignments, `command`, `nohup` and `time` before the program,
-  and `rm_arguments` takes only `--recursive` of the long options, so `sudo rm -rf ~` and
-  `rm --r ~` pass the guard.
-- kind: defect
-- found: 2026-10-29, the critics of the guard core
-
-### K118 · The `gh api` check finds no call behind `env` or an assignment, and the archive check none behind `env`.
-
-- location: `hooks/guard/gh_api_writes.py:355`
-- evidence: the `gh api` check needs the tool as a part's first word, and the archive check skips
-  only assignments before `git`, so `env gh api -X DELETE x`, `GH_HOST=x gh api -X DELETE x` and
-  `env git archive -o x HEAD` pass the guard. The same holds for the own-organisation rule of the
-  review and comment writes: `env gh api repos/other-org/r/issues/3/comments -f body=x`,
-  `A=1 gh api …` and `GH_HOST=example.com gh api …` with the same arguments pass.
-- kind: defect
-- found: 2026-10-29, the critics of the guard core
-
 ### K119 · The `gh api` check answers the first part that does not pass, so an `ask` before a `deny` is `ask`.
 
-- location: `hooks/guard/gh_api_writes.py:369`
+- location: `hooks/guard/gh_api_writes.py:371`
 - evidence: `verdict_of` returns at the first part that asks, so
   `gh api -X POST repos/example-org/X/issues && gh api -X DELETE repos/example-org/X` is `ask`, not
   `deny`.
@@ -514,16 +477,6 @@
 - kind: defect
 - found: 2026-11-09, the critics of the own-organisation rule of the `gh api` check
 
-### K150 · Claude Code's guard does not read a `gh api` call behind a leading `rtk`.
-
-- location: `hooks/guard/frontends/claude.py:55`
-- evidence: OpenCode's table checks a command again with a leading `rtk ` removed; Claude Code's
-  does not, so `rtk gh api -X DELETE repos/o/r`, `rtk gh api -X POST repos/o/r/issues -f title=x`
-  and `rtk gh api repos/other-org/r/issues/3/comments -f body=x` pass, while the same commands
-  without `rtk` are denied or ask.
-- kind: defect
-- found: 2026-11-09, the critics of the own-organisation rule of the `gh api` check
-
 ### K121 · What Claude Code does with a `PreToolUse` hook that passes its `timeout` is not measured here.
 
 - location: `settings/settings.proposal.json:717`
@@ -533,16 +486,6 @@
   shows the effect.
 - kind: not verified
 - found: 2026-10-29, the critics of the guard core
-
-### K122 · The work-tree check passes a `git init` whose program name a quote splits, such as `g''it init x`.
-
-- location: `hooks/guard/sandbox_semantics.py:439`
-- evidence: `work_tree_check` reads the command only when its text holds `git`, and `g''it init x`
-  does not; the shell runs it as `git init x`. In a workspace that is a work tree, Antigravity's
-  guard answers `ask` with `BypassSandbox` true, where `git init x` is `deny`. The guard runs the
-  same check for oh-my-pi and OpenCode, and the core's `check` filters the text the same way.
-- kind: found late
-- found: 2026-10-31, the critics of the Antigravity guard
 
 ### K124 · The oh-my-pi path guard reads no `cd` after `if`, and no `cd` whose directory a substitution makes empty, as a `cd` home.
 
@@ -695,7 +638,7 @@
 
 ### K138 · The shell checks of the guard do not read a word that an expansion makes, a script on standard input, or a script nested more than three levels deep.
 
-- location: `hooks/guard/shell.py:310`
+- location: `hooks/guard/shell.py:392`
 - evidence: the checks read quotes, ANSI-C and locale quotes, and the scripts of `sh -c`,
   `bash -c`, `zsh -c` (and the other shells of `SHELLS`) and `eval`, three levels deep, and run
   no other expansion. `guard --from claude` in a checkout of an own organisation answers `deny`
@@ -704,7 +647,7 @@
   `o=--force-with-lease; git push $o origin main` and
   `echo 'git push --force-with-lease origin main' | sh`. A subcommand that the shell expands, as
   in `git p$(printf u)sh`, is unknown to the git write and push-deletion checks, which then ask or
-  refuse (K197 names the limit of that rule). The same holds for the other
+  refuse. The same holds for the other
   writes of the checks, such as `x=rm; $x -rf ~/Research/Papers`, and for a script four levels
   deep, such as `eval eval eval eval rm -rf ~/Research/Papers`. The check of a shell write and the
   check of a `git init` or `git clone` in a working tree read no script of `sh -c` or `eval`:
@@ -720,7 +663,7 @@
 
 ### K139 · A long command with an ANSI-C quote can take the guard past the hook's time limit.
 
-- location: `hooks/guard/shell.py:154`
+- location: `hooks/guard/shell.py:212`
 - evidence: `readings` and `joined` read a text that holds `$'` or `$"` in three dialects, so such
   a command costs about three readings where another costs one. A probe of the third pre-PR
   verification, one process per run under a load average of 40 to 44, measured a 1 MiB command
@@ -733,7 +676,7 @@
 
 ### K140 · The shell checks of the guard read no command whose bash reading has an open quote, also where dash's reading is closed.
 
-- location: `hooks/guard/shell.py:336`
+- location: `hooks/guard/shell.py:418`
 - evidence: `readings` returns None when a quote of bash's reading is open, and drops the `plain`
   reading, which can be closed. `rm_scope` asks on None, and `git_writes` and `git_push_delete`
   when the text can hold one of their writes (`unread_write`); the other checks pass.
@@ -750,7 +693,7 @@
 
 ### K141 · The bash dialect of the guard reads `\c` of an ANSI-C quote as bash 3.2 does in one case and as bash 5.3 does in another.
 
-- location: `hooks/guard/shell.py:102`
+- location: `hooks/guard/shell.py:160`
 - evidence: bash 5.3 reads `$'x\c\\y'` as `x`, the control character 0x1C and `y`; bash 3.2
   (`/bin/bash` and `/bin/sh` on macOS) and the guard keep a backslash after the 0x1C. bash 3.2
   reads `$'x\c'y` as `x\y`; bash 5.3 and the guard read it as `x\cy`. Each difference leaves a
@@ -1247,7 +1190,7 @@
 
 ### K192 · Under `agentbox`, oh-my-pi's GPU shell check passes a shell `Pkg.test`, or a `test/runtests.jl` run, of a package whose `[deps]` hold a GPU package.
 
-- location: `hooks/guard/gpu_shell.py:126`
+- location: `hooks/guard/gpu_shell.py:75`
 - evidence: with `AGENTBOX=1`, in a package whose `Project.toml` lists `Metal` under `[deps]` and
   whose `test/runtests.jl` includes a file that holds `using Metal`, `gpu_shell.check` gives `pass`
   for `julia --project=. -e 'using Pkg; Pkg.test()'` and for `julia --project=. test/runtests.jl`.
@@ -1258,7 +1201,7 @@
 
 ### K193 · Under `agentbox`, oh-my-pi's GPU shell check follows no `include` in a script or in `-e`, and no `cd` before a relative script path.
 
-- location: `hooks/guard/gpu_shell.py:117`
+- location: `hooks/guard/gpu_shell.py:66`
 - evidence: with `AGENTBOX=1` and the call's working directory a package directory `P`, where
   `P/test/gpu.jl` and `P/sub/probe.jl` hold `using Metal`, `gpu_shell.check` gives `pass` for
   `julia -e 'include("test/gpu.jl")'` and for `cd sub && julia probe.jl`: the first names no `.jl`
@@ -1267,54 +1210,56 @@
 - kind: defect
 - found: 2026-11-24, the spec of part M5 of the sandbox plan
 
-### K194 · Under `agentbox`, oh-my-pi's GPU shell check passes a `julia` run that shell syntax, a wrapper outside its list or `env -S` puts ahead of `julia`.
+### K198 · A git alias of the configuration passes the git write and push-deletion checks in a command that `shell.readings` cannot read, unless a lease option or a keyword follows it.
 
-- location: `hooks/guard/gpu_shell.py:88`
-- evidence: with `AGENTBOX=1`, `gpu_shell.check` gives `pass` for each of
-  `>log julia -e 'using Metal'`, `2>&1 julia -e 'using Metal'`, `{ julia -e 'using Metal'; }`,
-  `! julia -e 'using Metal'`, `if true; then julia -e 'using Metal'; fi`,
-  `for f in a; do julia -e 'using Metal'; done`, ``echo `julia -e 'using Metal'` ``,
-  `xargs julia -e 'using Metal'` and `env -S 'julia -e "using Metal"'`. `command_word` takes the
-  first word after the assignments and the wrappers of `WRAPPERS`; the shell reader keeps a
-  leading redirection's target as the first word, `xargs` is no wrapper of `WRAPPERS`, and the
-  check reads no script of `env -S`, so `julia` is no command word in these forms.
-  The check stays a miss here, not a refusal: the variable is no boundary, and a missed run is one
-  shell run that fails for want of a GPU.
+- location: `hooks/guard/git_writes.py:774`
+- evidence: `unread_write` reads the text of such a command, and looks up no alias there. In a
+  repository whose config defines `alias.sh = !git push` and `alias.p = push`, `guard --from
+  claude` answers `ask` to `git sh` and to `git p origin :topic`, and `pass` to each of them after
+  a heredoc whose body holds an open quote (`cat <<'EOF'\nit's\nEOF\ngit sh`). With
+  `--force-with-lease` after the alias, the command asks (`LEASE_WORD`).
 - kind: defect
-- found: 2026-11-24, the critic of part M5 of the sandbox plan
+- found: 2026-11-26, the branch `guard/command-words`
 
-### K195 · The guard's checks of `git` other than the git write and push-deletion checks read neither `GIT` nor a redirection between `git` and its subcommand.
+### K199 · The git write check looks up an alias after a `cd` to a directory that it cannot know in the call's working directory.
 
-- location: `hooks/guard/no_blind_stage.py:111`
-- evidence: on macOS, `GIT` runs git (`command -v GIT` gives `/usr/bin/GIT`). In a package work
-  tree, `guard --from claude` answers `deny` to `git add -A` and `pass` to `GIT add -A` and to
-  `git 2>&1 add -A`, which stage the same files. The staging check and the others that find
-  `git` by its exact name or skip only its options, such as `agentbox_worktree.py` and
-  `sandbox_semantics.py`, do not use `git_writes.is_git`, `git_writes.subcommand` or
-  `shell.unredirected`.
+- location: `hooks/guard/git_writes.py:625`
+- evidence: `subcommand` looks up an alias in the repository of the call's part, which `located`
+  moves by each `cd`; a `cd $D` moves it to an unknown directory, and `decide` reads the whole
+  command against the call's `cwd`. From a repository with no alias `p`, `cd $D && git p
+  --force-with-lease origin feature` passes when the repository `$D` defines `alias.p = push`.
+  A lease push to a default branch that the shell then runs is not refused.
 - kind: defect
-- found: 2026-11-26, the branch `guard/git-word-gaps`
+- found: 2026-11-26, the branch `guard/command-words`
 
-### K196 · The git write and push-deletion checks do not see an alias that a configuration file or a `GIT_CONFIG_*` variable defines.
+### K200 · The rm check moves its directory for a `cd` that can fail, and passes a relative operand after a `cd` to a directory that it cannot know.
 
-- location: `hooks/guard/git_writes.py:360`
-- evidence: `subcommand` finds an alias only in a `-c` or `--config-env` option of the call. In a
-  checkout of an own organisation, `guard --from claude` answers `pass` to
-  `git p --force-with-lease origin main` and to
-  `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p --force-with-lease origin main`.
-  The second runs a lease push to `main`; the first does so where `~/.gitconfig` or the
-  repository's config defines `alias.p = push`.
+- location: `hooks/guard/rm_scope.py:224`
+- evidence: with the call's working directory `~/Research`, `guard --from claude` answers `pass`
+  to `cd ~/Research/.scratch/missing; rm -rf Papers`, which removes `~/Research/Papers` when the
+  directory does not exist, and to `cd $X && rm -rf Papers`, where `$X` can be empty, which takes
+  `cd` home, or any other directory. The same holds on `origin/main`.
 - kind: defect
-- found: 2026-11-26, the branch `guard/git-word-gaps`
+- found: 2026-11-26, the branch `guard/command-words`, from its pre-PR verification
 
-### K197 · A command that the git write check cannot read passes when an option or a redirection stands between `git` and a subcommand that the shell expands.
+### K201 · The rm and work-tree checks follow a `cd` after `command` or `time` as bash runs it, also where the shell runs `/usr/bin/cd` in a child.
 
-- location: `hooks/guard/git_writes.py:122`
-- evidence: `unread_write` reads an expanded subcommand only in the word right after `git`
-  (`GIT_EXPANDED`), so that a Julia heredoc with a `$` after a word `git` still passes. With an
-  open quote in a heredoc body before it, `guard --from claude` answers `pass` to
-  `git -C . pus{h,} --force-with-lease origin main` and to
-  `git 2>&1 pus{h,} --force-with-lease origin main`, where the same commands without the heredoc
-  are refused.
+- location: `hooks/guard/shell.py:515`
+- evidence: `KEEPS_BUILTIN` holds `command`, `builtin` and `time`, and `builtin_commands` reads a
+  quoted or escaped wrapper by its program name. In zsh, `command cd` runs `/usr/bin/cd`:
+  `/bin/zsh -fc 'command cd sub; pwd'` prints the parent directory, where `/bin/bash -c` prints
+  `sub`. `/bin/bash -c '"time" cd sub; pwd'` prints the parent directory too, since bash runs
+  `/usr/bin/time` there. From `~/Research`, `guard --from claude` answers `pass` to
+  `command cd .scratch/x && rm -rf Papers`, which zsh runs in `~/Research`. origin/main answers
+  the same.
 - kind: defect
-- found: 2026-11-26, the branch `guard/git-word-gaps`
+- found: 2026-11-26, the branch `guard/command-words`, from its pre-PR verification
+
+### K202 · The work-tree check of the sandbox check follows `cd` and not `pushd`.
+
+- location: `hooks/guard/sandbox_semantics.py:271`
+- evidence: `in_work_tree` moves its directory for a head `cd` only, while the rm check moves it
+  for `cd` and `pushd`. So `pushd /tmp && git init x` in a work tree is read against the work
+  tree, and `pushd ~/Research/P && git init x` outside one against the call's directory.
+- kind: defect
+- found: 2026-11-26, the branch `guard/command-words`, from its pre-PR verification
