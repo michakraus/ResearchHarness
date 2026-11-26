@@ -4,7 +4,7 @@ The check follows the working directory through each `cd` of the command and res
 operand. A `cd` that can fail, and one that one shell runs as its own and another in a child,
 leave either directory, and the check reads the commands after it in both (`moved_to`). A sure
 `cd` (`shell.flow`) leaves only the new one up to the end of its scope: the rest of its `&&`
-list, every command after `cd x || exit`, or the `then` of `if cd x`. A `popd` returns to the
+list, every command after an outermost `cd x || exit`, or the `then` of `if cd x`. A `popd` returns to the
 directory before its `pushd`, and a `pushd` alone swaps the two (`moved_by`). Past DIRECTORIES,
 the check reads the first directory and an unknown one. A recursive `rm` of a relative operand
 after a `cd` to a directory that the check cannot know asks, and so does one whose operands need

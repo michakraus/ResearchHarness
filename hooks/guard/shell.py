@@ -652,17 +652,37 @@ class Flow:
 type Sure = Literal["list", "exit", "if"]
 
 
+# The reserved words and command words that open or close a compound command or a body
+# (`outermost`).
+NESTING = {"{": 1, "if": 1, "do": 1, "case": 1, "}": -1, "fi": -1, "done": -1, "esac": -1}
+
+
+def outermost(simples: list[Simple], index: int) -> bool:
+    """True when `simples[index]` stands in no compound command and no body: no `{ … }`, `if`,
+    loop, `case` or function body holds it, so that an `exit` after it ends the shell for every
+    command after it. A `cd x || exit` in a body that may not run, as in `if false; then cd x ||
+    exit; fi; y`, leaves `y` where the shell was."""
+    level = 0
+    for at, simple in enumerate(simples[: index + 1]):
+        level += sum(NESTING.get(word, 0) for word in simple.lead)
+        if at < index and simple.words[0] in ("case", "esac"):
+            level += NESTING[simple.words[0]]
+    return level == 0
+
+
 def sure_kind(simples: list[Simple], index: int) -> Sure | None:
     """How the commands after the `cd` or `pushd` `simples[index]` run only where it moved to, or
-    None when they can run where the shell was. The shell runs it as its own (`Runs`), and no
-    `||`, `|` or backtick before it lets the commands after it run when it never ran, as in
-    `true || cd x && y` or `echo | cd x && y`, which bash runs in a child. Then `list`: `&&`
+    None when they can run where the shell was. The shell runs it as its own (`Runs`), no `!`
+    before it turns its failure into success, as in `! cd x && y`, and no `||`, `|` or backtick
+    before it lets the commands after it run when it never ran, as in `true || cd x && y` or
+    `echo | cd x && y`, which bash runs in a child. Then `list`: `&&`
     joins it to the next command, as in `cd x && y`; `exit`: `||` joins it to an `exit` that the
     shell runs as its own, outside a pipeline and not in the background, as in `cd x || exit 1; y`
-    and unlike `cd x || (exit 1)` or `exit &`; `if`: it is the condition of an `if`, as in
+    and unlike `cd x || (exit 1)` or `exit &`, in no compound command or body (`outermost`);
+    `if`: it is the condition of an `if`, as in
     `if cd x; then y; fi`."""
     simple = simples[index]
-    if simple.runs != "shell" or program(simple.words[0]) not in ("cd", "pushd"):
+    if simple.runs != "shell" or "!" in simple.lead or program(simple.words[0]) not in ("cd", "pushd"):
         return None
     if index > 0:
         before = simples[index - 1].then
@@ -675,7 +695,8 @@ def sure_kind(simples: list[Simple], index: int) -> Sure | None:
     if own == ["||"] and following is not None:
         stops = following.words[0] in STOPS and following.runs == "shell" and following.depth == simple.depth
         after = [found for found in operators(following.then) if found not in "()"]
-        if stops and "`" not in following.then and after[:1] not in (["|"], ["|&"], ["&"]):
+        stops = stops and "`" not in following.then and after[:1] not in (["|"], ["|&"], ["&"])
+        if stops and outermost(simples, index):
             return "exit"
     if (
         simple.lead[-1:] == ("if",)
@@ -702,17 +723,29 @@ def ends_list(simple: Simple, depth: int) -> bool:
     return False
 
 
+def closes(simple: Simple, depth: int) -> bool:
+    """True when a parenthesis after `simple` closes one of the `depth` parentheses open before
+    a command, also where another one opens right after it, as in `(cd x && y) && (z)`."""
+    level = simple.depth
+    for operator in operators(simple.then):
+        if operator in "()":
+            level += 1 if operator == "(" else -1
+            if level < depth:
+                return True
+    return False
+
+
 def scope_end(simples: list[Simple], index: int, kind: Sure) -> int | None:
     """The index of the first command after the sure move `simples[index]` of `kind` (`sure_kind`)
     that can run where the shell was before it, or None. Every kind ends where a parenthesis
-    closes that was open before it. A `list` ends after the `&&` list that it starts: after an
-    operator other than `&&` or a pipe, such as `;`, `||` or `&`, or after a backtick; an `if`
-    ends at the `else`, `elif` or `fi` of its `if`."""
+    closes that was open before it (`closes`). A `list` ends after the `&&` list that it starts:
+    after an operator other than `&&` or a pipe, such as `;`, `||` or `&`, or after a backtick; an
+    `if` ends at the `else`, `elif` or `fi` of its `if`."""
     depth = simples[index].depth
     level = 1
     for at in range(index + 1, len(simples)):
         simple = simples[at]
-        if simple.depth < depth:
+        if closes(simples[at - 1], depth):
             return at
         if kind == "list" and ends_list(simples[at - 1], depth):
             return at

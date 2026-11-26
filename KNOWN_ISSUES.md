@@ -1221,7 +1221,7 @@
 - kind: defect
 - found: 2026-11-26, the branch `guard/cd-and-alias-limits`, a limit of the form of K199's fix
 
-### K211 · The rm and work-tree checks end the scope of a sure `cd` at a `;` inside a brace group, so they refuse a removal after the group that runs only where the `cd` moved to.
+### K211 · The rm and work-tree checks end the scope of a sure `cd` at a `;` inside a compound command or at a backtick, so they refuse a removal that runs only where the `cd` moved to.
 
 - location: `hooks/guard/shell.py`, `ends_list`
 - evidence: `shell.ends_list` reads the `;` of `{ cd x && true; } && y` as the end of the `&&`
@@ -1229,7 +1229,22 @@
   `cd` did, so `y` runs only in `x`. With the call's working directory `~/Research`,
   `guard --from claude` refuses `{ cd .scratch/x && true; } && rm -rf build`, because it also
   reads `build` as `~/Research/build`. `cd .scratch/x && true && rm -rf build` passes. The
-  decision errs only toward a refusal.
+  same holds for a `;` of an `if`, a loop or a `case` after the `cd`, and for a backtick:
+  `cd .scratch/x && if true; then rm -rf build; fi`, `cd .scratch/x && for f in b; do rm -rf
+  build; done`, `cd .scratch/x && case a in a) rm -rf build;; esac` and ``cd .scratch/x && echo
+  `pwd` && rm -rf build`` are refused; on `origin/main` each passes. The decision errs only
+  toward a refusal.
 - kind: defect
 - found: 2026-11-26, the branch `guard/cd-and-alias-limits`, a limit of the form of the fix of
   K206 and K210
+
+### K212 · The rm and work-tree checks read `cd` and `exit` as the shell's builtins, though a function of the command can shadow either.
+
+- location: `hooks/guard/shell.py`, `sure_kind`
+- evidence: `exit() { :; }; cd nope || exit; pwd` prints the old directory in `bash -c` and
+  `zsh -fc`, since the function `exit` returns. The checks read `cd .scratch/x || exit` after
+  such a definition as a sure move, so a later `rm -rf Papers` from `~/Research` is read only in
+  `.scratch/x`. A function `cd` defeats every sure reading the same way. The same holds on
+  `origin/main`.
+- kind: defect
+- found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`

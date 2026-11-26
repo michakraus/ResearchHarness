@@ -351,15 +351,18 @@ bash runs its own `cd` and zsh the program; after `time`, both shells run their 
 after a quoted `"time"`, which the check reads as the same word, the program. So the check reads
 the commands after either wrapper in both directories. The same holds for a `cd` that can fail.
 A `cd` is sure only for the commands that run after it succeeds: the rest of its `&&` list, as in
-`cd x && rm -rf y`; every command after `cd x || exit`, since the shell stops when it fails; and
+`cd x && rm -rf y`; every command after `cd x || exit` outside any `{ … }`, `if`, loop, `case`
+or function body, since the shell stops when it fails, unless a function of the command shadows
+`exit` or `cd` (K212); and
 the commands of `if cd x; then … fi` up to the `else`, `elif` or `fi`. For any other command, the
 check reads the directory before the `cd` too: after `cd x; rm -rf y`, after the end of the `&&`
 list in `cd x && true; rm -rf y`, `cd x && true || rm -rf y` and `cd x && true & rm -rf y`, and
 after the parenthesis of `(cd x && true); rm -rf y` closes. `|| return` makes no `cd` sure: bash
 goes on after a `return` outside a function. Nor does `|| (exit 1)`, which ends only a subshell.
-A `cd` that `||` or a pipe comes before, as in `true || cd x` or `echo | cd x`, is never sure:
-the shell can skip it, and bash runs a pipeline's commands in a child. A `{ … }` group ends the
-`&&` list at its `;` (K211). A `popd` returns to the directory before the matching `pushd`, and
+A `cd` that `!`, `||` or a pipe comes before, as in `! cd x`, `true || cd x` or `echo | cd x`, is
+never sure: `!` turns its failure into success, the shell can skip it, and bash runs a pipeline's
+commands in a child. A `;` inside a `{ … }` group, an `if`, a loop or a `case`, and a backtick,
+end the `&&` list early (K211). A `popd` returns to the directory before the matching `pushd`, and
 a `pushd` with no operand swaps the top two directories. The check
 follows at most 4 directories; past that, it reads the commands after the last `cd` in the first
 directory and in an unknown one. A recursive `rm` of a

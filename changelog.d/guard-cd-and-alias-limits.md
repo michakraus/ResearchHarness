@@ -17,12 +17,15 @@
   ~/Research/.scratch/x && true; rm -rf Papers`, `(cd … && true); rm -rf Papers`,
   `cd … && true & rm -rf Papers`, `true || cd … && rm -rf Papers` and `echo | cd … && rm -rf
   Papers` passed from `~/Research`, and each can remove `~/Research/Papers`. A `cd` is now sure
-  for the rest of its `&&` list, for every command after `cd x || exit`, and for the `then` of
-  `if cd x`; after that, and after `||` or a pipe before the `cd`, the checks read the directory
-  before it too. `if cd x; then rm -rf y; fi` now passes. The checks follow a `cd` behind zsh's
-  `noglob`, `nocorrect` and `-`, and read a `pushd` with no operand as a swap of the top two
-  directories. This closes K203 and K205 to K210; K211 records that a `{ … }` group ends the
-  `&&` list early, which errs toward a refusal.
+  for the rest of its `&&` list, for every command after `cd x || exit` in no compound command or
+  body, so no longer after `if false; then cd x || exit; fi`, and for the `then` of
+  `if cd x`; after that, and after `!`, `||` or a pipe before the `cd`, the checks read the
+  directory before it too. `if cd x; then rm -rf y; fi` now passes. The checks follow a `cd`
+  behind zsh's `noglob`, `nocorrect` and `-`, and read a `pushd` with no operand as a swap of the
+  top two directories. This closes K203 and K205 to K210; K211 records that a `;` inside a
+  `{ … }` group, an `if`, a loop or a `case`, and a backtick, end the `&&` list early, which errs
+  toward a refusal: `cd x && if …; then rm -rf y; fi` passed before and is now refused. K212
+  records that a function of the command can shadow `cd` or `exit`.
 - **The guard reads a command once for all its checks.** The readings of a command and its
   simple commands are kept for the checks after the first, and the path list splits a command
   once for its two rule lists. The 1 MiB `[mib-rules]` case of `probe:antigravity` took more than
