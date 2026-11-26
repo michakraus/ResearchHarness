@@ -24,7 +24,7 @@ from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place
-from .shell import Tokens, commands, joined, program, readings
+from .shell import Tokens, commands, cut_heredocs, joined, program, readings
 
 HOME = str(Path.home().resolve())
 ROOT = Path(HOME, "Research").resolve()
@@ -32,7 +32,6 @@ WORKTREES = ROOT.joinpath(".worktrees").parts
 SCRATCH = ROOT.joinpath(".scratch").parts
 USERS = PurePosixPath(HOME).parent.parts
 
-HEREDOC = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 LEADING_HOME = re.compile(r"^\$(?:HOME|\{HOME\})(?=/|$)")
 GLOB = frozenset("*?[{")
 RECURSIVE = "--recursive"
@@ -65,21 +64,6 @@ type Cwd = Place | Missing | None  # None: a `cd` went to a directory that canno
 
 class NeedsCwdError(Exception):
     """An operand or a `git` command that only the call's missing working directory resolves."""
-
-
-def cut_heredocs(command: str) -> str:
-    """The command without its heredoc bodies, which are data, not commands."""
-    kept: list[str] = []
-    pending: list[tuple[bool, str]] = []
-    for line in command.split("\n"):
-        if pending:
-            tabs, delimiter = pending[0]
-            if (line.lstrip("\t") if tabs else line) == delimiter:
-                pending.pop(0)
-            continue
-        pending.extend((match.group(1) == "-", match.group(3)) for match in HEREDOC.finditer(line))
-        kept.append(line)
-    return "\n".join(kept)
 
 
 def expand(word: str) -> str | None:

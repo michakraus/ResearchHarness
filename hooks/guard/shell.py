@@ -11,7 +11,10 @@ expansion. It is no full shell grammar: each check documents the limits of its r
 `readings` gives a check the readings that it decides on: the shell's, in each dialect where the
 text holds `$'` or `$"`; where a word consists of operator characters only (`';'`), the reading
 that takes such a word as the operator; and where the text holds a backslash-newline, the
-readings that take it as a line break. With `nested`, it
+readings that take it as a line break; and where the text holds `<<`, the readings of the text
+without its heredoc bodies (`cut_heredocs`), with an open quote closed at its end
+(`script_tokens`), since `lex` reads a heredoc body as words, and a quote in it can hide the lines
+after it. With `nested`, it
 also gives each reading with the script of every `sh -c`, `bash -c`, `zsh -c` (and the other
 shells of SHELLS) and `eval` spliced in as parts of their own (`scripts`). A check answers the
 strongest decision of its readings, so a quoted operator, a joined line or a script in a string
@@ -47,6 +50,8 @@ ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\+?=")
 # The reserved words after which the next word stands in a command word's place: `! cmd`,
 # `{ cmd; }`, `if cmd; then cmd; fi`, `while cmd; do cmd; done`.
 RESERVED = frozenset({"!", "{", "}", "if", "then", "elif", "else", "fi", "while", "until", "do", "done"})
+# A heredoc operator, with `-` as group 1 and its delimiter as group 3 (`cut_heredocs`).
+HEREDOC = re.compile(r"(?<!<)<<(-?)[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
 
 
 @dataclass(frozen=True, slots=True)
@@ -413,21 +418,46 @@ def scripts(tokens: Tokens, depth: int = DEPTH) -> Tokens:
     return tuple(result) if spliced else tokens
 
 
+def cut_heredocs(command: str) -> str:
+    """The command without its heredoc bodies, which are data, not commands."""
+    kept: list[str] = []
+    pending: list[tuple[bool, str]] = []
+    for line in command.split("\n"):
+        if pending:
+            tabs, delimiter = pending[0]
+            if (line.lstrip("\t") if tabs else line) == delimiter:
+                pending.pop(0)
+            continue
+        pending.extend((match.group(1) == "-", match.group(3)) for match in HEREDOC.finditer(line))
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def readings(text: str, *, nested: bool = False) -> list[Tokens] | None:
     """The readings of `text` that a check decides on, in each of its `dialects`, or None when a
-    quote of bash's reading is open. With `nested`, also each reading with its scripts spliced in
-    (`scripts`)."""
+    quote of bash's reading is open. Where `text` holds `<<`, also the readings of the text without
+    its heredoc bodies (`cut_heredocs`), each with an open quote closed (`script_tokens`). With
+    `nested`, also each reading with its scripts spliced in (`scripts`)."""
     if lex(text, "bash") is None:
         return None
     found: list[Tokens] = []
+
+    def add(tokens: Tokens) -> None:
+        for reading in (tokens, tuple(as_operator(token) for token in tokens)):
+            if reading not in found:
+                found.append(reading)
+
     for variant in (text, text.replace("\\\n", "\n")):
         for dialect in dialects(variant):
             tokens = lex(variant, dialect)
-            if tokens is None:
-                continue
-            for reading in (tokens, tuple(as_operator(token) for token in tokens)):
-                if reading not in found:
-                    found.append(reading)
+            if tokens is not None:
+                add(tokens)
+    cut = cut_heredocs(text) if "<<" in text else text
+    if cut != text:
+        for dialect in dialects(cut):
+            tokens = script_tokens(cut, dialect)
+            if tokens is not None:
+                add(tokens)
     if nested:
         for reading in list(found):
             spliced = scripts(reading)

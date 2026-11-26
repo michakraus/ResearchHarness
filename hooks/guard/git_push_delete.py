@@ -4,7 +4,8 @@ A refspec `:<ref>`, also `+:<ref>`, deletes `<ref>` on the remote; a lone `:` pu
 branches. The check finds each `git` call of each part of the command, after the global options of
 `git` such as `-C`, also behind another command as in `find -exec`, as `git_writes.is_git` and
 `git_writes.subcommand` find them: `GIT` and `git 2>&1 push` count, and a subcommand that the
-check cannot know, as in `git pus{h,}`, is read as a `push`. It reads each refspec of a
+check cannot know, as in `git pus{h,}` or an alias of the git configuration of the part's
+repository that can run a write, is read as a `push`. It reads each refspec of a
 `push`: each argument after the remote that is neither an option nor the value of one
 (`git_writes.positional`). A refspec whose source is empty asks. A command that holds `push` and
 that the check cannot read asks too when it can hold a `git push`, as `git_writes.unread_write`
@@ -18,8 +19,8 @@ wildcard is a `:*` that is not at the end of the rule, which Claude Code reports
 """
 
 from .contract import PASS, Call, Verdict, strongest
-from .git_writes import is_git, may_be_unknown, positional, subcommand, unread_write
-from .shell import Tokens, joined, parts, readings, unredirected
+from .git_writes import configuring, is_git, located, may_be_unknown, positional, subcommand, unread_write
+from .shell import Tokens, joined, readings
 
 REASON = (
     "The refspec `{refspec}` has an empty source, so the push deletes `{target}` on the remote. A "
@@ -34,15 +35,17 @@ MATCHING = (
 UNREAD = "The check cannot read a command that may hold a `git push` with a deleting refspec."
 
 
-def pushed(words: list[str]) -> list[list[str]]:
+def pushed(words: list[str], directory: str | None = None) -> list[list[str]]:
     """The arguments after `push` of each `git push` call in the part `words`, and after the
     subcommand of each `git` call whose subcommand the check cannot know
-    (`git_writes.subcommand`); each call's arguments run to the end of the part."""
+    (`git_writes.subcommand`, which looks up an alias in `directory`); each call's arguments run
+    to the end of the part."""
     found: list[list[str]] = []
+    configured = configuring(words)
     for index, word in enumerate(words):
         if not is_git(word):
             continue
-        at, unknown = subcommand(words, index)
+        at, unknown = subcommand(words, index, directory, configured)
         if unknown or words[at : at + 1] == ["push"]:
             found.append(words[at + 1 :])
     return found
@@ -55,10 +58,10 @@ def deleting(arguments: list[str]) -> str | None:
     )
 
 
-def verdict_of(tokens: Tokens) -> Verdict:
-    """The verdict on one reading of the command."""
-    for words in parts(unredirected(tokens)):
-        for arguments in pushed(words):
+def verdict_of(tokens: Tokens, cwd: str | None = None) -> Verdict:
+    """The verdict on one reading of the command, whose working directory is `cwd`."""
+    for words, directory in located(tokens, cwd):
+        for arguments in pushed(words, directory):
             refspec = deleting(arguments)
             if refspec is not None:
                 target = refspec.lstrip("+")[1:]
@@ -80,4 +83,4 @@ def check(call: Call) -> Verdict:
     found = readings(command, nested=True)
     if found is None:
         return Verdict("ask", UNREAD) if unread_write(command, keywords) else PASS
-    return strongest(verdict_of(tokens) for tokens in found)
+    return strongest(verdict_of(tokens, call.cwd) for tokens in found)

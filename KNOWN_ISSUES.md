@@ -647,7 +647,7 @@
   `o=--force-with-lease; git push $o origin main` and
   `echo 'git push --force-with-lease origin main' | sh`. A subcommand that the shell expands, as
   in `git p$(printf u)sh`, is unknown to the git write and push-deletion checks, which then ask or
-  refuse (K197 names the limit of that rule). The same holds for the other
+  refuse. The same holds for the other
   writes of the checks, such as `x=rm; $x -rf ~/Research/Papers`, and for a script four levels
   deep, such as `eval eval eval eval rm -rf ~/Research/Papers`. The check of a shell write and the
   check of a `git init` or `git clone` in a working tree read no script of `sh -c` or `eval`:
@@ -1210,26 +1210,24 @@
 - kind: defect
 - found: 2026-11-24, the spec of part M5 of the sandbox plan
 
-### K196 · The git write and push-deletion checks do not see an alias that a configuration file or a `GIT_CONFIG_*` variable defines.
+### K198 · A git alias of the configuration passes the git write and push-deletion checks in a command that `shell.readings` cannot read, unless a lease option or a keyword follows it.
 
-- location: `hooks/guard/git_writes.py:360`
-- evidence: `subcommand` finds an alias only in a `-c` or `--config-env` option of the call. In a
-  checkout of an own organisation, `guard --from claude` answers `pass` to
-  `git p --force-with-lease origin main` and to
-  `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p --force-with-lease origin main`.
-  The second runs a lease push to `main`; the first does so where `~/.gitconfig` or the
-  repository's config defines `alias.p = push`.
+- location: `hooks/guard/git_writes.py:764`
+- evidence: `unread_write` reads the text of such a command, and looks up no alias there. In a
+  repository whose config defines `alias.sh = !git push` and `alias.p = push`, `guard --from
+  claude` answers `ask` to `git sh` and to `git p origin :topic`, and `pass` to each of them after
+  a heredoc whose body holds an open quote (`cat <<'EOF'\nit's\nEOF\ngit sh`). With
+  `--force-with-lease` after the alias, the command asks (`LEASE_WORD`).
 - kind: defect
-- found: 2026-11-26, the branch `guard/git-word-gaps`
+- found: 2026-11-26, the branch `guard/command-words`
 
-### K197 · A command that the git write check cannot read passes when an option or a redirection stands between `git` and a subcommand that the shell expands.
+### K199 · The git write check looks up an alias after a `cd` to a directory that it cannot know in the call's working directory.
 
-- location: `hooks/guard/git_writes.py:122`
-- evidence: `unread_write` reads an expanded subcommand only in the word right after `git`
-  (`GIT_EXPANDED`), so that a Julia heredoc with a `$` after a word `git` still passes. With an
-  open quote in a heredoc body before it, `guard --from claude` answers `pass` to
-  `git -C . pus{h,} --force-with-lease origin main` and to
-  `git 2>&1 pus{h,} --force-with-lease origin main`, where the same commands without the heredoc
-  are refused.
+- location: `hooks/guard/git_writes.py:615`
+- evidence: `subcommand` looks up an alias in the repository of the call's part, which `located`
+  moves by each `cd`; a `cd $D` moves it to an unknown directory, and `decide` reads the whole
+  command against the call's `cwd`. From a repository with no alias `p`, `cd $D && git p
+  --force-with-lease origin feature` passes when the repository `$D` defines `alias.p = push`.
+  A lease push to a default branch that the shell then runs is not refused.
 - kind: defect
-- found: 2026-11-26, the branch `guard/git-word-gaps`
+- found: 2026-11-26, the branch `guard/command-words`

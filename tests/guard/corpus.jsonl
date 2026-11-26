@@ -833,7 +833,7 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\ngit -C . pus{h,} --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\ngit 2>&1 pus{h,} --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<EOF\nit's\nEOF\ngit push --force-with-lease origin main\necho '"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
-{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\ngit cherry-pick abc123\necho '"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\ngit cherry-pick abc123\necho '"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git $'\\x70ush' --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git $'\\160ush' origin :topic"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "julia --startup-file=no <<'EOF'\nrun(`git -C $dir log -1`)\nx = [1, 2]'\nEOF"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}

@@ -407,7 +407,13 @@ program whose last name is `git` in any case as `git`, since macOS runs git for 
 of a redirection is no word of the call, so `git 2>&1 push` is a push. When the shell expands the
 subcommand, as in `git pus{h,}` or `git ${x}push`, or when a `-c alias.*` or
 `--config-env=alias.*` option defines an alias, the check cannot know the subcommand: the call
-asks, and a lease push to a default branch is still refused. Any other form
+asks, and a lease push to a default branch is still refused. The same holds after an assignment
+of a `GIT_CONFIG_*` variable, also with `export`, and for a subcommand that is no builtin of
+`git` and that the git configuration of the repository makes an alias that can run a write: one
+that runs a shell (`!…`), or whose value holds `push`, `worktree` or `cherry-pick`, or an
+expansion, followed through at most four aliases. The check looks the alias up with `git config`
+in the repository of the call's part, after each `cd` and `-C`. An alias such as `lg = log
+--oneline`, and a name that is no alias, pass. Any other form
 of these writes asks, for example `-C`, `-f` twice or a lease after the remote. A `worktree remove`
 with any option counts as forced, because `git` reads `-ff` and a prefix of `--force` as force. A
 plain `--force` push gets no decision from the check; the `deny` rules of the settings refuse it.
@@ -415,11 +421,16 @@ The check reads the state with `git` in the working directory of the call, with 
 off. When `git` fails or cannot run, the call asks. The own organisations are the `org` list of the
 profile, as the `gh api` check reads it.
 
-A command that the check cannot read, such as one with an open quote in a heredoc body, asks when
-it holds a word that ends in `git`, in any case, and after it a word `push`, `worktree` or
-`cherry-pick` or an alias option; when the word right after such a `git` holds `$`, a backtick or
-a brace; or when it holds a `$` before a quote or a backslash, which can open an ANSI-C quote.
-Otherwise it passes, as a Julia heredoc with `push!` or a path below `.worktrees/` does.
+A quote in a heredoc body can hide the lines after the heredoc from the shell's reading of the
+command, as the `'` of `it's` hides the push in `cat <<EOF`, a body `it's`, `EOF`, a push line
+and a line `echo '`. The check also reads the command without its heredoc bodies, so it reads that
+push. A command that the check cannot read, such as one with an open quote in a heredoc body,
+asks when it holds a word that ends in `git`, in any case, and after it a word `push`, `worktree`
+or `cherry-pick`, an alias option or a lease option; when the subcommand of such a `git`, after
+its global options and redirections, holds `$`, a backtick or a brace; or when it holds a `$`
+before a quote or a backslash, which can open an ANSI-C quote. Otherwise it passes, as a Julia
+heredoc with `push!`, with `git -C $dir log` or with a path below `.worktrees/` does. It looks up
+no alias of the configuration there (K198).
 
 ### The push deletion check
 
@@ -430,7 +441,8 @@ command, after the global options of `git` such as `-C`, also behind another com
 `find -exec` and inside the script of `sh -c`, `bash -c` or `eval`. It reads each argument after
 the remote that is neither an option nor the value of one, as the git write check does. It finds
 `git` and its subcommand as the git write check does, so it also reads `GIT push`, `git 2>&1 push`
-and a subcommand that it cannot know, such as `git pus{h,}`, as a push. A command that the check
+and a subcommand that it cannot know, such as `git pus{h,}` or an alias of the git configuration
+that can run a push, as a push. A command that the check
 cannot read, such as one with an open quote, gets `ask` when it can hold a `git push`, by the
 rule of the git write check. A Julia heredoc with `push!`, an adjoint `x'` and a range `1:n`
 passes.
