@@ -1075,7 +1075,7 @@ plutil -lint ~/Library/LaunchAgents/"$p".*.plist
 ```
 
 `plutil -lint` prints `OK` after the path of each file. These commands load the launch agents of
-the autocommit job and of the nightly worktree sweep:
+the autocommit job and of the nightly [worktree](concepts.md#worktree) sweep:
 
 ```bash
 launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/"$p".claude-autocommit.plist
