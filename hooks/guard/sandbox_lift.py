@@ -20,9 +20,19 @@ reading of a comment can differ from a shell's; a part that `exposed` or `path_s
 an assignment or a path in front of a program, unless the part is a `cd` to the working directory;
 and a git option before the subcommand that takes a value, `-C` aside, or `--config-env`, which
 can name a program to run or another repository.
+
+One more line is lifted, which Claude Code's rule keeps inside: the installed worktree hook's
+`add <name>` or `remove <path>` (`worktree_call`), so that Antigravity can make and remove a
+worktree, whose git writes `.git` and `.githooks`, which its sandbox denies. The line is exactly
+`<python> <hook> add|remove <word>`, single spaces, with `<python>` the interpreter of the
+harness's Python environment and `<hook>` the installed hook, each by its absolute path below the
+home of this process, and `<word>` of WORKTREE_WORD: no `cd`, assignment, redirection, pipe, quote,
+`~` or second argument. Antigravity's sandbox cannot write either file, so the lifted program is
+the installed one; the hook itself checks the name, the path and the repository.
 """
 
 import re
+from pathlib import Path
 
 from .contract import PASS, Call, Verdict
 from .paths import Place, place
@@ -41,6 +51,23 @@ PLAIN = re.compile(rf"[ \t]*{COMMAND}(?:[ \t]*(?:&&|\|\||;|\|)[ \t]*{COMMAND})*[
 # `-C`, and `--config-env`.
 VALUED = (TAKES_VALUE - {"-C"}) | {"--config-env"}
 LIFT = Verdict("pass", sandbox="lift")
+# The one argument of a lifted worktree hook call: a branch name or a path of plain characters,
+# which no shell expands.
+WORKTREE_WORD = r"[A-Za-z0-9._/-]+"
+
+
+def worktree_call(command: str) -> bool:
+    """Whether `command` is exactly `<python> <hook> add <name>` or `... remove <path>`, with the
+    interpreter of the harness's Python environment and the installed worktree hook, each by its
+    absolute path below the home of this process, with one leading `/`."""
+    home = Path.home()
+    if not home.is_absolute():
+        return False
+    home = Path("/" + str(home).lstrip("/"))
+    python = home / ".local" / "share" / "research-harness" / "python" / "bin" / "python"
+    hook = home / ".claude" / "hooks" / "worktree.py"
+    line = rf"{re.escape(str(python))} {re.escape(str(hook))} (?:add|remove) {WORKTREE_WORD}"
+    return re.fullmatch(line, command) is not None
 
 
 def lifted(command: str, tokens: Tokens, cwd: Place | None) -> bool:
@@ -67,8 +94,10 @@ def lifted(command: str, tokens: Tokens, cwd: Place | None) -> bool:
 
 def check(call: Call) -> Verdict:
     """`pass` with `sandbox: lift` for a shell call that the rule lifts and no screen keeps inside,
-    else `pass` with `keep`."""
+    or that is a worktree hook call (`worktree_call`), else `pass` with `keep`."""
     command = call.command
+    if call.action == "shell" and worktree_call(command):
+        return LIFT
     if call.action != "shell" or PLAIN.fullmatch(command) is None or "#" in command:
         return PASS
     read = readings(command)

@@ -1599,7 +1599,7 @@ def instruction_cases(scratch):
                     "sandbox",
                     "config/hooks/guard",
                     "No RTK rewrite",
-                    "git worktree add",
+                    "/.claude/hooks/worktree.py add <branch>",
                     "~/Research/.worktrees/",
                     "invoke_subagent",
                     "effort",

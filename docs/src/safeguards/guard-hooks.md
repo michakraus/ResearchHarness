@@ -166,6 +166,23 @@ working-tree check. It follows each `cd` of the command to find the target. Unde
 in the agent's root and leaves a repository in another working tree. Each refusal gives the form
 that works, for example a separate Bash call.
 
+**Antigravity's lift check lifts one more line**, which Claude Code's rule keeps inside: the
+installed worktree hook's `add <name>` or `remove <path>`, exactly
+
+```text
+<home>/.local/share/research-harness/python/bin/python <home>/.claude/hooks/worktree.py add <name>
+<home>/.local/share/research-harness/python/bin/python <home>/.claude/hooks/worktree.py remove <path>
+```
+
+with `<home>` the guard's home directory written out, single spaces, and one argument of letters,
+digits, `.`, `_`, `-` and `/`. A `~`, a `$`, a quote, a `cd`, an assignment, a redirection, a pipe,
+a second command or a second argument keeps the line inside, and so does any other interpreter or
+hook path, `sweep` included. Antigravity has no worktree hook, and the sandbox of its terminal
+denies the writes to `.git` and `.githooks` that a worktree needs. Its sandbox mounts only the
+workspace and the paths that a grant names, so it cannot write the hook or the interpreter, and
+the lifted program is the installed one. The hook takes its working directory from the call's
+`Cwd`, and checks the name, the path and the repository itself.
+
 ### The `gh api` check
 
 `gh_api_writes.py` asks before a `gh api` write that is not a review or a comment in an own
@@ -586,7 +603,9 @@ gives both events 480 seconds, more than a fetch (300) and the broker's answer (
 **Three command-line forms stand beside the payload on standard input.** `worktree.py add <name>`
 is the `WorktreeCreate` of `name` with the working directory as `cwd`. `worktree.py remove <path>`
 is the `WorktreeRemove` of `path`, placed against the working directory where it is relative.
-`worktree.py sweep [--apply]` is the sweep. Any other arguments exit 1 with the usage line.
+`worktree.py sweep [--apply]` is the sweep. Any other arguments exit 1 with the usage line. The
+guard lifts the first two, on the harness's interpreter and by absolute paths, out of
+Antigravity's terminal sandbox ([the sandbox check](#the-sandbox-check)).
 
 **The sweep removes the worktrees that are finished.** It lists each directory directly below
 `~/Research/.worktrees`, hidden names left out, one line each, `<kind>  <path>  <why>`:

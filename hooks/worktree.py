@@ -29,7 +29,8 @@ Three command-line forms stand beside the payload on stdin:
                                   directory where it is relative
     worktree.py sweep [--apply]   the sweep below
 
-`harness worktree` runs the sweep. **The sweep** (`sweep`) lists each directory directly
+`harness worktree` runs the sweep, and the guard lifts `add` and `remove` out of Antigravity's
+sandbox. **The sweep** (`sweep`) lists each directory directly
 below ROOT, one line each, `<kind>  <path>  <why>`: `removable` where it is clean, its HEAD is in
 `origin/HEAD` and its record shows no use for FRESH seconds; `kept` otherwise, also where the
 checks of a remove below refuse its repository; and `orphan` where git holds no record of it,

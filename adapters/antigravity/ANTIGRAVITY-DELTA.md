@@ -39,18 +39,27 @@ the job runs, and ends its turn.
 Antigravity runs no RTK hook: a command runs as typed, so the rewrite facts of `RTK.md` do not
 apply, and `grep` returns every match.
 
-## Worktrees: make them yourself
+## Worktrees: make them yourself, through the worktree hook
 
-There is no `WorktreeCreate` hook, no `EnterWorktree` and no `isolation: "worktree"`. Make the
-worktree with `git worktree add`, in `~/Research/.worktrees/`, from the base that the tree
-instructions give:
+There is no `WorktreeCreate` hook, no `EnterWorktree` and no `isolation: "worktree"`, and
+`git worktree add` fails in the sandbox. The guard lifts exactly this line out of it. `<home>` is
+your home written out: no `~`, `$HOME`, `cd` or other word. Set the call's `Cwd` to the
+repository's main checkout:
 
 ```bash
-cd <repository> && git fetch origin && git worktree add -b <branch> ~/Research/.worktrees/<Repository>-<slug> origin/main
+<home>/.local/share/research-harness/python/bin/python <home>/.claude/hooks/worktree.py add <branch>
+```
+
+It makes `~/Research/.worktrees/<Repository>-<slug>` on `<branch>` (letters, digits, `.`, `_`, `-`,
+`/`) from `origin/HEAD` and prints its path. The nightly sweep removes a merged worktree. To
+remove one now:
+
+```bash
+<home>/.local/share/research-harness/python/bin/python <home>/.claude/hooks/worktree.py remove <home>/Research/.worktrees/<Repository>-<slug>
 ```
 
 Where a text says that your caller made the worktree, read it as the worktree that you or your
-caller made with this command. Report its path; your caller removes it.
+caller made with this command. Report its path.
 
 ## Subagents
 
