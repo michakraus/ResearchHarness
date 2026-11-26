@@ -995,11 +995,11 @@ before Claude Code has made it. On a new machine, start `claude` once in a termi
 **With the component `jobs` only.**
 
 **What `harness setup` does.** It copies two scripts into `~/.local/bin`, then renders each job
-with the profile and loads it. On macOS, it renders the three launch agents into
+with the profile and loads it. On macOS, it renders the four launch agents into
 `~/Library/LaunchAgents/` and loads each one, after an unload when it is loaded already; the
 profile must have `launchd_prefix`. On Linux, it renders the `systemd --user` units into
 `~/.config/systemd/user/`, then runs `systemctl --user daemon-reload`, enables and starts the
-server and the two timers, and restarts them. It prints the lingering line under *By hand*, for an
+server and the three timers, and restarts them. It prints the lingering line under *By hand*, for an
 administrator, unless `loginctl show-user` reads `Linger=yes`.
 
 With the profile key `claude_remote`, the first step of the plan clones that repository into
@@ -1014,11 +1014,11 @@ reports the autocommit job as `SKIP`. On macOS no plist is rendered at all, beca
 every plist of `~/Library/LaunchAgents` at the next login. The script `claude-autocommit` is
 still copied into `~/.local/bin`, but its job is not enabled.
 
-**What it does.** The jobs are three: the Kaimon server, the Julia update job and the autocommit
-job of `~/.claude`. On macOS, launch agents run them: a launch agent is a job that launchd, the
-service manager of macOS, runs for your account while you are logged in. On Linux, the
-`systemd --user` units run them. [components/other.md](components/other.md) says what each job
-runs.
+**What it does.** The jobs are four: the Kaimon server, the Julia update job, the autocommit job
+of `~/.claude` and the [worktree](concepts.md#worktree) sweep. On macOS, launch agents run them: a
+launch agent is a job that launchd, the service manager of macOS, runs for your account while you
+are logged in. On Linux, the `systemd --user` units run them.
+[components/other.md](components/other.md) says what each job runs.
 
 The update job and the autocommit job run installed copies of two scripts of the checkout, in
 `~/.local/bin`, not the scripts in the checkout: a session cannot write `~/.local/bin`, and the
@@ -1050,8 +1050,10 @@ each time that it runs. By hand, skip the line that loads or enables it below.
 error without Kaimon. [Kaimon](#kaimon) installs it.
 
 **Why.** The server must run before the agents of OpenCode, oh-my-pi and Antigravity can use
-Kaimon. The update job keeps the Julia releases and Kaimon current, and the autocommit job commits
-and pushes `~/.claude`.
+Kaimon. The update job keeps the Julia releases and Kaimon current, the autocommit job commits
+and pushes `~/.claude`, and the worktree sweep removes the finished worktrees below
+`~/Research/.worktrees`, also those that hold a `.githooks` or a `.claude`, which no session can
+remove.
 
 ### macOS
 
@@ -1075,7 +1077,7 @@ plutil -lint ~/Library/LaunchAgents/"$p".*.plist
 ```
 
 `plutil -lint` prints `OK` after the path of each file. These commands load the launch agents of
-the autocommit job and of the nightly [worktree](concepts.md#worktree) sweep:
+the autocommit job and of the nightly worktree sweep:
 
 ```bash
 launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/"$p".claude-autocommit.plist
