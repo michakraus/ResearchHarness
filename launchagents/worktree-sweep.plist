@@ -13,10 +13,12 @@
          daemon profile of sandbox/daemon.toml deny, and a `git worktree remove` that cannot
          delete them leaves the worktree without its record. The hook reads each worktree's
          repository and git config before any git runs, and removes only a worktree that is
-         clean, whose HEAD is in origin/HEAD and that is unused for 12 hours. -->
+         clean, whose HEAD is in origin/HEAD and that is unused for 12 hours. `-E` ignores the
+         PYTHON* variables of the launchd user environment. -->
     <key>ProgramArguments</key>
     <array>
         <string>{home}/.local/share/research-harness/python/bin/python</string>
+        <string>-E</string>
         <string>{home}/.claude/hooks/worktree.py</string>
         <string>sweep</string>
         <string>--apply</string>

@@ -457,8 +457,9 @@ def selftest():
         f"-> {plist_args}, {exec_start!r}",
     )
     # The plist and the unit of worktree-sweep start that interpreter on the installed worktree hook,
-    # which no session can write, never `harness`, and outside every job sandbox.
-    hook = [want[0], f"{dummy.home}/.claude/hooks/worktree.py", "sweep", "--apply"]
+    # which no session can write, never `harness`, and outside every job sandbox; `-E` ignores the
+    # PYTHON* variables of the launchd or systemd user environment.
+    hook = [want[0], "-E", f"{dummy.home}/.claude/hooks/worktree.py", "sweep", "--apply"]
     plist_args = cast(
         "list[str]",
         plistlib.loads(render("launchagents/worktree-sweep.plist", dummy).encode())["ProgramArguments"],
