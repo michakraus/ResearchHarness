@@ -119,17 +119,192 @@ KEYWORD_WORD = re.compile(r"(?<![\w./-])(?:push|worktree|cherry-pick)(?![\w./!-]
 # A `$` before a quote or a backslash, which opens an ANSI-C quote, also one that the script of
 # `eval` or `sh -c` forms, as `\$\'` does (`unread_write`).
 ANSI_C_OPENER = re.compile(r"\$[\\'\"]")
-# A word that ends in `git` and, as the next word, one that the shell expands (`unread_write`).
-GIT_EXPANDED = re.compile(r"git(?![\w.-])[ \t]+\S*[$`{]", re.IGNORECASE)
+# A word that ends in `git` and, in the subcommand's place, a word that the shell expands
+# (`unread_write`): after at most eight global options, each of `VALUED_GLOBAL` with its value, and
+# redirections, as in `git -C . pus{h,}` or `git 2>&1 pus{h,}`. The value of an option such as the
+# `$dir` of `git -C $dir log` is no subcommand.
+VALUED_GLOBAL = r"(?:-C|-c|--git-dir|--work-tree|--namespace|--exec-path|--config-env)"
+GIT_EXPANDED = re.compile(
+    r"git(?![\w.-])"
+    rf"(?:[ \t]+(?:{VALUED_GLOBAL}[ \t]+\S+|(?!{VALUED_GLOBAL}(?:[ \t]|$))-\S*"
+    r"|\d*[<>]+[&|]?(?:[ \t]+)?\S+)){0,8}"
+    r"[ \t]+[^\s-]\S*?[$`{]",
+    re.IGNORECASE,
+)
+# A lease option, which only `git push` takes (`unread_write`).
+LEASE_WORD = re.compile(r"(?<![\w-])--force-w")
 # An option that defines a git alias, `-c alias.<name>=…` or `--config-env=alias.<name>=…`; git
 # reads the names of a configuration key in any case.
 ALIAS = re.compile(r"alias\.", re.IGNORECASE)
 # The global options of `git` that set a configuration value, `<key>=<value>` in the next word.
 CONFIGURING = ("-c", "--config-env")
+# An assignment of a variable that gives git configuration, and so can define an alias:
+# `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_<n>`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_GLOBAL`, ….
+CONFIG_VARIABLE = re.compile(r"GIT_CONFIG\w*=")
+# The subcommands that git builds in (`git --list-cmds=builtins`, git 2.54). git takes no alias of
+# such a name, so only another subcommand can be an alias (`alias_writes`).
+BUILTINS = frozenset(
+    [
+        "add",
+        "am",
+        "annotate",
+        "apply",
+        "archive",
+        "backfill",
+        "bisect",
+        "blame",
+        "branch",
+        "bugreport",
+        "bundle",
+        "cat-file",
+        "check-attr",
+        "check-ignore",
+        "check-mailmap",
+        "check-ref-format",
+        "checkout",
+        "checkout--worker",
+        "checkout-index",
+        "cherry",
+        "cherry-pick",
+        "clean",
+        "clone",
+        "column",
+        "commit",
+        "commit-graph",
+        "commit-tree",
+        "config",
+        "count-objects",
+        "credential",
+        "credential-cache",
+        "credential-cache--daemon",
+        "credential-store",
+        "describe",
+        "diagnose",
+        "diff",
+        "diff-files",
+        "diff-index",
+        "diff-pairs",
+        "diff-tree",
+        "difftool",
+        "fast-export",
+        "fast-import",
+        "fetch",
+        "fetch-pack",
+        "fmt-merge-msg",
+        "for-each-ref",
+        "for-each-repo",
+        "format-patch",
+        "fsck",
+        "fsck-objects",
+        "fsmonitor--daemon",
+        "gc",
+        "get-tar-commit-id",
+        "grep",
+        "hash-object",
+        "help",
+        "history",
+        "hook",
+        "index-pack",
+        "init",
+        "init-db",
+        "interpret-trailers",
+        "last-modified",
+        "log",
+        "ls-files",
+        "ls-remote",
+        "ls-tree",
+        "mailinfo",
+        "mailsplit",
+        "maintenance",
+        "merge",
+        "merge-base",
+        "merge-file",
+        "merge-index",
+        "merge-ours",
+        "merge-recursive",
+        "merge-recursive-ours",
+        "merge-recursive-theirs",
+        "merge-subtree",
+        "merge-tree",
+        "mktag",
+        "mktree",
+        "multi-pack-index",
+        "mv",
+        "name-rev",
+        "notes",
+        "pack-objects",
+        "pack-redundant",
+        "pack-refs",
+        "patch-id",
+        "pickaxe",
+        "prune",
+        "prune-packed",
+        "pull",
+        "push",
+        "range-diff",
+        "read-tree",
+        "rebase",
+        "receive-pack",
+        "reflog",
+        "refs",
+        "remote",
+        "remote-ext",
+        "remote-fd",
+        "repack",
+        "replace",
+        "replay",
+        "repo",
+        "rerere",
+        "reset",
+        "restore",
+        "rev-list",
+        "rev-parse",
+        "revert",
+        "rm",
+        "send-pack",
+        "shortlog",
+        "show",
+        "show-branch",
+        "show-index",
+        "show-ref",
+        "sparse-checkout",
+        "stage",
+        "stash",
+        "status",
+        "stripspace",
+        "submodule--helper",
+        "switch",
+        "symbolic-ref",
+        "tag",
+        "unpack-file",
+        "unpack-objects",
+        "update-index",
+        "update-ref",
+        "update-server-info",
+        "upload-archive",
+        "upload-archive--writer",
+        "upload-pack",
+        "var",
+        "verify-commit",
+        "verify-pack",
+        "verify-tag",
+        "version",
+        "whatchanged",
+        "worktree",
+        "write-tree",
+    ]
+)
+# A name that git can read as an alias.
+ALIAS_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
+# The aliases that `alias_writes` follows through, `pp` to `p` to `push`, and the lookups it makes
+# in one process, so that a command of 1 MiB with many names costs a bounded number of `git` runs.
+ALIAS_DEPTH = 4
+ALIAS_LOOKUPS = 16
 
 UNKNOWN = (
-    "The check cannot tell the subcommand of this `git` call: the shell expands it, or a "
-    "`-c alias.*` option makes it an alias. It can be a `push`, a `worktree` or a `cherry-pick`."
+    "The check cannot tell the subcommand of this `git` call: the shell expands it, a `-c alias.*` "
+    "option or a `GIT_CONFIG_*` variable can make it an alias, or the git configuration makes it "
+    "an alias that can run a write. It can be a `push`, a `worktree` or a `cherry-pick`."
 )
 
 DENY_DEFAULT = """Refused: {command}
@@ -173,6 +348,38 @@ def git(directory: str, *arguments: str) -> str | None:
     except OSError, subprocess.TimeoutExpired:
         return None
     return result.stdout if result.returncode == 0 else None
+
+
+ALIASES: dict[tuple[str, str], bool] = {}
+
+
+def alias_writes(directory: str, name: str) -> bool:
+    """True when the subcommand `name`, in the repository of `directory`, is a git alias that can
+    run a write of the check: one whose value, followed through at most ALIAS_DEPTH aliases, runs a
+    shell (`!…`), holds `push`, `worktree` or `cherry-pick` as a word, or holds `$`, a backtick or
+    a brace; also when the lookups of this process passed ALIAS_LOOKUPS. A builtin name is no alias,
+    since git ignores an alias of it, and neither is a name for which git reports no alias."""
+    key = (directory, name)
+    if key in ALIASES:
+        return ALIASES[key]
+    if len(ALIASES) >= ALIAS_LOOKUPS:
+        return True
+    found, current = False, name
+    for _ in range(ALIAS_DEPTH):
+        if current in BUILTINS or ALIAS_NAME.fullmatch(current) is None:
+            break
+        value = git(directory, "config", "--get", f"alias.{current}")
+        if value is None:
+            break
+        value = value.strip()
+        if value.startswith("!") or KEYWORD_WORD.search(value) or not EXPANSIONS.isdisjoint(value):
+            found = True
+            break
+        current = value.split(maxsplit=1)[0] if value else ""
+    else:
+        found = True
+    ALIASES[key] = found
+    return found
 
 
 def in_worktree(path: Place) -> bool:
