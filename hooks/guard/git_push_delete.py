@@ -35,13 +35,17 @@ MATCHING = (
 UNREAD = "The check cannot read a command that may hold a `git push` with a deleting refspec."
 
 
-def pushed(words: list[str], directory: str | None = None) -> list[list[str]]:
+def pushed(
+    words: list[str], directory: str | None = None, *, configured_before: bool = False
+) -> list[list[str]]:
     """The arguments after `push` of each `git push` call in the part `words`, and after the
     subcommand of each `git` call whose subcommand the check cannot know
-    (`git_writes.subcommand`, which looks up an alias in `directory`); each call's arguments run
-    to the end of the part."""
+    (`git_writes.subcommand`, which looks up an alias in `directory`, and which reads each call as
+    unknown when `configured_before` says that a part before `words` assigns a variable of git
+    configuration, as `export GIT_CONFIG_COUNT=1; git p` does); each call's arguments run to the
+    end of the part."""
     found: list[list[str]] = []
-    configured = configuring(words)
+    configured = -1 if configured_before else configuring(words)
     for index, word in enumerate(words):
         if not is_git(word):
             continue
@@ -60,8 +64,9 @@ def deleting(arguments: list[str]) -> str | None:
 
 def verdict_of(tokens: Tokens, cwd: str | None = None) -> Verdict:
     """The verdict on one reading of the command, whose working directory is `cwd`."""
+    configured_before = False
     for words, directory in located(tokens, cwd):
-        for arguments in pushed(words, directory):
+        for arguments in pushed(words, directory, configured_before=configured_before):
             refspec = deleting(arguments)
             if refspec is not None:
                 target = refspec.lstrip("+")[1:]
@@ -71,6 +76,7 @@ def verdict_of(tokens: Tokens, cwd: str | None = None) -> Verdict:
                     else MATCHING.format(refspec=refspec)
                 )
                 return Verdict("ask", text)
+        configured_before = configured_before or configuring(words) < len(words)
     return PASS
 
 

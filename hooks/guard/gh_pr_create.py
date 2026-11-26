@@ -1,9 +1,9 @@
 """Decide `gh pr create` by the repository that it names.
 
-The check finds each top-level `gh pr create` call and each call of its alias `gh pr new`, after
-any assignments such as `GH_REPO=…`, and reads every `-R` and `--repo` value of it, in each of the
-forms `-R x`, `-Rx`, `-R=x`, `--repo x` and `--repo=x`, also at the end of a cluster of
-one-letter flags such as `-dR x`:
+The check finds each `gh pr create` call and each call of its alias `gh pr new` as a simple
+command (`shell.commands`), also after assignments such as `GH_REPO=…`, and reads every `-R`
+and `--repo` value of it, in each of the forms `-R x`, `-Rx`, `-R=x`, `--repo x` and `--repo=x`,
+also at the end of a cluster of one-letter flags such as `-dR x`:
 
   * **No `-R` or `--repo`**: deny. `gh` then opens the pull request in the repository that the
     checkout or `GH_REPO` names, which the command text does not show. The reason tells the agent

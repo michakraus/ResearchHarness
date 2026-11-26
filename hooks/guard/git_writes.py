@@ -126,12 +126,13 @@ ANSI_C_OPENER = re.compile(r"\$[\\'\"]")
 # A word that ends in `git` and, in the subcommand's place, a word that the shell expands
 # (`unread_write`): after at most eight global options, each of `VALUED_GLOBAL` with its value, and
 # redirections, as in `git -C . pus{h,}` or `git 2>&1 pus{h,}`. The value of an option such as the
-# `$dir` of `git -C $dir log` is no subcommand.
+# `$dir` of `git -C $dir log` is no subcommand. The redirection's quantifiers are possessive, so
+# that a run of `>` cannot be split between operator and target in many ways, each tried again.
 VALUED_GLOBAL = r"(?:-C|-c|--git-dir|--work-tree|--namespace|--exec-path|--config-env)"
 GIT_EXPANDED = re.compile(
     r"git(?![\w.-])"
     rf"(?:[ \t]+(?:{VALUED_GLOBAL}[ \t]+\S+|(?!{VALUED_GLOBAL}(?:[ \t]|$))-\S*"
-    r"|\d*[<>]+[&|]?(?:[ \t]+)?\S+)){0,8}"
+    r"|\d*+[<>]++[&|]?(?:[ \t]+)?\S++)){0,8}"
     r"[ \t]+[^\s-]\S*?[$`{]",
     re.IGNORECASE,
 )
@@ -140,7 +141,7 @@ GIT_EXPANDED = re.compile(
 GIT_NAMED = re.compile(
     r"git(?![\w.-])"
     rf"(?:[ \t]+(?:{VALUED_GLOBAL}[ \t]+\S+|(?!{VALUED_GLOBAL}(?:[ \t]|$))-\S*"
-    r"|\d*[<>]+[&|]?(?:[ \t]+)?\S+)){0,8}"
+    r"|\d*+[<>]++[&|]?(?:[ \t]+)?\S++)){0,8}"
     r"[ \t]+([A-Za-z0-9][A-Za-z0-9-]*)(?![^\s;&|)])",
     re.IGNORECASE,
 )
@@ -369,9 +370,11 @@ ALIASES: dict[tuple[str, str], bool] = {}
 def alias_writes(directory: str, name: str) -> bool:
     """True when the subcommand `name`, in the repository of `directory`, is a git alias that can
     run a write of the check: one whose value, followed through at most ALIAS_DEPTH aliases, runs a
-    shell (`!…`), holds `push`, `worktree` or `cherry-pick` as a word, or holds `$`, a backtick or
-    a brace; also when the lookups of this process passed ALIAS_LOOKUPS. A builtin name is no alias,
-    since git ignores an alias of it, and neither is a name for which git reports no alias."""
+    shell (`!…`), holds `push`, `worktree` or `cherry-pick` as a word, holds `$`, a backtick or a
+    brace, or defines an alias with `-c alias.*`; each value's next name follows its global
+    options, as in `-p p`; also when the lookups of this process passed ALIAS_LOOKUPS. A builtin
+    name is no alias, since git ignores an alias of it, and neither is a name for which git reports
+    no alias."""
     key = (directory, name)
     if key in ALIASES:
         return ALIASES[key]
@@ -388,7 +391,14 @@ def alias_writes(directory: str, name: str) -> bool:
         if value.startswith("!") or KEYWORD_WORD.search(value) or not EXPANSIONS.isdisjoint(value):
             found = True
             break
-        current = value.split(maxsplit=1)[0] if value else ""
+        # The next name follows the global options that git takes in an alias, such as `-p` and
+        # `-c <key>=<value>`; one that defines an alias makes the name unknown (`subcommand`).
+        expansion = ["git", *value.split()]
+        at, unknown = subcommand(expansion, 0)
+        if unknown:
+            found = True
+            break
+        current = expansion[at] if at < len(expansion) else ""
     else:
         found = True
     ALIASES[key] = found

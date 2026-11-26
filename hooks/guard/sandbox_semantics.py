@@ -28,7 +28,7 @@ from pathlib import Path
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place, work_tree
-from .shell import SEGMENT, SEPARATORS, Tokens, commands, joined, program, readings, words
+from .shell import SEGMENT, SEPARATORS, Tokens, builtin_commands, joined, program, readings, words
 
 # `$( … )` and `` ` … ` ``. Neither nests here: a substitution inside a substitution is read as
 # the outer one, which is enough to find the command word.
@@ -431,12 +431,21 @@ def decide(command: str, tokens: Tokens | None, cwd: Place | None) -> Verdict:
     return PASS
 
 
+def head_of(words: list[str], *, builtin: bool) -> str:
+    """The program of the simple command `words` (`shell.program`), with `/usr/bin/cd` for a `cd`
+    that the shell does not run as its own (`shell.builtin_commands`), such as `CD` or `env cd`: it
+    runs in a child and leaves the shell's directory as it was."""
+    head = program(words[0])
+    return "/usr/bin/cd" if head == "cd" and not (builtin and words[0] == "cd") else head
+
+
 def work_tree_check(call: Call) -> Verdict:
     """Deny a `git init` or `git clone` that lands in a work tree, the fifth shape alone: for a
     frontend whose sandbox is not Claude Code's, where the other shapes describe nothing. There no
     `excludedCommands` match decides how `git` runs, so the check reads each simple command as the
     shell runs it (`shell.commands`): also `env git init`, `GIT init` and a `git init` in `$( … )`.
-    A command that does not read passes."""
+    A `cd` moves the directory only where the shell runs its own `cd` (`head_of`). A command that
+    does not read passes."""
     command = call.command
     read = readings(command) if "git" in joined(command).lower() else None
     if read is None:
@@ -444,7 +453,9 @@ def work_tree_check(call: Call) -> Verdict:
     cwd = None if call.cwd is None else place(call.cwd, "real")
     try:
         for tokens in read:
-            heads: list[Head] = [(program(words[0]), words[1:]) for words in commands(tokens)]
+            heads: list[Head] = [
+                (head_of(words, builtin=builtin), words[1:]) for words, builtin in builtin_commands(tokens)
+            ]
             landed = in_work_tree(heads, cwd)
             if landed:
                 return Verdict(

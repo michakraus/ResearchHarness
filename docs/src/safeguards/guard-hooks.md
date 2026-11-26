@@ -169,7 +169,8 @@ certificate error. The check refuses four shapes:
   `git bundle create` that starts with `/`, `~` or `$`, or holds `..`.
 
 It also refuses a `git init` or `git clone` whose target is inside a git working tree: the
-working-tree check. It follows each `cd` of the command to find the target. Under Claude Code a
+working-tree check. It follows each `cd` of the command to find the target, as the rm check
+does: `CD` or `env cd` leaves the directory as it is. Under Claude Code a
 `cd` outside the agent's working directories is reset before the next call, so such a command runs
 in the agent's root and leaves a repository in another working tree. Each refusal gives the form
 that works, for example a separate Bash call.
@@ -205,7 +206,8 @@ takes its working directory from the call's
 `gh_api_writes.py` asks before a `gh api` write that is not a review or a comment in an own
 organisation, and refuses a remote delete, on each shell call of every frontend.
 
-It finds each top-level `gh api` and `glab api` call and determines the HTTP method in the same
+It finds each `gh api` and `glab api` call as a simple command, also behind `env`, an assignment,
+`rtk` or `sudo`, and determines the HTTP method in the same
 way as `gh`: `-X` or `--method`; otherwise POST when a body flag is present; otherwise GET. A GET,
 a HEAD and a `search/…` endpoint pass. It refuses a DELETE from `gh api` or `glab api`. Any other
 `glab api` call passes. A review, an inline comment, a reply, a comment on a pull request, an
@@ -336,7 +338,9 @@ work to the route that works.
 `rm_scope.py` refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` or a
 `git merge` outside a worktree, on each shell call of every frontend.
 
-It follows the working directory through each `cd` and resolves each operand. An `rm` is
+It follows the working directory through each `cd` and resolves each operand. Only the shell's own
+`cd` moves it: `cd`, also after `command`, `builtin` or `time`. `CD`, `/usr/bin/cd`, `env cd` and
+`sudo cd` run the program `/usr/bin/cd` in a child, so the directory stays. An `rm` is
 recursive with `-r`, `-R` or a prefix of `--recursive` such as `--r`, which GNU `rm` takes. A recursive `rm`
 passes when every operand is strictly below a worktree, `~/Research/.worktrees/<name>/`, or
 strictly below `~/Research/.scratch/`. It refuses a recursive `rm` of `/`, of the parent

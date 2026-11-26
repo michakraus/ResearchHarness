@@ -460,7 +460,7 @@
 
 ### K119 · The `gh api` check answers the first part that does not pass, so an `ask` before a `deny` is `ask`.
 
-- location: `hooks/guard/gh_api_writes.py:369`
+- location: `hooks/guard/gh_api_writes.py:371`
 - evidence: `verdict_of` returns at the first part that asks, so
   `gh api -X POST repos/example-org/X/issues && gh api -X DELETE repos/example-org/X` is `ask`, not
   `deny`.
@@ -638,7 +638,7 @@
 
 ### K138 · The shell checks of the guard do not read a word that an expansion makes, a script on standard input, or a script nested more than three levels deep.
 
-- location: `hooks/guard/shell.py:310`
+- location: `hooks/guard/shell.py:392`
 - evidence: the checks read quotes, ANSI-C and locale quotes, and the scripts of `sh -c`,
   `bash -c`, `zsh -c` (and the other shells of `SHELLS`) and `eval`, three levels deep, and run
   no other expansion. `guard --from claude` in a checkout of an own organisation answers `deny`
@@ -663,7 +663,7 @@
 
 ### K139 · A long command with an ANSI-C quote can take the guard past the hook's time limit.
 
-- location: `hooks/guard/shell.py:154`
+- location: `hooks/guard/shell.py:212`
 - evidence: `readings` and `joined` read a text that holds `$'` or `$"` in three dialects, so such
   a command costs about three readings where another costs one. A probe of the third pre-PR
   verification, one process per run under a load average of 40 to 44, measured a 1 MiB command
@@ -676,7 +676,7 @@
 
 ### K140 · The shell checks of the guard read no command whose bash reading has an open quote, also where dash's reading is closed.
 
-- location: `hooks/guard/shell.py:336`
+- location: `hooks/guard/shell.py:418`
 - evidence: `readings` returns None when a quote of bash's reading is open, and drops the `plain`
   reading, which can be closed. `rm_scope` asks on None, and `git_writes` and `git_push_delete`
   when the text can hold one of their writes (`unread_write`); the other checks pass.
@@ -693,7 +693,7 @@
 
 ### K141 · The bash dialect of the guard reads `\c` of an ANSI-C quote as bash 3.2 does in one case and as bash 5.3 does in another.
 
-- location: `hooks/guard/shell.py:102`
+- location: `hooks/guard/shell.py:160`
 - evidence: bash 5.3 reads `$'x\c\\y'` as `x`, the control character 0x1C and `y`; bash 3.2
   (`/bin/bash` and `/bin/sh` on macOS) and the guard keep a backslash after the 0x1C. bash 3.2
   reads `$'x\c'y` as `x\y`; bash 5.3 and the guard read it as `x\cy`. Each difference leaves a
@@ -1190,7 +1190,7 @@
 
 ### K192 · Under `agentbox`, oh-my-pi's GPU shell check passes a shell `Pkg.test`, or a `test/runtests.jl` run, of a package whose `[deps]` hold a GPU package.
 
-- location: `hooks/guard/gpu_shell.py:126`
+- location: `hooks/guard/gpu_shell.py:75`
 - evidence: with `AGENTBOX=1`, in a package whose `Project.toml` lists `Metal` under `[deps]` and
   whose `test/runtests.jl` includes a file that holds `using Metal`, `gpu_shell.check` gives `pass`
   for `julia --project=. -e 'using Pkg; Pkg.test()'` and for `julia --project=. test/runtests.jl`.
@@ -1201,7 +1201,7 @@
 
 ### K193 · Under `agentbox`, oh-my-pi's GPU shell check follows no `include` in a script or in `-e`, and no `cd` before a relative script path.
 
-- location: `hooks/guard/gpu_shell.py:117`
+- location: `hooks/guard/gpu_shell.py:66`
 - evidence: with `AGENTBOX=1` and the call's working directory a package directory `P`, where
   `P/test/gpu.jl` and `P/sub/probe.jl` hold `using Metal`, `gpu_shell.check` gives `pass` for
   `julia -e 'include("test/gpu.jl")'` and for `cd sub && julia probe.jl`: the first names no `.jl`
@@ -1212,7 +1212,7 @@
 
 ### K198 · A git alias of the configuration passes the git write and push-deletion checks in a command that `shell.readings` cannot read, unless a lease option or a keyword follows it.
 
-- location: `hooks/guard/git_writes.py:764`
+- location: `hooks/guard/git_writes.py:774`
 - evidence: `unread_write` reads the text of such a command, and looks up no alias there. In a
   repository whose config defines `alias.sh = !git push` and `alias.p = push`, `guard --from
   claude` answers `ask` to `git sh` and to `git p origin :topic`, and `pass` to each of them after
@@ -1223,7 +1223,7 @@
 
 ### K199 · The git write check looks up an alias after a `cd` to a directory that it cannot know in the call's working directory.
 
-- location: `hooks/guard/git_writes.py:615`
+- location: `hooks/guard/git_writes.py:625`
 - evidence: `subcommand` looks up an alias in the repository of the call's part, which `located`
   moves by each `cd`; a `cd $D` moves it to an unknown directory, and `decide` reads the whole
   command against the call's `cwd`. From a repository with no alias `p`, `cd $D && git p
@@ -1231,3 +1231,13 @@
   A lease push to a default branch that the shell then runs is not refused.
 - kind: defect
 - found: 2026-11-26, the branch `guard/command-words`
+
+### K200 · The rm check moves its directory for a `cd` that can fail, and passes a relative operand after a `cd` to a directory that it cannot know.
+
+- location: `hooks/guard/rm_scope.py:224`
+- evidence: with the call's working directory `~/Research`, `guard --from claude` answers `pass`
+  to `cd ~/Research/.scratch/missing; rm -rf Papers`, which removes `~/Research/Papers` when the
+  directory does not exist, and to `cd $X && rm -rf Papers`, where `$X` can be empty, which takes
+  `cd` home, or any other directory. The same holds on `origin/main`.
+- kind: defect
+- found: 2026-11-26, the branch `guard/command-words`, from its pre-PR verification

@@ -24,7 +24,7 @@ from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place
-from .shell import Tokens, commands, cut_heredocs, joined, program, readings
+from .shell import Tokens, builtin_commands, cut_heredocs, joined, program, readings
 
 HOME = str(Path.home().resolve())
 ROOT = Path(HOME, "Research").resolve()
@@ -238,11 +238,14 @@ def change_directory(words: list[str], cwd: Cwd) -> Cwd:
 
 def decide(tokens: Tokens, cwd: Cwd) -> Verdict:
     """The verdict on one reading of the command: each simple command from its command word on
-    (`shell.commands`), so also an `rm` behind `sudo`, `env` or `then`, or spelled `RM`."""
-    for words in commands(tokens):
+    (`shell.commands`), so also an `rm` behind `sudo`, `env` or `then`, or spelled `RM`. A `cd`
+    moves the directory only where the shell runs its own `cd` (`shell.builtin_commands`)."""
+    for words, builtin in builtin_commands(tokens):
         head = program(words[0])
         if head in ("cd", "pushd"):
-            cwd = change_directory(words, cwd)
+            # Only the shell's own `cd` moves it (`shell.builtin_commands`).
+            if builtin and words[0] == head:
+                cwd = change_directory(words, cwd)
         elif head == "rm":
             recursive, operands = rm_arguments(words)
             if not recursive:

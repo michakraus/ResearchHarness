@@ -6,9 +6,10 @@ every session and agent of one account shares one API limit. A watcher on a run 
 at the default interval makes thousands of calls and trips GitHub's secondary rate limit, after
 which the REST Actions endpoints answer 403 for every session of the account.
 
-The check finds each top-level `gh run watch` call, and each `gh pr checks` call that carries
-`--watch`, after any assignments such as `GH_REPO=…`, and reads its last `-i` or `--interval`
-value, in each of the forms `-i 60`, `-i60`, `-i=60`, `--interval 60` and `--interval=60`:
+The check finds each `gh run watch` call, and each `gh pr checks` call that carries `--watch`, as
+a simple command (`shell.commands`), also after assignments such as `GH_REPO=…`, and reads its
+last `-i` or `--interval` value, in each of the forms `-i 60`, `-i60`, `-i=60`, `--interval 60`
+and `--interval=60`:
 
   * **No interval**: deny. The reason names `--interval 60`.
   * **An interval that is not a whole number of at least MIN_INTERVAL seconds**: deny.

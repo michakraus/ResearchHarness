@@ -510,6 +510,11 @@ def program(word: str) -> str:
     return word.rstrip("/").rsplit("/", 1)[-1].lower()
 
 
+# The wrappers, spelled exactly, after which the shell still runs its own builtin: `command cd`,
+# `builtin cd` and `time cd` move the shell (`builtin_commands`).
+KEEPS_BUILTIN = frozenset({"command", "builtin", "time"})
+
+
 def after_wrapper(words: list[str], at: int, wrapper: Wrapper) -> int | None:
     """The index of the first word after the wrapper at `at` with its options and operands, or
     None when a short option makes it run nothing. Each word that starts with `-` is an option,
@@ -549,14 +554,24 @@ def commands(tokens: Tokens) -> list[list[str]]:
     command of its own, and so is the text between two backticks. The target of a redirection is
     no word of a command (`unredirected`). It reads a backtick in a quote as one too, which can
     only find more commands."""
-    found: list[list[str]] = []
+    return [words for words, _ in builtin_commands(tokens)]
+
+
+def builtin_commands(tokens: Tokens) -> list[tuple[list[str], bool]]:
+    """(the words, whether the shell can run the command word as its own builtin) of each simple
+    command of `tokens`, as `commands` gives them. The shell runs a builtin such as `cd` only for
+    a command word spelled as its name, and only behind the wrappers of KEEPS_BUILTIN, spelled as
+    theirs; `CD`, `/usr/bin/cd`, `env cd` and `sudo cd` run the program `/usr/bin/cd` in a child,
+    which leaves the shell's directory as it was."""
+    found: list[tuple[list[str], bool]] = []
     current: list[str] = []
 
     def close() -> None:
         nonlocal current
         at = command_word(current)
         if at is not None:
-            found.append(current[at:])
+            builtin = all(program(word) not in WRAPPERS or word in KEEPS_BUILTIN for word in current[:at])
+            found.append((current[at:], builtin))
         current = []
 
     for kind, text in unredirected(tokens):

@@ -1,11 +1,12 @@
 """Refuse `git archive -o` and `--output`, and name the commands that need no guarded write.
 
-The check finds each top-level `git … archive` call and denies one that writes its archive with
-`-o` or `--output`. An agent writes the archive to read the unmodified tree of a commit; `git`
-runs outside the sandbox, so `-o` can write any path, and the refusal sends the agent to a read
-that needs no prompt. Git takes the option clustered behind other short options (`-vo out.tar`),
-with its value attached (`-oout.tar`), as any unique prefix of `--output` (`--out=x`), and after
-global options (`git -C repo archive`), so no `permissions` glob can state it.
+The check finds each `git … archive` call as a simple command (`shell.commands`) and denies one
+that writes its archive with `-o` or `--output`. An agent writes the archive to read the
+unmodified tree of a commit; `git` runs outside the sandbox, so `-o` can write any path, and the
+refusal sends the agent to a read that needs no prompt. Git takes the option clustered behind
+other short options (`-vo out.tar`), with its value attached (`-oout.tar`), as any unique prefix
+of `--output` (`--out=x`), and after global options (`git -C repo archive`), so no `permissions`
+glob can state it.
 """
 
 from .contract import PASS, Call, Verdict

@@ -5550,7 +5550,8 @@ def git_write_repositories(git: str, git_env: dict[str, str]) -> None:
 
     `Packages/Own` has `origin` on GitHub in the own organisation of OWN_PROFILE, the remote refs
     `origin/main` and `origin/trunk`, `origin/HEAD` naming `trunk`, a local branch `feature`, and
-    the aliases `p` (`push`), `pp` (`p`), `lg` (`log --oneline`) and `sh` (`!git push`).
+    the aliases `p` (`push`), `pp` (`p`), `lg` (`log --oneline`), `sh` (`!git push`) and `x`
+    (`-p p`).
     Its worktrees below `.worktrees/`: `Own-pushed`, whose HEAD commit `origin/pushed` holds, with
     an untracked file; `Own-unpushed`, with a commit on no remote ref; `Own-modified`, with a
     modified tracked file; and `Own-staged`, with a staged new file. `Packages/Foreign` has
@@ -5582,7 +5583,13 @@ def git_write_repositories(git: str, git_env: dict[str, str]) -> None:
         run(repository, "update-ref", "refs/remotes/origin/main", "HEAD")
         run(repository, "branch", "feature")
     run(mapped, "config", "remote.origin.push", "refs/heads/feature:refs/heads/main")
-    for alias, value in (("p", "push"), ("pp", "p"), ("lg", "log --oneline"), ("sh", "!git push")):
+    for alias, value in (
+        ("p", "push"),
+        ("pp", "p"),
+        ("lg", "log --oneline"),
+        ("sh", "!git push"),
+        ("x", "-p p"),
+    ):
         run(own, "config", f"alias.{alias}", value)
     run(own, "update-ref", "refs/remotes/origin/trunk", "HEAD")
     run(own, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
