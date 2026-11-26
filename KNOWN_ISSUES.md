@@ -1277,11 +1277,22 @@
 
 ### K209 · The rm check reads a `pushd` with no operand as `cd ~`, though bash and zsh swap the top two directories of the stack.
 
-- location: `hooks/guard/rm_scope.py:247`
+- location: `hooks/guard/rm_scope.py:252`
 - evidence: `bash -c` and `zsh -fc` with `pushd p/q && pushd && pwd` print the start directory,
   not `$HOME`. With the call's working directory `~/Research`, `guard --from claude` refuses
   `pushd .scratch/x && pushd && rm -rf Papers` with "`Papers` resolves to `<home>/Papers`"; the
   `rm` removes `~/Research/Papers`. The decision is right and the reason is wrong; a safe
   removal can be refused. The same holds on `origin/main`.
+- kind: defect
+- found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`
+
+### K210 · The rm and work-tree checks read a `cd` in a list that `&` puts in the background as sure.
+
+- location: `hooks/guard/shell.py:598`
+- evidence: `sure_move` reads only the operator right after the `cd`. In `cd x && true & rm -rf
+  y`, the `&` puts the whole list `cd x && true` in a child, and the `rm` runs in the old
+  directory. With the call's working directory `~/Research`, `guard --from claude` answers `pass`
+  to `cd ~/Research/.scratch/x && true & rm -rf Papers`, which removes `~/Research/Papers`. The
+  same holds on `origin/main`.
 - kind: defect
 - found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`

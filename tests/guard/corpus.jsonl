@@ -433,6 +433,9 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x && (rm -rf build)"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x || env exit 1; rm -rf build"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x || exit 1 | cat; rm -rf build"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x || exit 1 &\nrm -rf build"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x || { (exit 1); }; rm -rf build"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x ||\nexit 1; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if cd .scratch/x; then rm -rf build; fi"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "pushd .scratch/x && popd && rm -rf build"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "pushd .scratch/x && rm -rf build && popd"}, "cwd": "@@R@@"}, "decision": "pass"}
