@@ -28,7 +28,18 @@ from pathlib import Path
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place, work_tree
-from .shell import SEGMENT, SEPARATORS, Simple, Tokens, builtin_commands, joined, program, readings, words
+from .shell import (
+    SEGMENT,
+    SEPARATORS,
+    Simple,
+    Tokens,
+    builtin_commands,
+    joined,
+    program,
+    readings,
+    sure_move,
+    words,
+)
 
 # `$( … )` and `` ` … ` ``. Neither nests here: a substitution inside a substitution is read as
 # the outer one, which is enough to find the command word.
@@ -44,7 +55,7 @@ DONE = re.compile(r"\bdone\b")
 # The commands `sandbox.excludedCommands` lifts, and only when every part is one of them.
 EXCLUDED = frozenset({"git", "gh", "glab", "ps"})
 # The directories in which `in_work_tree` follows a command; a `cd` that can fail doubles them.
-DIRECTORIES = 16
+DIRECTORIES = 4
 
 # `git` subcommands that need to write `.git` or reach the network. `$(git rev-parse HEAD)` and
 # `$(git branch --show-current)` work sandboxed, so the read-only ones are left out.
@@ -272,10 +283,11 @@ def path_screened(heads: list[Head]) -> tuple[str, str] | None:
 
 def moved(cwds: list[Place | None], target: str, *, either: bool) -> list[Place | None]:
     """The directories after a `cd` or `pushd` to `target` from each of `cwds`; with `either`,
-    also `cwds` themselves. At most DIRECTORIES, the first ones kept."""
+    also `cwds` themselves. At most DIRECTORIES, the first ones kept; the moved ones come first, so
+    the directory in which each `cd` succeeded is always kept."""
     found = [None if cwd is None else cwd.go(expanded(target), "real") for cwd in cwds]
     kept: list[Place | None] = []
-    for cwd in [*cwds, *found] if either else found:
+    for cwd in [*found, *cwds] if either else found:
         if not any(cwd is other or (cwd and other and cwd.same(other)) for other in kept):
             kept.append(cwd)
     return kept[:DIRECTORIES]
@@ -288,12 +300,19 @@ def in_work_tree(
     None. The target is the last argument that is not a flag, resolved against the working
     directory after each `cd` or `pushd` before it; without one it is that working directory. A
     `cd` whose index is in `either` can leave the directory as it was, so the target is read in
-    both. A clone's URL, read as the target, lies below the working directory too, so the verdict
-    is the working directory's."""
+    both. A `popd` returns to the directories before its `pushd`; one with no `pushd` before it
+    in the command leaves them as they are. A clone's URL, read as the target, lies below the
+    working directory too, so the verdict is the working directory's."""
     cwds: list[Place | None] = [cwd]
+    stack: list[list[Place | None]] = []
     for index, (head, arguments) in enumerate(heads):
         if head in ("cd", "pushd") and arguments:
+            if head == "pushd":
+                stack.append(cwds)
             cwds = moved(cwds, arguments[0], either=index in either)
+            continue
+        if head == "popd":
+            cwds = stack.pop() if stack else cwds
             continue
         if head != "git":
             continue
@@ -453,7 +472,7 @@ def head_of(simple: Simple) -> str:
     or `pushd` that a child runs (`shell.Runs`), such as `CD` or `env cd`: it leaves the shell's
     directory as it was."""
     head = program(simple.words[0])
-    return "/usr/bin/cd" if head in ("cd", "pushd") and simple.runs == "child" else head
+    return "/usr/bin/cd" if head in ("cd", "pushd", "popd") and simple.runs == "child" else head
 
 
 def work_tree_check(call: Call) -> Verdict:
@@ -461,9 +480,8 @@ def work_tree_check(call: Call) -> Verdict:
     frontend whose sandbox is not Claude Code's, where the other shapes describe nothing. There no
     `excludedCommands` match decides how `git` runs, so the check reads each simple command as the
     shell runs it (`shell.commands`): also `env git init`, `GIT init` and a `git init` in `$( … )`.
-    A `cd` that a child runs leaves the directory as it was (`head_of`); one that can fail, not
-    joined by `&&` to the next command, or that one shell runs as its own and another in a child,
-    leaves either directory. A command that does not read passes."""
+    A `cd` that a child runs leaves the directory as it was (`head_of`); one that is no sure move
+    (`shell.sure_move`) leaves either directory. A command that does not read passes."""
     command = call.command
     read = readings(command) if "git" in joined(command).lower() else None
     if read is None:
@@ -473,11 +491,7 @@ def work_tree_check(call: Call) -> Verdict:
         for tokens in read:
             simples = builtin_commands(tokens)
             heads: list[Head] = [(head_of(simple), simple.words[1:]) for simple in simples]
-            either = frozenset(
-                index
-                for index, simple in enumerate(simples)
-                if simple.runs == "either" or simple.then.strip() != "&&"
-            )
+            either = frozenset(index for index in range(len(simples)) if not sure_move(simples, index))
             landed = in_work_tree(heads, cwd, either)
             if landed:
                 return Verdict(

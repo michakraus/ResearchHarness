@@ -342,9 +342,10 @@ work to the route that works.
 
 It follows the working directory through each `cd` and `pushd` and resolves each operand. Only
 the shell's own `cd` moves it: `cd`, also after `builtin`. `CD`, `/usr/bin/cd`, `env cd` and
-`sudo cd` run the program `/usr/bin/cd` in a child, so the directory stays. After `command` or
-`time`, bash runs its own `cd` and zsh, or bash for a quoted `"time"`, the program, so the check
-reads the commands after it in both directories. The same holds for a `cd` that can fail: one
+`sudo cd` run the program `/usr/bin/cd` in a child, so the directory stays. After `command`,
+bash runs its own `cd` and zsh the program; after `time`, both shells run their own `cd`, and
+after a quoted `"time"`, which the check reads as the same word, the program. So the check reads
+the commands after either wrapper in both directories. The same holds for a `cd` that can fail: one
 that `&&` does not join to the next command, as in `cd x; rm -rf y`, where the shell runs the
 `rm` in the old directory when the `cd` fails. Join the `cd` with `&&`. A recursive `rm` of a
 relative operand after a `cd` to a directory that the check cannot know, such as `cd $X` or

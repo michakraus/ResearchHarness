@@ -1223,7 +1223,7 @@
 
 ### K204 · After a `cd` to a directory that the check cannot know, the git write and push-deletion checks read no alias of a `git` behind another command.
 
-- location: `hooks/guard/git_writes.py:638`
+- location: `hooks/guard/git_writes.py:640`
 - evidence: `subcommand` reads a name that is no builtin as unknown, where the repository cannot
   be known, only when its `git` is the command word of the part, so that `cd $X && grep -r git
   src` passes. `cd $D && find . -exec git p --force-with-lease origin feature \;` therefore

@@ -27,7 +27,7 @@ from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place
-from .shell import Simple, Tokens, builtin_commands, cut_heredocs, joined, program, readings
+from .shell import Simple, Tokens, builtin_commands, cut_heredocs, joined, program, readings, sure_move
 
 HOME = str(Path.home().resolve())
 ROOT = Path(HOME, "Research").resolve()
@@ -39,7 +39,10 @@ LEADING_HOME = re.compile(r"^\$(?:HOME|\{HOME\})(?=/|$)")
 GLOB = frozenset("*?[{")
 RECURSIVE = "--recursive"
 # The directories in which `moved_to` follows a command; a `cd` that can fail doubles them.
-DIRECTORIES = 16
+DIRECTORIES = 4
+# The resolutions of `rm` operands that `decide` makes besides one per operand, in the other
+# directories where an `rm` can run, so that a command of 1 MiB costs it a bounded time.
+EXTRA = 4096
 
 # `git` global options that consume the token after them.
 TAKES_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--exec-path", "--namespace"})
@@ -63,6 +66,11 @@ UNREADABLE = "rm-scope could not read a command that mentions rm or merge."
 UNKNOWN_DIRECTORY = (
     "`{segment}` removes a relative path after a `cd` to a directory that the check cannot know, "
     "such as `cd $X` or `cd -`, so it cannot tell what the removal reaches."
+)
+
+TOO_MANY = (
+    "`{segment}` can run in several directories, after a `cd` that can fail, and its operands are "
+    "too many for the check to read in each. Join each `cd` with `&&`."
 )
 
 
@@ -248,22 +256,21 @@ def change_directory(words: list[str], cwd: Cwd) -> Cwd:
     return cwd.go(target, "real")
 
 
-def moved_to(simple: Simple, cwds: list[Cwd]) -> list[Cwd]:
+def moved_to(simple: Simple, cwds: list[Cwd], *, sure: bool) -> list[Cwd]:
     """The directories in which the commands after the `cd` or `pushd` `simple` can run, from the
-    directories `cwds` before it. A `cd` that the shell runs as its own and that `&&` joins to the
-    next command moves it for sure. One that can fail before `;`, a newline, `||` or `|`, or that
-    one shell runs as its own and another in a child (`shell.Runs`), leaves either directory; one
-    that a child runs leaves the directory as it was."""
+    directories `cwds` before it, the one in which every `cd` succeeded first. A `sure` move
+    (`shell.sure_move`) leaves only the new directories; one that can fail, or that one shell runs
+    as its own and another in a child (`shell.Runs`), leaves either; one that a child runs leaves
+    the directories as they were."""
     if simple.runs == "child":
         return cwds
     moved = [change_directory(simple.words, cwd) for cwd in cwds]
-    found = moved if simple.runs == "shell" and simple.then.strip() == "&&" else [*cwds, *moved]
     kept: list[Cwd] = []
-    for cwd in found:
+    for cwd in moved if sure else [*moved, *cwds]:
         if not any(same_cwd(cwd, other) for other in kept):
             kept.append(cwd)
-    # Past DIRECTORIES, a directory that the check cannot know stands for them all.
-    return kept if len(kept) <= DIRECTORIES else [None]
+    # Past DIRECTORIES, a directory that the check cannot know stands for the others.
+    return kept if len(kept) <= DIRECTORIES else [kept[0], None]
 
 
 def same_cwd(one: Cwd, other: Cwd) -> bool:
@@ -280,31 +287,53 @@ def unknown_operand(operand: str, cwd: Cwd) -> bool:
     return cwd is None and path is not None and not path.startswith("/")
 
 
+def removal(words: list[str], operands: list[str], cwds: list[Cwd]) -> Verdict | None:
+    """The verdict on the recursive `rm` `words` with `operands`, each read in each directory of
+    `cwds`: deny for an operand outside the zones (`guarded`), ask for a relative operand in a
+    directory that the check cannot know (`unknown_operand`), or None."""
+    unknown = None
+    for operand, here in ((operand, here) for operand in operands for here in cwds):
+        path = resolve(operand, here)
+        if path is not None and not in_zone(path) and guarded(path):
+            return Verdict("deny", MESSAGE.format(segment=" ".join(words), operand=operand, path=path.text()))
+        if unknown is None and unknown_operand(operand, here):
+            unknown = Verdict("ask", UNKNOWN_DIRECTORY.format(segment=" ".join(words)))
+    return unknown
+
+
 def decide(tokens: Tokens, cwd: Cwd) -> Verdict:
     """The verdict on one reading of the command: each simple command from its command word on
     (`shell.commands`), so also an `rm` behind `sudo`, `env` or `then`, or spelled `RM`. A `cd`
     moves the directory as `moved_to` reads it, and each command after it is read in each
-    directory where it can run. A recursive `rm` of a relative operand in a directory that the
-    check cannot know asks."""
+    directory where it can run; a `popd` returns to the directories before its `pushd`, or to one
+    that the check cannot know. A recursive `rm` of a relative operand in a directory that the
+    check cannot know asks, and so does one whose operands, read in every such directory, would
+    take more than EXTRA resolutions besides one per operand: it is then read only where every
+    `cd` succeeded."""
     cwds: list[Cwd] = [cwd]
-    unknown = None
-    for simple in builtin_commands(tokens):
+    stack: list[list[Cwd]] = []
+    unknown, extra = None, 0
+    simples = builtin_commands(tokens)
+    for index, simple in enumerate(simples):
         words = simple.words
         head = program(words[0])
         if head in ("cd", "pushd"):
-            cwds = moved_to(simple, cwds)
+            if head == "pushd" and simple.runs != "child":
+                stack.append(cwds)
+            cwds = moved_to(simple, cwds, sure=sure_move(simples, index))
+        elif head == "popd" and simple.runs != "child":
+            cwds = stack.pop() if stack else [None]
         elif head == "rm":
             recursive, operands = rm_arguments(words)
             if not recursive:
                 continue
-            for operand, here in ((operand, here) for operand in operands for here in cwds):
-                path = resolve(operand, here)
-                if path is not None and not in_zone(path) and guarded(path):
-                    return Verdict(
-                        "deny", MESSAGE.format(segment=" ".join(words), operand=operand, path=path.text())
-                    )
-                if unknown is None and unknown_operand(operand, here):
-                    unknown = Verdict("ask", UNKNOWN_DIRECTORY.format(segment=" ".join(words)))
+            extra += (len(cwds) - 1) * len(operands)
+            found = removal(words, operands, cwds if extra <= EXTRA else cwds[:1])
+            if found is not None and found.decision == "deny":
+                return found
+            if extra > EXTRA:
+                found = Verdict("ask", TOO_MANY.format(segment=" ".join(words)))
+            unknown = unknown or found
         elif head == "git":
             subcommand, arguments, elsewhere = git_subcommand(words)
             if subcommand not in ("rm", "merge"):

@@ -590,6 +590,25 @@ def runs_of(prefix: list[str], word: str) -> Runs:
     return "either" if any(found in MAY_KEEP_BUILTIN for found in wrappers) else "shell"
 
 
+# The builtins that end the script or the function, so that the commands after `cd x || exit`
+# run only where the `cd` succeeded (`sure_move`).
+STOPS = frozenset({"exit", "return"})
+
+
+def sure_move(simples: list[Simple], index: int) -> bool:
+    """True when the commands after the `cd` or `pushd` `simples[index]` run only in the directory
+    that it moves to: the shell runs it as its own (`Runs`), and `&&` joins it to the next command,
+    or `||` to an `exit` or a `return`, as in `cd x || exit 1; rm -rf y`. Any other `cd` can leave
+    the shell where it was, for example one that `;`, a newline or `|` follows, or one in the
+    condition of an `if`."""
+    simple = simples[index]
+    if simple.runs != "shell":
+        return False
+    then = simple.then.strip()
+    following = simples[index + 1] if index + 1 < len(simples) else None
+    return then == "&&" or (then == "||" and following is not None and following.words[0] in STOPS)
+
+
 def builtin_commands(tokens: Tokens) -> list[Simple]:
     """Each simple command of `tokens` (`Simple`), with the words that `commands` gives, where the
     shell runs its command word if that is a builtin (`runs_of`), and the operator after it."""
