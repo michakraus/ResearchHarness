@@ -3559,6 +3559,262 @@ PROMPTLOG_CASES = [
     "[1]",
 ]
 
+# The fixture of `worktree.py sweep`, in a home of its own below the fixture directory, SW_HOME.
+# Its `Research` holds `Repo`, whose `origin/HEAD` names its one commit, and `Watched`, whose
+# `.git/config` holds a `core.fsmonitor` that writes SW_MARKER, which the hook refuses. Below
+# `Research/.worktrees`, by name: the worktrees of `Repo` of SW_KINDS, made with SW_AGED dated two
+# FRESH spans back, `dirty` with an untracked file and `ahead` with a commit of its own; `lost`, whose
+# record is gone; `bare`, with no `.git`; `forged`, whose `.git` file names the admin directory of a
+# worktree of SW_OUTSIDE, a repository outside `Research`; `Watched-x`, an old clean worktree of
+# `Watched`; and a hidden `.claude`. SW_BIN holds a `git` that appends its arguments to SW_LOG and,
+# on a `worktree remove`, sends its parent, the hook, a SIGTERM.
+SW_HOME = FIXTURE.name + "/sw"
+SW_R = SW_HOME + "/Research"
+SW_REPO = SW_R + "/Repo"
+SW_ROOT = SW_R + "/.worktrees"
+SW_OUTSIDE = FIXTURE.name + "/sw-outside"
+SW_MARKER = FIXTURE.name + "/sw-marker"
+SW_BIN = FIXTURE.name + "/sw-bin"
+SW_LOG = FIXTURE.name + "/sw-git.log"
+SW_ENV = {**WORKTREE_ENV, "HOME": SW_HOME}
+SW_KINDS = {
+    "old": "removable",
+    "old2": "removable",
+    "fresh": "kept",
+    "dirty": "kept",
+    "ahead": "kept",
+    "lost": "orphan",
+    "bare": "orphan",
+    "forged": "kept",
+}
+SW_AGED = ("old", "old2", "dirty", "ahead")
+
+
+def sweep_fixture() -> None:
+    """Make the repositories, the worktrees and the signalling `git` of SW_HOME's fixture."""
+    git = shutil.which("git") or "git"
+    env = {**WORKTREE_ENV, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
+    env |= {f"GIT_{who}_{what}": value for who in ("AUTHOR", "COMMITTER") for what, value in WHO}
+
+    def run(*args: str) -> None:
+        subprocess.run([git, *args], env=env, check=True, capture_output=True, timeout=60)
+
+    run("init", "-q", "-b", "main", SW_REPO)
+    run("-C", SW_REPO, "commit", "-q", "--allow-empty", "-m", "fixture")
+    run("-C", SW_REPO, "update-ref", "refs/remotes/origin/main", "HEAD")
+    run("-C", SW_REPO, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    for name in ("old", "old2", "fresh", "dirty", "ahead", "lost"):
+        run("-C", SW_REPO, "worktree", "add", "-q", "--detach", f"{SW_ROOT}/Repo-{name}", "origin/main")
+    pathlib.Path(SW_ROOT, "Repo-dirty", "b").write_text("b\n", encoding="utf-8")
+    run("-C", f"{SW_ROOT}/Repo-ahead", "commit", "-q", "--allow-empty", "-m", "ahead")
+    shutil.rmtree(pathlib.Path(SW_REPO, ".git", "worktrees", "Repo-lost"))
+    pathlib.Path(SW_ROOT, "Repo-bare").mkdir()
+    pathlib.Path(SW_ROOT, ".claude").mkdir()
+    run("init", "-q", "-b", "main", SW_OUTSIDE)
+    run("-C", SW_OUTSIDE, "commit", "-q", "--allow-empty", "-m", "fixture")
+    run("-C", SW_OUTSIDE, "worktree", "add", "-q", "--detach", f"{SW_OUTSIDE}-x")
+    forged = pathlib.Path(SW_ROOT, "Repo-forged")
+    forged.mkdir()
+    admin = pathlib.Path(SW_OUTSIDE, ".git", "worktrees", pathlib.Path(f"{SW_OUTSIDE}-x").name).resolve()
+    (forged / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+    watched = SW_R + "/Watched"
+    run("init", "-q", "-b", "main", watched)
+    run("-C", watched, "commit", "-q", "--allow-empty", "-m", "fixture")
+    run("-C", watched, "update-ref", "refs/remotes/origin/main", "HEAD")
+    run("-C", watched, "worktree", "add", "-q", "--detach", f"{SW_ROOT}/Watched-x", "origin/main")
+    run("-C", watched, "config", "core.fsmonitor", f"touch '{SW_MARKER}'; false")
+    for name in SW_AGED:
+        sweep_aged(SW_REPO, f"{SW_ROOT}/Repo-{name}")
+    sweep_aged(watched, f"{SW_ROOT}/Watched-x")
+    sweep_aged(SW_OUTSIDE, str(admin))
+    wrapper = pathlib.Path(SW_BIN, "git")
+    wrapper.parent.mkdir()
+    wrapper.write_text(
+        f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{SW_LOG}'\n"
+        f'case " $* " in *" worktree remove "*) kill -TERM "$PPID"; sleep 10 ;; esac\n'
+        f"exec '{git}' \"$@\"\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+
+
+# The author and committer of the sweep fixture's commits.
+WHO = (("NAME", "probe"), ("EMAIL", "probe@example.org"))
+
+
+def sweep_aged(repo: str, tree: str) -> None:
+    """Date the record of the worktree `tree` of `repo`, or the admin directory `tree`, two FRESH
+    spans back."""
+    old = time.time() - 2 * 12 * 3600
+    record = pathlib.Path(tree)
+    if not record.is_relative_to(pathlib.Path(repo, ".git").resolve()):
+        record = pathlib.Path(repo, ".git", "worktrees", record.name)
+    for path in (record, record / "HEAD", record / "index", record / "logs" / "HEAD"):
+        if path.exists():
+            os.utime(path, (old, old))
+
+
+def sweep_run(
+    args: tuple[str, ...], env: dict[str, str] = SW_ENV, cwd: str = FIXTURE.name
+) -> subprocess.CompletedProcess[str] | None:
+    """`worktree.py <args>` in `cwd` with `env` and an empty stdin; None after the timeout."""
+    try:
+        return subprocess.run(
+            [sys.executable, WORKTREE, *args],
+            input="",
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=cwd,
+            timeout=TIMEOUT,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return None
+
+
+def worktree_sweep_cases() -> tuple[int, int]:
+    """`worktree.py`'s command-line forms: `add <name>` and `remove <path>` on the fixture of
+    `worktree_fixture`, wrong arguments, and `sweep` on the fixture of `sweep_fixture`: the dry run
+    lists each worktree with its kind and removes none, and starts no git of a repository that the
+    hook refuses; a SIGTERM during the first of two removals ends `sweep --apply` with 143 before the
+    second; `--apply` removes each removable worktree alone; a refused removal exits 1 with one line
+    that names the count, and the next removal still runs: (number of cases, number wrong)."""
+    total = wrong = 0
+
+    def report(ok: object, label: str) -> None:
+        nonlocal total, wrong
+        total += 1
+        wrong += not ok
+        print(f"{'ok ' if ok else 'BAD'}  [wt-sweep ]  {label}")
+
+    def said(proc: subprocess.CompletedProcess[str] | None) -> str:
+        return "timeout" if proc is None else f"exit {proc.returncode}, {proc.stdout!r}, {proc.stderr!r}"
+
+    made = pathlib.Path(WT_ROOT, "Repo-argv")
+    proc = sweep_run(("add", "argv"), WT_ENV, WT_REPO)
+    report(
+        proc is not None and proc.returncode == 0 and proc.stdout == f"{made}\n" and made.is_dir(),
+        f"`add argv` in the repository makes the worktree of the working directory and prints its path: {said(proc)}",
+    )
+    proc = sweep_run(("remove", made.name), WT_ENV, WT_ROOT)
+    report(
+        proc is not None and proc.returncode == 0 and not made.exists(),
+        f"`remove <relative path>` removes the worktree that the path names from the working directory: {said(proc)}",
+    )
+    for args in (
+        ("add",),
+        ("add", "a", "b"),
+        ("remove",),
+        ("sweep", "--bogus"),
+        ("sweep", "--apply", "x"),
+        ("x",),
+    ):
+        proc = sweep_run(args)
+        report(
+            proc is not None and proc.returncode == 1 and proc.stderr == f"worktree hook: {USAGE_LINE}\n",
+            f"`{' '.join(args)}` exits 1 with the usage line: {said(proc)}",
+        )
+
+    sweep_fixture()
+    proc = sweep_run(("sweep",))
+    lines = proc.stdout.splitlines() if proc is not None else []
+    listed = {words[1]: words[0] for words in (line.split() for line in lines[:-1])}
+    want = {f"{SW_ROOT}/Repo-{name}": kind for name, kind in SW_KINDS.items()} | {
+        f"{SW_ROOT}/Watched-x": "kept"
+    }
+    report(
+        proc is not None
+        and proc.returncode == 1
+        and listed == want
+        and lines[-1:] == ["would remove 2 worktrees"]
+        and all(pathlib.Path(path).exists() for path in want),
+        f"the dry run lists each worktree with its kind, and not the hidden .claude, removes none and exits 1: {said(proc)}",
+    )
+    report(
+        proc is not None
+        and f"{'kept':<9}  {SW_ROOT}/Repo-forged  the hook refuses it: " in proc.stdout
+        and f"{'kept':<9}  {SW_ROOT}/Watched-x  the hook refuses it: " in proc.stdout
+        and not pathlib.Path(SW_MARKER).exists(),
+        "a worktree whose .git names a repository outside Research, and one of a repository whose "
+        f"config holds core.fsmonitor, are kept, and no git runs that config: {said(proc)}",
+    )
+    pathlib.Path(SW_LOG).unlink(missing_ok=True)
+    signalling = {**SW_ENV, "PATH": SW_BIN + ":" + SW_ENV.get("PATH", "/usr/bin:/bin")}
+    proc = sweep_run(("sweep", "--apply"), signalling)
+    log = pathlib.Path(SW_LOG)
+    started = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    removes = [line for line in started if "worktree remove" in line]
+    report(
+        proc is not None
+        and proc.returncode == 128 + signal.SIGTERM
+        and len(removes) == 1
+        and pathlib.Path(SW_ROOT, "Repo-old2").is_dir(),
+        f"a SIGTERM during the first of two removals ends sweep --apply with 143 before the second: {said(proc)} {removes}",
+    )
+    proc = sweep_run(("sweep", "--apply"))
+    report(
+        proc is not None
+        and proc.returncode == 0
+        and not pathlib.Path(SW_ROOT, "Repo-old").exists()
+        and not pathlib.Path(SW_ROOT, "Repo-old2").exists()
+        and all(
+            pathlib.Path(SW_ROOT, f"Repo-{name}").exists()
+            for name, kind in SW_KINDS.items()
+            if kind != "removable"
+        )
+        and pathlib.Path(SW_ROOT, "Watched-x").is_dir()
+        and not pathlib.Path(SW_MARKER).exists(),
+        f"sweep --apply removes each removable worktree and no other: {said(proc)}",
+    )
+    git = shutil.which("git") or "git"
+    for name in ("old3", "old4"):
+        subprocess.run(
+            [
+                git,
+                "-C",
+                SW_REPO,
+                "worktree",
+                "add",
+                "-q",
+                "--detach",
+                f"{SW_ROOT}/Repo-{name}",
+                "origin/main",
+            ],
+            env={**WORKTREE_ENV, "GIT_CONFIG_GLOBAL": "/dev/null"},
+            check=True,
+            capture_output=True,
+            timeout=60,
+        )
+        sweep_aged(SW_REPO, f"{SW_ROOT}/Repo-{name}")
+    shielded = pathlib.Path(SW_ROOT, "Repo-old3", ".githooks")
+    shielded.mkdir()
+    shielded.chmod(0o500)
+    try:
+        proc = sweep_run(("sweep", "--apply"))
+    finally:
+        shielded.chmod(0o700)
+    last = proc.stderr.splitlines()[-1:] if proc is not None else []
+    report(
+        proc is not None
+        and proc.returncode == 1
+        and len(last) == 1
+        and last[0].startswith(
+            "worktree hook: 1 of 2 removals failed: Repo-old3: this process cannot write in "
+        )
+        and pathlib.Path(SW_ROOT, "Repo-old3").is_dir()
+        and not pathlib.Path(SW_ROOT, "Repo-old4").exists(),
+        f"a refused removal exits 1 with one line that names the count, and the next removal runs: {said(proc)}",
+    )
+    return total, wrong
+
+
+# The usage line of `worktree.py`.
+USAGE_LINE = (
+    "usage: worktree.py [add <name> | remove <path> | sweep [--apply] | "
+    "--serve <socket> --parent <pid> --settings <file> | --boxed <profile>]"
+)
+
 # `context-handoff.py` reads the context size of the last two model calls of the main chain from a
 # transcript of the fixture. A transcript is a list of records: (message id, context in tokens) for
 # a model call, ("side", tokens) for a sub-agent's call, ("bad", 0) for a line that is not JSON,
@@ -6597,7 +6853,8 @@ def payload_cases():
         mark = "ok " if got == 1 else "BAD"
         print(f"{mark} exp 1 got {got}  [worktree ]  fail-closed: {payload!r}")
     n, bad = worktree_git_cases()
-    return total + n, wrong + bad
+    m, worse = worktree_sweep_cases()
+    return total + n + m, wrong + bad + worse
 
 
 # `kaimon-note.py` adds a note to a Bash call that runs a Julia probe and lets every call run. A

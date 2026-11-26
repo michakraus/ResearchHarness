@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Create and remove a worktree of Claude Code, and through `harness worktree` of OpenCode and
-oh-my-pi, at `~/Research/.worktrees/<Repository>-<slug>`.
+oh-my-pi, at `~/Research/.worktrees/<Repository>-<slug>`, and sweep the finished ones.
 
 One script for two hook events, told apart by `hook_event_name`:
 
@@ -20,6 +20,25 @@ One script for two hook events, told apart by `hook_event_name`:
     The branch stays: it may carry an open pull request. First it refuses where it cannot write
     in a `.githooks` or `.claude` of the worktree (`deletable`), as inside a sandbox: git would
     delete the files up to the first one there, then the worktree's record, and leave the rest.
+
+Three command-line forms stand beside the payload on stdin:
+
+    worktree.py add <name>        the WorktreeCreate payload of `name`, with the working directory
+                                  as its `cwd`
+    worktree.py remove <path>     the WorktreeRemove payload of `path`, placed against the working
+                                  directory where it is relative
+    worktree.py sweep [--apply]   the sweep below
+
+`harness worktree` runs the sweep. **The sweep** (`sweep`) lists each directory directly
+below ROOT, one line each, `<kind>  <path>  <why>`: `removable` where it is clean, its HEAD is in
+`origin/HEAD` and its record shows no use for FRESH seconds; `kept` otherwise, also where the
+checks of a remove below refuse its repository; and `orphan` where git holds no record of it,
+which the sweep never touches (`judge`). Its git runs as every git of this hook does, with no
+optional lock. The dry run ends with `would remove <n> worktrees` and exits 1. `--apply` removes
+each removable worktree as a WorktreeRemove payload does, in this process, the next one also after
+a failure; a failure exits 1 with one `worktree hook:` line that names the number of failures and
+the reason of each. The nightly job `worktree-sweep` runs `sweep --apply` outside any sandbox,
+where the remove of a worktree that holds a `.githooks` or `.claude` can finish.
 
 Why a hook: Claude Code runs a `git worktree add` whose path is absolute, starts with `~`
 or holds `..` inside the sandbox, whatever `excludedCommands` says, and the sandbox
@@ -191,6 +210,9 @@ LOOK = 1
 # `<pid>.json` beside it, below `~/.local/state/research-harness`, which no box may write.
 SRT = Path.home() / ".local" / "bin" / "srt"
 STAGES = Path.home() / ".local" / "state" / "research-harness" / "worktree-stage"
+# Seconds since a worktree's last use within which the sweep keeps it: a new worktree is clean and
+# at origin/HEAD while an agent starts in it.
+FRESH = 12 * 3600
 
 
 # What a caller whose working directory is in no repository does instead. Claude Desktop sends the
@@ -229,15 +251,41 @@ class Reply:
         return (json.dumps({**head, "stderr": self.stderr}) + "\n").encode()
 
 
+@dataclass(frozen=True)
+class Linked:
+    """A linked worktree that `main_checkout` accepted: its path and its admin directory
+    `<repository>/.git/worktrees/<name>`."""
+
+    path: Path
+    admin: Path
+
+
+@dataclass(frozen=True)
+class Found:
+    """One directory directly below ROOT, as the sweep judges it: its path, its kind (`removable`,
+    `kept` or `orphan`) and why."""
+
+    path: Path
+    kind: str
+    why: str
+
+
 def run_git(
-    *args: str, repo: Path, cwd: Path | None = None, timeout: int = LOCAL, profile: Path | None = None
+    *args: str,
+    repo: Path,
+    cwd: Path | None = None,
+    timeout: int = LOCAL,
+    profile: Path | None = None,
+    tree: Linked | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """git with OPTIONS and `args` in `cwd`, by default `repo`, with GIT_DIR set to `repo`'s `.git`,
     GIT_ALLOW_PROTOCOL set to PROTOCOLS, and no GIT_WORK_TREE or GIT_COMMON_DIR of the caller: the one
     place where this hook starts git. GIT_DIR pins git to the repository that `main_checkout` and
     `checked_config` read, so that git does not search for one itself: a `.git` that git does not
     take as a repository would make it walk up to a parent's, and a directory with a HEAD, `objects`
-    and `refs` would make it take that directory as a bare repository. With a `profile`, the boxed
+    and `refs` would make it take that directory as a bare repository. With a `tree`, a linked
+    worktree of `repo`, GIT_DIR is its admin directory and GIT_WORK_TREE its path, so that git
+    reads that worktree's HEAD and index. With a `profile`, the boxed
     child's, git runs as `SRT --settings <profile> -- git …`, inside srt, with the same `cwd`,
     environment and timeout. git, or the srt of a boxed git, starts in a session of its own: where
     it outlives `timeout`, `stop_group` stops its process group, the programs that it started
@@ -246,13 +294,18 @@ def run_git(
     `interrupted`, stops the group the same way and passes on. A program that cannot start is a
     Refusal that names it."""
     env = {key: value for key, value in os.environ.items() if key not in UNSET}
+    if tree is None:
+        env["GIT_DIR"] = str(repo / ".git")
+    else:
+        env["GIT_DIR"] = str(tree.admin)
+        env["GIT_WORK_TREE"] = str(tree.path)
     boxed = [str(SRT), "--settings", str(profile), "--"] if profile is not None else []
     command = [*boxed, "git", *OPTIONS, *args]
     try:
         proc = subprocess.Popen(
             command,
             cwd=repo if cwd is None else cwd,
-            env={**env, "GIT_DIR": str(repo / ".git"), "GIT_ALLOW_PROTOCOL": PROTOCOLS},
+            env={**env, "GIT_ALLOW_PROTOCOL": PROTOCOLS},
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -850,6 +903,110 @@ def staged_remove(repo: Path, path: Path, profile: Path) -> None:
         raise
 
 
+def record_of(tree: Path) -> Path | None:
+    """The record `<repository>/.git/worktrees/<name>` that the `.git` file of `tree` names, where
+    that file holds one `gitdir:` line and the record is a directory; else None."""
+    dot = tree / ".git"
+    if dot.is_symlink() or not dot.is_file():
+        return None
+    line = dot.read_text(encoding="utf-8", errors="replace").strip()
+    record = Path(line.removeprefix("gitdir: "))
+    if not line.startswith("gitdir: ") or "\n" in line or not record.is_absolute() or not record.is_dir():
+        return None
+    return record
+
+
+def last_use(record: Path) -> float:
+    """The newest modification time of the record's HEAD, index and logs/HEAD, in seconds since the
+    epoch; git writes them at a checkout, a commit and a status that refreshes the index."""
+    times = [
+        path.stat().st_mtime
+        for path in (record / "HEAD", record / "index", record / "logs" / "HEAD")
+        if path.is_file()
+    ]
+    return max(times, default=record.stat().st_mtime)
+
+
+def judge(tree: Path, now: float) -> Found:
+    """`tree`'s kind: `orphan` with no record of git; `kept` where it was used within FRESH seconds
+    before `now`, where `main_checkout` or `checked_config` refuses its repository, or where it has
+    a change or an untracked file, or a HEAD that `origin/HEAD` does not hold; else `removable`.
+    Its git runs as every git of this hook does (`run_git`), with no optional lock, so that the
+    index keeps its time: the sweep runs outside any sandbox, in worktrees that a sandboxed agent
+    could write."""
+    record = record_of(tree)
+    if record is None:
+        return Found(
+            tree, "orphan", "git holds no record of it; look at it, then delete it outside the sandbox"
+        )
+    if now - last_use(record) < FRESH:
+        return Found(tree, "kept", f"used within the last {FRESH // 3600} hours")
+    try:
+        why = unmerged(tree, record)
+    except Refusal as err:
+        why = f"the hook refuses it: {err}"
+    except subprocess.TimeoutExpired as err:
+        why = f"`{' '.join(map(str, err.cmd))}` took more than {err.timeout} s"
+    if why is not None:
+        return Found(tree, "kept", why)
+    return Found(tree, "removable", "clean, and its HEAD is in origin/HEAD")
+
+
+def unmerged(tree: Path, record: Path) -> str | None:
+    """Why the sweep keeps the worktree `tree` with the record `record`: a change or an untracked
+    file, a HEAD that `origin/HEAD` does not hold, or a git that fails; None for none of these.
+    Refused where `main_checkout` or `checked_config` refuses its repository."""
+    repo = main_checkout(str(tree), RESEARCH)
+    checked_config(repo)
+    linked = Linked(tree.resolve(), repo / ".git" / "worktrees" / record.name)
+    status = run_git("--no-optional-locks", "status", "--porcelain", repo=repo, cwd=linked.path, tree=linked)
+    if status.returncode != 0:
+        return f"`git status` exits {status.returncode}"
+    if status.stdout.strip():
+        return "it holds changes or untracked files"
+    head = ("merge-base", "--is-ancestor", "HEAD", "refs/remotes/origin/HEAD")
+    merged = run_git("--no-optional-locks", *head, repo=repo, cwd=linked.path, tree=linked)
+    return None if merged.returncode == 0 else "its HEAD is not in origin/HEAD"
+
+
+def survey(root: Path, now: float) -> list[Found]:
+    """Each directory directly below `root`, judged, in the order of their names; links and hidden
+    names left out, such as the `.claude` that Claude Code's sandbox makes where a shell enters."""
+    if not root.is_dir():
+        return []
+    return [
+        judge(tree, now)
+        for tree in sorted(root.iterdir())
+        if tree.is_dir() and not tree.is_symlink() and not tree.name.startswith(".")
+    ]
+
+
+def sweep(*, apply: bool) -> int:
+    """List each directory directly below ROOT with its kind (`survey`). Without `apply`, name the
+    number of removable worktrees and return 1. With it, remove each removable worktree as a
+    WorktreeRemove payload does (`dispatch`), the next one also after a failure, and return 0; a
+    failure refuses after the last removal, with the number and the reason of each. A signal ends
+    the sweep at once, through the SystemExit of `interrupted`."""
+    found = survey(ROOT, time.time())
+    for entry in found:
+        print(f"{entry.kind:<9}  {entry.path}  {entry.why}", flush=True)
+    removable = [entry.path for entry in found if entry.kind == "removable"]
+    if not apply:
+        print(f"would remove {len(removable)} worktrees")
+        return 1
+    failed: list[str] = []
+    for path in removable:
+        try:
+            dispatch({"hook_event_name": "WorktreeRemove", "worktree_path": str(path)}, None)
+        except (Refusal, HarnessError) as err:
+            failed.append(f"{path.name}: {err}")
+        except subprocess.TimeoutExpired as err:
+            failed.append(f"{path.name}: `{' '.join(map(str, err.cmd))}` took more than {err.timeout} s")
+    if failed:
+        raise Refusal(f"{len(failed)} of {len(removable)} removals failed: " + "; ".join(failed))
+    return 0
+
+
 def ask(payload: dict[str, JsonValue], *, created: bool) -> None:
     """Send `payload` to the broker at AGENTBOX_BROKER, write the reply's `stderr` to stderr, and
     print its `path` where `created` says that the payload is a create; refused where the variable
@@ -1100,7 +1257,42 @@ def respond(data: bytes, profile: Path) -> Reply:
     return Reply(path=proc.stdout.strip(), stderr=proc.stderr)
 
 
-USAGE = "usage: worktree.py [--serve <socket> --parent <pid> --settings <file> | --boxed <profile>]"
+USAGE = (
+    "usage: worktree.py [add <name> | remove <path> | sweep [--apply] | "
+    "--serve <socket> --parent <pid> --settings <file> | --boxed <profile>]"
+)
+
+
+def command_payload(args: Sequence[str]) -> dict[str, JsonValue] | None:
+    """The payload of `add <name>`, a WorktreeCreate with the working directory as its `cwd`, or of
+    `remove <path>`, a WorktreeRemove with `path` placed against the working directory; None for
+    any other arguments. A working directory that no longer exists refuses."""
+    match list(args):
+        case ["add", name]:
+            return {"hook_event_name": "WorktreeCreate", "cwd": str(working_directory()), "name": name}
+        case ["remove", where]:
+            return {"hook_event_name": "WorktreeRemove", "worktree_path": str(working_directory() / where)}
+        case _:
+            return None
+
+
+def working_directory() -> Path:
+    """The working directory; refused where it no longer exists."""
+    try:
+        return Path.cwd()
+    except FileNotFoundError:
+        raise Refusal("the working directory does not exist") from None
+
+
+def sweep_apply(args: Sequence[str]) -> bool:
+    """Whether `sweep [--apply]` holds `--apply`."""
+    match list(args):
+        case ["sweep"]:
+            return False
+        case ["sweep", "--apply"]:
+            return True
+        case _:
+            raise Refusal(USAGE)
 
 
 def serve_arguments(args: Sequence[str]) -> tuple[Path, int, Path]:
@@ -1163,24 +1355,36 @@ def ignored(signum: int, frame: FrameType | None) -> None:
     del signum, frame
 
 
+def dispatch(payload: dict[str, JsonValue], profile: Path | None) -> None:
+    """Run the create or the remove of `payload`: through the broker under AGENTBOX (`ask`), else
+    here, with the `profile` of a boxed child; refused for another `hook_event_name`."""
+    event = payload.get("hook_event_name")
+    if "AGENTBOX" in os.environ:
+        ask(payload, created=event == "WorktreeCreate")
+    elif event == "WorktreeCreate":
+        print(create(payload, profile))
+    elif event == "WorktreeRemove":
+        remove(payload, profile)
+    else:
+        raise Refusal(f"unexpected hook_event_name {event!r}")
+
+
 def handle(args: Sequence[str]) -> int:
-    """Serve as the broker, or run the create or the remove of the hook input on stdin: 0, or 1 with
-    one `worktree hook:` line for a refusal or a git past its timeout."""
+    """Serve as the broker; run the sweep; or run the create or the remove of `add <name>` or
+    `remove <path>`, or of the hook input on stdin: 0, the sweep's dry run 1, or 1 with one
+    `worktree hook:` line for a refusal or a git past its timeout."""
     try:
         if args and args[0] == "--serve":
             serve(*serve_arguments(args))
             return 0
-        profile = boxed_profile(args)
-        payload = loads(sys.stdin.read(), where="hook input")
-        event = payload.get("hook_event_name")
-        if "AGENTBOX" in os.environ:
-            ask(payload, created=event == "WorktreeCreate")
-        elif event == "WorktreeCreate":
-            print(create(payload, profile))
-        elif event == "WorktreeRemove":
-            remove(payload, profile)
-        else:
-            raise Refusal(f"unexpected hook_event_name {event!r}")
+        if args and args[0] == "sweep":
+            return sweep(apply=sweep_apply(args))
+        payload = command_payload(args)
+        profile = None
+        if payload is None:
+            profile = boxed_profile(args)
+            payload = loads(sys.stdin.read(), where="hook input")
+        dispatch(payload, profile)
     except (Refusal, HarnessError) as err:
         sys.stderr.write(f"worktree hook: {err}\n")
         return 1

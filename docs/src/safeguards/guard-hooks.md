@@ -558,11 +558,11 @@ echo '{"session_id":"s","tool_input":{"file_path":"'"$HOME"'/Research/Harness/.g
 
 ## `worktree.py`
 
-This hook creates and removes the worktrees of Claude Code. Claude Code runs it on the events
-`WorktreeCreate` and `WorktreeRemove`. The reason is the sandbox: a `git worktree add` to a path
-below `~/Research/.worktrees/` runs sandboxed, where it cannot write `.git`. OpenCode and
-oh-my-pi have no such events; [`harness worktree`](../harness-command.md#worktree) sends the hook
-the same payloads for them.
+This hook creates and removes the worktrees of Claude Code, and sweeps the finished ones. Claude
+Code runs it on the events `WorktreeCreate` and `WorktreeRemove`. The reason is the sandbox: a
+`git worktree add` to a path below `~/Research/.worktrees/` runs sandboxed, where it cannot write
+`.git`. OpenCode and oh-my-pi have no such events; [`harness worktree`](../harness-command.md#worktree)
+sends the hook the same payloads for them.
 
 On `WorktreeCreate` it fetches `origin` in the repository that holds `cwd`, up to three times, 2
 seconds apart, while the fetch fails only on `cannot lock ref`: two creates in one repository
@@ -582,6 +582,30 @@ manifest loads old dependencies. On `WorktreeRemove` it runs `git worktree remov
 removes one file in each `.githooks` and `.claude` of the worktree, and refuses where it cannot: in
 a sandbox, git would delete the worktree's record and leave the directory. The settings template
 gives both events 480 seconds, more than a fetch (300) and the broker's answer (420) take.
+
+**Three command-line forms stand beside the payload on standard input.** `worktree.py add <name>`
+is the `WorktreeCreate` of `name` with the working directory as `cwd`. `worktree.py remove <path>`
+is the `WorktreeRemove` of `path`, placed against the working directory where it is relative.
+`worktree.py sweep [--apply]` is the sweep. Any other arguments exit 1 with the usage line.
+
+**The sweep removes the worktrees that are finished.** It lists each directory directly below
+`~/Research/.worktrees`, hidden names left out, one line each, `<kind>  <path>  <why>`:
+
+- `removable`: clean, its `HEAD` in `origin/HEAD`, and its record unused for 12 hours, read from
+  the times of the record's `HEAD`, `index` and `logs/HEAD`;
+- `kept`: anything else, with the reason, also a worktree whose repository the checks below
+  refuse, so that no `git` reads a config that a sandboxed program chose;
+- `orphan`: git holds no record of it. The sweep never touches an orphan.
+
+The sweep's `git status` and `git merge-base` run as every `git` of the hook does, with
+`GIT_DIR` the worktree's admin directory, `GIT_WORK_TREE` the worktree, and
+`--no-optional-locks`, so that the index keeps the time that tells the last use. The dry run ends
+with `would remove <n> worktrees` and exits 1. `--apply` removes each removable worktree as a
+`WorktreeRemove` does, in the same process, and goes on after a failure; a failure exits 1 with
+one line, `worktree hook: <k> of <n> removals failed: <name>: <reason>; …`. A `SIGINT`, `SIGTERM`
+or `SIGHUP` ends the sweep before the next removal. The launch agent and systemd timer
+`worktree-sweep` run `worktree.py sweep --apply` every night at 05:00, outside any sandbox, where
+the remove of a worktree that holds a `.githooks` or a `.claude` can finish.
 
 **The hook finds the repository by reading files, before any `git` runs.** The directory, `cwd`
 or the worktree to remove, must lie below `~/Research`. The first `.git` above it must be a
