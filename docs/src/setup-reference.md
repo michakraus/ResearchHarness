@@ -995,11 +995,11 @@ before Claude Code has made it. On a new machine, start `claude` once in a termi
 **With the component `jobs` only.**
 
 **What `harness setup` does.** It copies two scripts into `~/.local/bin`, then renders each job
-with the profile and loads it. On macOS, it renders the three launch agents into
+with the profile and loads it. On macOS, it renders the four launch agents into
 `~/Library/LaunchAgents/` and loads each one, after an unload when it is loaded already; the
 profile must have `launchd_prefix`. On Linux, it renders the `systemd --user` units into
 `~/.config/systemd/user/`, then runs `systemctl --user daemon-reload`, enables and starts the
-server and the two timers, and restarts them. It prints the lingering line under *By hand*, for an
+server and the three timers, and restarts them. It prints the lingering line under *By hand*, for an
 administrator, unless `loginctl show-user` reads `Linger=yes`.
 
 With the profile key `claude_remote`, the first step of the plan clones that repository into
