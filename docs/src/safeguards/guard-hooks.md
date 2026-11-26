@@ -178,10 +178,15 @@ with `<home>` the guard's home directory written out, single spaces, and one arg
 digits, `.`, `_`, `-` and `/`. A `~`, a `$`, a quote, a `cd`, another assignment, a redirection, a
 pipe, a second command or a second argument keeps the line inside, and so does any other
 interpreter or hook path, another `HOME` or `PATH`, a missing `-i`, `-E` or `-s`, and `sweep`. The
-lifted call runs with the environment of the agent's shell, which a persistent terminal keeps from
-an earlier `export`. `env -i` clears every inherited variable, so no session-set `PATH`, `HOME`,
-`XDG_CONFIG_HOME` or `GIT_*` reaches the hook's `git`; `-E` makes the interpreter ignore the
-`PYTHON*` variables, and `-s` the user site directory. The `PATH` is that of the nightly sweep. Antigravity has no worktree hook, and the sandbox of its terminal
+lifted call runs with the environment of the agent's process. `env -i` clears every inherited
+variable, so no `PATH`, `HOME`, `XDG_CONFIG_HOME` or `GIT_*` reaches the hook's `git`; `-E` makes
+the interpreter ignore the `PYTHON*` variables, and `-s` the user site directory. The `PATH` is
+that of the nightly sweep. The lift also needs a new shell for each call: a shell that persists
+between calls keeps a function or an alias that an earlier call defines, and a function named
+`/usr/bin/env` would run in place of the program, outside the sandbox. Antigravity, the app and
+`agy` alike, runs each `run_command` in a new shell: a probe that exports a variable and defines a
+function in one call finds neither in the next. Antigravity has no worktree hook, and the sandbox
+of its terminal
 denies the writes to `.git` and `.githooks` that a worktree needs. Its sandbox mounts only the
 workspace and the paths that a grant names, so it cannot write the hook or the interpreter, and
 the lifted program is the installed one. The hook takes its working directory from the call's

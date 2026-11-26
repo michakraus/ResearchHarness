@@ -30,12 +30,15 @@ worktree, whose git writes `.git` and `.githooks`, which its sandbox denies. The
 single spaces, with `<home>` the home of this process, `<python>` the interpreter of the harness's
 Python environment and `<hook>` the installed hook, each by its absolute path below that home, and
 `<word>` of WORKTREE_WORD: no `cd`, other assignment, redirection, pipe, quote, `~` or second
-argument. The lifted call runs with the environment of the agent's shell, which a persistent
-terminal keeps from an earlier `export`: `env -i` clears every inherited variable, so no PATH,
-HOME, XDG_CONFIG_HOME or GIT_* of the session reaches the hook's git; `-E` ignores the PYTHON*
-variables and `-s` the user site directory. Antigravity's sandbox cannot write the interpreter, the
-hook or a directory of WORKTREE_PATH, so the lifted program is the installed one; the hook itself
-checks the name, the path and the repository.
+argument. The lifted call runs with the environment of the agent's process: `env -i` clears every
+inherited variable, so no PATH, HOME, XDG_CONFIG_HOME or GIT_* reaches the hook's git; `-E`
+ignores the PYTHON* variables and `-s` the user site directory. Antigravity's sandbox cannot write
+the interpreter, the hook or a directory of WORKTREE_PATH. Antigravity, the app and `agy` alike,
+runs each `run_command` in a new shell, which keeps no variable, function or alias of an earlier
+call, so no earlier call can define a function or an alias `/usr/bin/env`. Both together make the
+lifted program the installed one; the hook itself checks the name, the path and the repository. A
+frontend whose terminal keeps its shell between calls breaks this: there an earlier call can
+define such a function, and the lift must not apply.
 """
 
 import re
