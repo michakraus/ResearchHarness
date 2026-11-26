@@ -1297,7 +1297,7 @@
 
 ### K196 · The git write and push-deletion checks do not see an alias that a configuration file or a `GIT_CONFIG_*` variable defines.
 
-- location: `hooks/guard/git_writes.py:359`
+- location: `hooks/guard/git_writes.py:360`
 - evidence: `subcommand` finds an alias only in a `-c` or `--config-env` option of the call. In a
   checkout of an own organisation, `guard --from claude` answers `pass` to
   `git p --force-with-lease origin main` and to
@@ -1307,13 +1307,14 @@
 - kind: defect
 - found: 2026-11-26, the branch `guard/git-word-gaps`
 
-### K197 · A command that the git write check cannot read passes when an option stands between `git` and a subcommand that the shell expands.
+### K197 · A command that the git write check cannot read passes when an option or a redirection stands between `git` and a subcommand that the shell expands.
 
 - location: `hooks/guard/git_writes.py:122`
 - evidence: `unread_write` reads an expanded subcommand only in the word right after `git`
   (`GIT_EXPANDED`), so that a Julia heredoc with a `$` after a word `git` still passes. With an
   open quote in a heredoc body before it, `guard --from claude` answers `pass` to
-  `git -C . pus{h,} --force-with-lease origin main`, where the same command without the heredoc
-  is refused.
+  `git -C . pus{h,} --force-with-lease origin main` and to
+  `git 2>&1 pus{h,} --force-with-lease origin main`, where the same commands without the heredoc
+  are refused.
 - kind: defect
 - found: 2026-11-26, the branch `guard/git-word-gaps`
