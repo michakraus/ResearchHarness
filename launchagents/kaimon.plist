@@ -43,10 +43,14 @@
     <key>StandardErrorPath</key>
     <string>{home}/Library/Logs/kaimon/launchd.err</string>
 
-    <!-- Adaptive, not Background: this must answer MCP calls promptly, unlike the
-         research-sync job which is deliberately deprioritised. -->
+    <!-- Interactive, with no resource limits: this must answer MCP calls promptly, unlike the
+         research-sync job which is deliberately deprioritised. Not Adaptive: launchd moves an
+         Adaptive job out of Background only for activity over XPC connections, and Kaimon
+         serves HTTP. As Adaptive, the server and the sessions it starts stay throttled like a
+         Background job; under a high load, a cold start then compiles for many minutes before
+         port 2828 listens. -->
     <key>ProcessType</key>
-    <string>Adaptive</string>
+    <string>Interactive</string>
 
     <!-- JULIA_APPS_JULIA_CMD is what decides which Julia runs, and it is here rather than
          left to the shim on purpose. The Pkg-generated shim hardcodes an absolute juliaup
