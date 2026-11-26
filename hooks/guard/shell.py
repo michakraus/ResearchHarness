@@ -570,7 +570,10 @@ def builtin_commands(tokens: Tokens) -> list[tuple[list[str], bool]]:
         nonlocal current
         at = command_word(current)
         if at is not None:
-            builtin = all(program(word) not in WRAPPERS or word in KEEPS_BUILTIN for word in current[:at])
+            builtin = all(
+                ASSIGNMENT.match(word) is not None or program(word) not in WRAPPERS or word in KEEPS_BUILTIN
+                for word in current[:at]
+            )
             found.append((current[at:], builtin))
         current = []
 

@@ -6,7 +6,9 @@
   the first word of a part. One reader, `shell.commands`, now gives every check each simple
   command from its command word on: past reserved words, assignments and wrappers such as `env`,
   `sudo`, `xargs`, `time` and `rtk`, with `( … )`, `$( … )`, backticks and the string of `env -S`
-  read as commands of their own. The staging check also refuses `./.` and `.//`, the rm check
+  read as commands of their own. The rm and work-tree checks move their directory only for the
+  shell's own `cd`, also after an assignment, `command`, `builtin` or `time`; `CD`, `env cd`,
+  `sudo cd` and `nohup cd` run `/usr/bin/cd` in a child. The staging check also refuses `./.` and `.//`, the rm check
   reads `--r` as `--recursive`, the write check reads `<>` as a write, and the work-tree check of
   the other frontends reads `g''it init`, `GIT init` and `env git init`. This closes K114, K116,
   K117, K118, K122, K150, K194 and K195.

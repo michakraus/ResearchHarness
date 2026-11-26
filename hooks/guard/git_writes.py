@@ -626,7 +626,9 @@ def subcommand(
     return at, repository is not None and alias_writes(repository, name)
 
 
-def writes(words: list[str], directory: str | None = None) -> Iterator[tuple[str, int, int]]:
+def writes(
+    words: list[str], directory: str | None = None, *, configured_before: bool = False
+) -> Iterator[tuple[str, int, int]]:
     """(the write, the index of its `git`, the index of its first argument) for each `git` call of
     `words` that holds a write of the check, in order: `cherry-pick`; `worktree remove` with any
     option after it, since `git` reads `-ff` and a prefix of `--force` as a force flag; or `push`
@@ -635,11 +637,12 @@ def writes(words: list[str], directory: str | None = None) -> Iterator[tuple[str
     when such an option follows it, and a `cherry-pick` otherwise, which takes any arguments. The
     arguments of a call run to the end of `words`. It reads each word once for the options, so
     that a long command costs it no time per `git`. `directory` is the working directory of
-    `words`, in which `subcommand` looks up an alias."""
+    `words`, in which `subcommand` looks up an alias; `configured_before` says that a part before
+    `words` assigns a variable of git configuration, which makes each subcommand unknown."""
     options = [index for index, word in enumerate(words) if word.startswith("-")]
     last_option = options[-1] if options else -1
     last_lease = next((index for index in reversed(options) if lease_option(words[index])), -1)
-    configured = configuring(words)
+    configured = -1 if configured_before else configuring(words)
     for index, word in enumerate(words):
         if not is_git(word):
             continue
@@ -692,9 +695,20 @@ def push_refusal(tokens: Tokens, cwd: str | None) -> Verdict | None:
     """The denial of a lease push in any part of the command that names a default branch as its
     target, or that can reach one without naming it; or None."""
     command = " ".join(text for _, text in tokens)
+    configured_before = False
     for words, directory in located(tokens, cwd):
-        # The first lease push of the part, also after another write, as in `find -exec`.
-        found = next((write for write in writes(words, directory) if write[0] == "push"), None)
+        # The first lease push of the part, also after another write, as in `find -exec`; a part
+        # before it that assigns a variable of git configuration, as `export GIT_CONFIG_COUNT=1`
+        # does, makes each later subcommand unknown.
+        found = next(
+            (
+                write
+                for write in writes(words, directory, configured_before=configured_before)
+                if write[0] == "push"
+            ),
+            None,
+        )
+        configured_before = configured_before or configuring(words) < len(words)
         if found is None:
             continue
         pushed = words[found[2] :]

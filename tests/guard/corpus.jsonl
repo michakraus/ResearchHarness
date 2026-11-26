@@ -420,6 +420,7 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/bin/rm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "X=1 rm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "builtin cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "D=/opt/env cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "CD .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/usr/bin/cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "env cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
@@ -831,6 +832,7 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git sh"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git x --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.q GIT_CONFIG_VALUE_0=push; git q origin :topic"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.q GIT_CONFIG_VALUE_0=push; git q --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git lg -3"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git nosuchalias -3"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git p origin :topic"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}

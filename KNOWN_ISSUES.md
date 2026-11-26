@@ -1241,3 +1241,25 @@
   `cd` home, or any other directory. The same holds on `origin/main`.
 - kind: defect
 - found: 2026-11-26, the branch `guard/command-words`, from its pre-PR verification
+
+### K201 · The rm and work-tree checks follow a `cd` after `command` or `time` as bash runs it, also where the shell runs `/usr/bin/cd` in a child.
+
+- location: `hooks/guard/shell.py:515`
+- evidence: `KEEPS_BUILTIN` holds `command`, `builtin` and `time`, and `builtin_commands` reads a
+  quoted or escaped wrapper by its program name. In zsh, `command cd` runs `/usr/bin/cd`:
+  `/bin/zsh -fc 'command cd sub; pwd'` prints the parent directory, where `/bin/bash -c` prints
+  `sub`. `/bin/bash -c '"time" cd sub; pwd'` prints the parent directory too, since bash runs
+  `/usr/bin/time` there. From `~/Research`, `guard --from claude` answers `pass` to
+  `command cd .scratch/x && rm -rf Papers`, which zsh runs in `~/Research`. origin/main answers
+  the same.
+- kind: defect
+- found: 2026-11-26, the branch `guard/command-words`, from its pre-PR verification
+
+### K202 · The work-tree check of the sandbox check follows `cd` and not `pushd`.
+
+- location: `hooks/guard/sandbox_semantics.py:271`
+- evidence: `in_work_tree` moves its directory for a head `cd` only, while the rm check moves it
+  for `cd` and `pushd`. So `pushd /tmp && git init x` in a work tree is read against the work
+  tree, and `pushd ~/Research/P && git init x` outside one against the call's directory.
+- kind: defect
+- found: 2026-11-26, the branch `guard/command-words`, from its pre-PR verification
