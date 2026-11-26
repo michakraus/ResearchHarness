@@ -1767,9 +1767,9 @@ It checks, in this order:
   on Linux and `launchctl list` with the profile's `launchd_prefix` on macOS; lingering on Linux.
   When the autocommit job is enabled, `~/.claude` must be the top of its own git repository, with
   an `origin`. The worktree-sweep job must be loaded on macOS and its timer listed on Linux; it
-  does not need Kaimon, and it is a `FAIL` when it is missing. The Kaimon token file must exist, with mode 600, and not be empty. Without Kaimon,
-  its jobs and the token are `SKIP`, and so is the token without OpenCode, oh-my-pi and
-  Antigravity, which read it. Antigravity counts as installed when `~/.gemini` is a directory.
+  does not need Kaimon, and it is a `FAIL` when it is missing. The Kaimon token file must exist,
+  with mode 600, and not be empty. Without Kaimon, its jobs and the token are `SKIP`, and so is
+  the token without OpenCode, oh-my-pi and Antigravity, which read it. Antigravity counts as installed when `~/.gemini` is a directory.
 - with `--full`, `harness test` and `julia -e 'using Revise'`. Without `--full`, both are `SKIP`.
 
 The subcommand writes no file, starts no service and runs no `--apply`. It prints no secret: it

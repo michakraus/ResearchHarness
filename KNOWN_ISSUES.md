@@ -1057,7 +1057,7 @@
 
 ### K170 · `harness doctor` does not count `~/.config/claudex/settings.json` as a file of an unchosen Claude Code layer.
 
-- location: `lib/harness/doctor.py:554`
+- location: `lib/harness/doctor.py:555`
 - evidence: `unchosen` lists the destinations of the Claude Code layer by hand, as
   `root / "settings.json"`, `root / install.STAMP` and the files of `copies`, with `root` the
   home's `.claude`. The adapter's `plan` also writes `~/.config/claudex/settings.json`, which that
