@@ -370,6 +370,51 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -fr ~"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -R /@@FIXTURE@@"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf /"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sudo rm -rf ~/Research/.scratch"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sudo -u root rm -rf ~/Research/.scratch"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm --r ~/Research/.scratch"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm --recur ~/Research/.scratch"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "env rm -rf ~/Research/.scratch"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "RM -rf ~/Research/.scratch"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if true; then rm -rf ~/Research/.scratch; fi"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo $(rm -rf ~/Research/.scratch)"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "2>/dev/null rm -rf ~/Research/.scratch"}, "cwd": "@@PKG@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sudo -l rm -rf build"}, "cwd": "@@WT@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm --force build.log"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "env git add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "command git add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "time git add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "X=1 git add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "! git add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "{ git add -A; }"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if true; then git add -A; fi"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add $'-A'"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add ./."}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add .//"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GIT add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git 2>&1 add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "sudo git add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo `git add -A`"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rtk git add -A"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git add ./src/Foo.jl"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "command -v git add -A"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo 'git add -A' > notes.txt"}, "cwd": "@@SCRATCH@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "env gh api -X DELETE repos/o/r/branches/main/protection"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GH_HOST=x gh api -X DELETE repos/o/r/branches/main/protection"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rtk gh api -X DELETE repos/o/r/branches/main/protection"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GH api -X DELETE repos/o/r/branches/main/protection"}}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "env gh api repos/other-org/r/issues/3/comments -f body=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "A=1 gh api repos/other-org/r/issues/3/comments -f body=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rtk gh api repos/other-org/r/issues/3/comments -f body=x"}}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "env git archive -o base.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GIT archive -o base.tar HEAD"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "env gh pr create --title T --body-file b.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "env gh run watch 123 -R own-org/X.jl --interval 10"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "env tee -a CHANGELOG.md < x"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "echo x <> CHANGELOG.md"}, "cwd": "@@CWD@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "wc -l < CHANGELOG.md"}, "cwd": "@@CWD@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "GIT worktree add X-y -b y origin/main"}, "cwd": "@@CWD@@"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git 2>&1 worktree add X-y -b y origin/main"}, "cwd": "@@CWD@@"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm --recursive --force ~/Research/Tasks"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd ~/Research && rm -rf Packages"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/bin/rm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
@@ -632,6 +677,18 @@
 {"frontend": "omp", "tool": "bash", "input": {"command": "julia -e 'using Metal; MtlArray(Float32[1, 2, 3])'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "julia -e 'using Metal; MtlArray(Float32[1, 2, 3])'"}, "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "cd /x && timeout 90 julia --startup-file=no -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": ">log julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "2>&1 julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "{ julia -e 'using Metal'; }"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "! julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "if true; then julia -e 'using Metal'; fi"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "for f in a; do julia -e 'using Metal'; done"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "echo `julia -e 'using Metal'`"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "echo $(julia -e 'using Metal')"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "xargs julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "env -S 'julia -e \"using Metal\"'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "sudo julia -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "JULIA -e 'using Metal'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "timeout -k 10 240 julia -e 'using CUDA'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "timeout --signal KILL 90 julia -e 'CUDA.functional()'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "env JULIA_DEBUG=all julia -e 'using AMDGPU'"}, "env": {"AGENTBOX": "1"}, "decision": "deny"}
@@ -889,6 +946,7 @@
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "cat ~/.ssh/id_ed25519 \""}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "gh api -X POST repos/a/b/issues && git add -A"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "git init sub"}, "decision": "deny", "bypass": null}
+{"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "g''it init sub"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "run_command", "args": {"CommandLine": "echo $(gh run view 1)"}, "decision": "ask", "bypass": false}
 {"frontend": "antigravity", "tool": "read_file", "args": {"Path": "~/.ssh/id_ed25519"}, "decision": "deny", "bypass": null}
 {"frontend": "antigravity", "tool": "read_file", "args": {"Path": "~/.SSH/ID_ED25519"}, "decision": "deny", "bypass": null}
@@ -1264,6 +1322,9 @@
 {"frontend": "omp", "tool": "write", "input": {"path": "~/.claude/skills.md", "content": "x"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
 {"frontend": "omp", "tool": "edit", "input": {"path": "~/.claude/skills/build-part/SKILL.md", "old_string": "a", "new_string": "b"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "g''it init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "GIT init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "env git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "git clone https://github.com/example-org/X.jl.git X"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "git init probe"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}

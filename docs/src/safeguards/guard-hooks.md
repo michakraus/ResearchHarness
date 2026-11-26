@@ -98,7 +98,14 @@ directory refuses the command when the payload names none. A guard that raises r
 with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline and a quoted operator are read as the shell
 reads them, and a quoted operator or a joined line is also read the other way, so that neither
-hides a part of the command. `tests/guard/corpus.jsonl` holds the decision of each payload that
+hides a part of the command. The checks that look for a program, the staging, write, `gh api`,
+`gh pr create`, watcher, GPU, rm and archive checks, read each simple command from its command
+word on (`shell.commands`): after the reserved words `!`, `{`, `if`, `then`, `elif`, `else`,
+`while`, `until` and `do`, after the assignments, and after each wrapper with its options, such as
+`env`, `sudo`, `time`, `timeout`, `nice`, `nohup`, `exec`, `command`, `xargs` and `rtk`. The body
+of `( … )`, of `$( … )` and of backticks is a command of its own, the target of a redirection is
+no word, the string of `env -S` is read as a script, and a program name counts in any case, since
+macOS runs git for `GIT`. `tests/guard/corpus.jsonl` holds the decision of each payload that
 the probe checks, and each difference from the base's hook scripts and plugin checks, with its
 reason. A check of a shell
 command reads each path through `hooks/guard/paths.py`, which reads each directory and name once
@@ -121,9 +128,10 @@ echo '{"tool_name":"Bash","tool_input":{"command":"git add -nA"},"cwd":"/"}' | ~
 `no_blind_stage.py` refuses a `git add` that stages more than the paths it names, on each shell
 call of every frontend.
 
-It reads the command, splits it into segments, and finds each `git add`. It refuses `-A`, `-u`,
-`--all`, `--update`, `--no-ignore-removal`, a short-flag cluster that holds `A` or `u`, and the
-pathspecs `.`, `./` and `:/`. The flag cluster is the reason for the check: a deny glob cannot
+It finds each `git add` as a simple command of its own. It refuses `-A`, `-u`, `--all`,
+`--update`, `--no-ignore-removal`, a short-flag cluster that holds `A` or `u`, and the pathspecs
+`:/` and `.` in each spelling that names the working directory, such as `./`, `./.` and `.//`. The
+flag cluster is the reason for the check: a deny glob cannot
 match `git add -nA` without also matching a file name that holds an `A`. The refusal tells the
 model to stage its paths by name.
 
@@ -241,8 +249,8 @@ same profile.
 ### The `gh pr create` check
 
 `gh_pr_create.py` decides a `gh pr create` by the repository that it names, on each shell call of
-every frontend. It finds each top-level `gh pr create` call and each call of its alias
-`gh pr new`, also after assignments such as `GH_REPO=…`, and reads every value of `-R` and
+every frontend. It finds each `gh pr create` call and each call of its alias `gh pr new` as a
+simple command, also after assignments such as `GH_REPO=…`, and reads every value of `-R` and
 `--repo`, in the forms `-R x`, `-Rx`, `-R=x`, `--repo x` and `--repo=x`, also at the end of a
 cluster of one-letter flags such as `-dR x`. The value of another flag that takes one, such as
 `--title`, is not a flag.
@@ -264,8 +272,9 @@ reason to ask the user.
 ### The `gh` watcher check
 
 `gh_watch_interval.py` refuses a `gh` watcher that polls the GitHub API faster than once every
-30 seconds, on each shell call of every frontend. A watcher is a top-level `gh run watch` call or
-a `gh pr checks` call with `--watch`, also after assignments such as `GH_REPO=…`. The check reads
+30 seconds, on each shell call of every frontend. A watcher is a `gh run watch` call or a
+`gh pr checks` call with `--watch`, as a simple command, also after assignments such as
+`GH_REPO=…`. The check reads
 the last value of `-i` or `--interval`, in the forms `-i 60`, `-i60`, `-i=60`, `--interval 60`
 and `--interval=60`, because `gh` takes the last one.
 
@@ -290,8 +299,8 @@ the directory stays, and no `git worktree` command knows it. The reason names
 the worktree broker outside `srt`. In Claude Code's table the check runs before the sandbox
 check, so an `add` or `move` with a path argument gets this route, not that check's. The check
 finds a
-`git` call after an assignment, after `cd … &&`, with `-C`, and in the script of `sh -c`,
-`bash -c` or `eval`. The variable is no boundary: the check only sends a call that would fail to
+`git` call after an assignment, after `cd … &&`, with `-C`, with a redirection before its
+subcommand, spelled `GIT`, and in the script of `sh -c`, `bash -c` or `eval`. The variable is no boundary: the check only sends a call that would fail to
 the route that works.
 
 ### The GPU shell check
@@ -304,10 +313,11 @@ route, `mcp__kaimon_start_session --project-path <project> --private` and then
 agent reports the failure and stops, with no shell route first or as a fallback. The tables of
 Claude Code, OpenCode and Antigravity do not run the check.
 
-A part of the command runs `julia` when its command word has the name `julia`, also as a path such
-as `~/.juliaup/bin/julia`, after assignments and after the wrappers `env`, `timeout`, `time`,
-`nice`, `nohup`, `exec` and `command` with their options; `command -v julia` runs nothing. The
-check reads such a part also in the script of `bash -c`. Once the command has a `julia` part, the
+A simple command runs `julia` when its command word has the name `julia`, also as a path such
+as `~/.juliaup/bin/julia`, read as the other checks read a command word; `command -v julia` runs
+nothing. The check reads such a command also in the script of `bash -c` and of `env -S`, behind a
+redirection, a `!`, a group or a compound command, and inside `$( … )` or backticks. Once the
+command has a `julia` part, the
 check refuses it when the command's whole text holds a GPU word, so a heredoc's body and a pipe
 into `julia` count too, and so does a word of another command: the reason of
 `grep -n Metal Manifest.toml && julia --version` says to run the two commands as two calls. The
@@ -317,10 +327,8 @@ case-sensitive: `Metalhead` and `metal` are none. The check also reads the first
 `.jl` file that a `julia` part names, a leading `~` expanded and a relative path taken against the
 call's working directory. It opens a file without blocking and reads it only when it is a regular
 file, so a FIFO or a directory adds nothing, and neither does a file that is missing or cannot be
-read. It follows no `include` and no `cd` before a relative script path (K193), it passes a
-shell `Pkg.test` of a package with a GPU dependency (K192), and it passes a `julia` run that a
-redirection, a `!`, a group, a compound command, backticks, `env -S` or a wrapper outside its list
-puts ahead of `julia` (K194). The variable is no boundary: the check only sends a call that cannot
+read. It follows no `include` and no `cd` before a relative script path (K193), and it passes a
+shell `Pkg.test` of a package with a GPU dependency (K192). The variable is no boundary: the check only sends a call that cannot
 work to the route that works.
 
 ### The rm check
@@ -328,7 +336,8 @@ work to the route that works.
 `rm_scope.py` refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` or a
 `git merge` outside a worktree, on each shell call of every frontend.
 
-It follows the working directory through each `cd` and resolves each operand. A recursive `rm`
+It follows the working directory through each `cd` and resolves each operand. An `rm` is
+recursive with `-r`, `-R` or a prefix of `--recursive` such as `--r`, which GNU `rm` takes. A recursive `rm`
 passes when every operand is strictly below a worktree, `~/Research/.worktrees/<name>/`, or
 strictly below `~/Research/.scratch/`. It refuses a recursive `rm` of `/`, of the parent
 directory of the home directories, `/Users` or `/home`, or of any path below it. So a
@@ -355,7 +364,7 @@ some paths of it, into a new directory. `git show <rev>:<path>` gives one file, 
 `git ls-tree -r --name-only <rev>` gives the list of files. A tar file that is itself the result
 goes to the user.
 
-It finds each top-level `git … archive` call, after global options such as `-C`, and reads the
+It finds each `git … archive` call as a simple command, after global options such as `-C`, and reads the
 option in each spelling that git takes: `-o <file>`, `-o<file>`, behind other short options as in
 `-vo <file>`, `--output`, `--output=<file>`, and any prefix of `--output`. An argument after `--`
 is a path. A `git archive` to stdout passes.

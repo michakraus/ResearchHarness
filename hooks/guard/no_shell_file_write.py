@@ -36,7 +36,7 @@ from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd
 from .paths import Place, place, work_tree
-from .shell import SEGMENT, Tokens, joined, lex
+from .shell import SEGMENT, Tokens, command_word, joined, lex, program
 
 # The redirection at the end of an operator run; what comes before it is a separator: `)>` closes
 # a subshell and redirects it. `<` forms read, and are kept only to find the heredoc placeholder
@@ -187,7 +187,7 @@ def split(tokens: Tokens, placeholders: dict[str, int]) -> list[Segment]:
             continue
         target = tokens[index][1]
         index += 1
-        if operator.startswith("<"):
+        if operator.startswith("<") and operator != "<>":
             if target in placeholders:
                 docs.append(placeholders[target])
         elif not (operator.endswith("&") and (target.isdigit() or target == "-")):
@@ -503,11 +503,11 @@ def offence(
     for target in writes:
         if tree_write(target, cwd, variables, ignores):
             return "> " + target
-    while words and ASSIGNMENT.match(words[0]):
-        words = words[1:]
-    if not words:
+    at = command_word(words)
+    if at is None:
         return None
-    head = words[0].rsplit("/", 1)[-1]
+    words = words[at:]
+    head = program(words[0])
     if head in INPLACE_TOOLS:
         flag = inplace(head, words[1:])
         if flag and not scratch_file(words[-1], cwd, variables):

@@ -1,8 +1,11 @@
 """Refuse a `git add` that stages more than the paths it names.
 
-The check reads each segment of a shell command and denies a `git add` whose flags or pathspecs
-stage a file the session did not write: `-A`, `-u` and their long forms, also inside a short-flag
-cluster (`git add -nA`), and a pathspec of the whole tree (`.`, `:/`). A `permissions.deny` glob
+The check reads each simple command of a shell command from its command word on
+(`shell.commands`), so also a `git add` behind `env`, `sudo`, an assignment, `!` or `then`, inside
+`{ … }`, `$( … )` or backticks, with a redirection before its subcommand, or spelled `GIT`. It
+denies a `git add` whose flags or pathspecs stage a file the session did not write: `-A`, `-u` and
+their long forms, also inside a short-flag cluster (`git add -nA`), and a pathspec of the whole
+tree (`.`, `:/`, and a spelling of `.` such as `./.` or `.//`). A `permissions.deny` glob
 cannot read a cluster: `Bash(git add -A*)` does not match `git add -nA`, and `Bash(git add *A*)`
 would refuse `git add src/Abc.jl`.
 
@@ -10,8 +13,10 @@ A text whose quotes do not balance is split on the separators first, and each pi
 checked.
 """
 
+from pathlib import PurePosixPath
+
 from .contract import PASS, Call, Verdict
-from .shell import SEGMENT, Tokens, joined, readings, words
+from .shell import SEGMENT, commands, joined, lex, program, readings
 
 # `git` global options that consume the token after them. Anything else starting with `-` before
 # the subcommand is a flag that stands alone.
@@ -53,6 +58,12 @@ def subcommand(tokens: list[str]) -> tuple[str | None, list[str]]:
     return None, []
 
 
+def whole_tree(argument: str) -> bool:
+    """True when the pathspec `argument` names the working directory, as `git` reads it: `.`
+    after its `./` and `//` are folded away, such as `./.` or `.//`."""
+    return argument.startswith(".") and PurePosixPath(argument) == PurePosixPath(".")
+
+
 def sweep(arguments: list[str]) -> str | None:
     """The argument that makes this `git add` stage unnamed paths, or None."""
     after_ddash = False
@@ -67,34 +78,19 @@ def sweep(arguments: list[str]) -> str | None:
                 cluster = argument[1:]
                 if "A" in cluster or "u" in cluster:
                     return argument
-        if argument in SWEEP_PATHSPEC or argument.startswith(":/"):
+        if argument in SWEEP_PATHSPEC or argument.startswith(":/") or whole_tree(argument):
             return argument
     return None
 
 
-def segments(tokens: Tokens) -> list[list[str]]:
-    """The words of each segment: every operator ends one."""
-    result: list[list[str]] = []
-    current: list[str] = []
-    for kind, value in tokens:
-        if kind == "op":
-            if current:
-                result.append(current)
-            current = []
-        else:
-            current.append(value)
-    if current:
-        result.append(current)
-    return result
-
-
 def fallback_segments(command: str) -> list[list[str]]:
-    """The segments of a text whose quotes do not balance: split on the separators first."""
+    """The simple commands of a text whose quotes do not balance: split on the separators first,
+    and each piece that reads taken from its command word on (`shell.commands`)."""
     found: list[list[str]] = []
     for raw in SEGMENT.split(command):
-        piece = words(raw.strip().lstrip("(").strip())
+        piece = lex(raw.strip().lstrip("(").strip())
         if piece is not None:
-            found.append(piece)
+            found.extend(commands(piece))
     return found
 
 
@@ -105,10 +101,10 @@ def check(call: Call) -> Verdict:
         return PASS
     read = readings(command, nested=True)
     for tokens_list in (
-        [segments(tokens) for tokens in read] if read is not None else [fallback_segments(command)]
+        [commands(tokens) for tokens in read] if read is not None else [fallback_segments(command)]
     ):
         for tokens in tokens_list:
-            if not tokens or tokens[0] != "git":
+            if program(tokens[0]) != "git":
                 continue
             name, arguments = subcommand(tokens)
             if name != "add":

@@ -1,8 +1,10 @@
 """Ask before a `gh api` write, except a review or a comment in an own organisation; refuse a
 `gh api` or `glab api` DELETE.
 
-The check finds each top-level `gh api` and `glab api` call and works out the HTTP method the way
-`gh` does: `-X`/`--method` when given, else POST when a body flag is present, else GET.
+The check finds each `gh api` and `glab api` call as a simple command of its own
+(`shell.commands`), also behind `env`, an assignment, `rtk` or `sudo`, and works out the HTTP
+method the way `gh` does: `-X`/`--method` when given, else POST when a body flag is present, else
+GET.
 
   * **GET, HEAD, `search/…`**: pass. The search API has no write.
   * **DELETE, from `gh api` or `glab api`**: deny.
@@ -54,7 +56,7 @@ from . import HarnessError
 from .contract import PASS, Call, Verdict, strongest
 from .jsonio import loads
 from .paths import contents, regular_text
-from .shell import Tokens, joined, parts, readings
+from .shell import Tokens, commands, joined, program, readings
 
 # Flags of `gh api` that consume the token after them.
 TAKES_VALUE = frozenset(
@@ -353,11 +355,11 @@ def decide(call: Request, cwd: str | None, others: tuple[str, ...], *, tool: str
 def verdict_of(tokens: Tokens, cwd: str | None) -> Verdict:
     """The verdict of the first `gh api` or `glab api` part that does not pass; a relative path
     resolves against `cwd` unless a part moves the working directory."""
-    found_parts = parts(tokens)
-    if any(words[0] in MOVES for words in found_parts):
+    found_parts = commands(tokens)
+    if any(program(words[0]) in MOVES for words in found_parts):
         cwd = None
     for index, words in enumerate(found_parts):
-        tool = words[0].rsplit("/", 1)[-1]
+        tool = program(words[0])
         if tool not in TOOLS or words[1:2] != ["api"]:
             continue
         api = request(words[2:])
@@ -381,7 +383,7 @@ def verdict_of(tokens: Tokens, cwd: str | None) -> Verdict:
 def check(call: Call) -> Verdict:
     """Ask before a `gh api` write; deny an API DELETE."""
     command = call.command
-    keywords = joined(command)
+    keywords = joined(command).lower()
     if "gh" not in keywords and "glab" not in keywords:
         return PASS
     return strongest(verdict_of(tokens, call.cwd) for tokens in readings(command, nested=True) or [])

@@ -16,11 +16,10 @@ and so does every call without `AGENTBOX`.
 """
 
 import os
-from pathlib import PurePosixPath
 
 from .contract import PASS, Call, Verdict, strongest
 from .rm_scope import TAKES_VALUE
-from .shell import Tokens, joined, readings
+from .shell import Tokens, joined, program, readings, unredirected
 
 # The variable that `agentbox` sets in the frontend's environment.
 AGENTBOX = "AGENTBOX"
@@ -46,7 +45,7 @@ def actions(words: list[str]) -> list[str]:
     """The action of each `git worktree add`, `move` or `remove` call in `words`, in order."""
     found: list[str] = []
     for index, word in enumerate(words):
-        if PurePosixPath(word).name != "git":
+        if program(word) != "git":
             continue
         at = index + 1
         while at < len(words) and words[at].startswith("-"):
@@ -57,8 +56,9 @@ def actions(words: list[str]) -> list[str]:
 
 
 def decide(tokens: Tokens, command: str) -> Verdict:
-    """The denial of the first worktree write of one reading, or PASS."""
-    words = [text for kind, text in tokens if kind == "word"]
+    """The denial of the first worktree write of one reading, or PASS. A redirection's target is no
+    word (`shell.unredirected`), so `git 2>&1 worktree add` is read."""
+    words = [text for kind, text in unredirected(tokens) if kind == "word"]
     found = actions(words)
     if not found:
         return PASS

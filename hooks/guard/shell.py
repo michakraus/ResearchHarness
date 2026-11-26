@@ -24,6 +24,7 @@ into the word `rm`, so a pre-filter on the raw text would miss it.
 import functools
 import re
 import sys
+from dataclasses import dataclass
 from typing import Literal
 
 type Kind = Literal["word", "op"]
@@ -41,6 +42,58 @@ OPERATOR = frozenset(";&|<>()\n")
 SEPARATORS = frozenset(";|&\n")
 # The fallback split of a text whose quotes do not balance.
 SEGMENT = re.compile(r"(?:&&|\|\||;|\||\n)")
+# A variable assignment before a command word, `X=1` or `X+=1`.
+ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\+?=")
+# The reserved words after which the next word stands in a command word's place: `! cmd`,
+# `{ cmd; }`, `if cmd; then cmd; fi`, `while cmd; do cmd; done`.
+RESERVED = frozenset({"!", "{", "}", "if", "then", "elif", "else", "fi", "while", "until", "do", "done"})
+
+
+@dataclass(frozen=True, slots=True)
+class Wrapper:
+    """A command that runs the command after its own words: the options that take the next word as
+    their value, the number of operands after its options, and the letters of a short option that
+    makes it run nothing. The assignments after `env` are skipped as those before a command word
+    are."""
+
+    valued: frozenset[str] = frozenset()
+    operands: int = 0
+    runs_nothing: str = ""
+
+
+# The wrappers, by program name (`program`), that `command_word` reads past.
+WRAPPERS = {
+    "env": Wrapper(frozenset({"-u", "-C", "-P", "-S", "--unset", "--chdir", "--split-string"})),
+    "timeout": Wrapper(frozenset({"-k", "-s", "--kill-after", "--signal"}), operands=1),
+    "time": Wrapper(),
+    "nice": Wrapper(frozenset({"-n", "--adjustment"})),
+    "nohup": Wrapper(),
+    "setsid": Wrapper(),
+    "exec": Wrapper(frozenset({"-a"})),
+    "command": Wrapper(runs_nothing="vV"),
+    "builtin": Wrapper(),
+    "sudo": Wrapper(
+        frozenset(
+            {"-u", "-g", "-h", "-p", "-C", "-U", "-r", "-t", "-T", "-D", "-R"}
+            | {"--user", "--group", "--host", "--prompt", "--close-from", "--other-user"}
+            | {"--role", "--type", "--command-timeout", "--chdir", "--chroot"}
+        ),
+        runs_nothing="lVe",
+    ),
+    "doas": Wrapper(frozenset({"-u", "-C"})),
+    "xargs": Wrapper(
+        frozenset(
+            {"-I", "-L", "-n", "-P", "-d", "-E", "-s", "-a"}
+            | {"--max-args", "--max-lines", "--max-procs", "--delimiter", "--max-chars", "--arg-file"}
+        )
+    ),
+    "stdbuf": Wrapper(frozenset({"-i", "-o", "-e"})),
+    "caffeinate": Wrapper(frozenset({"-t", "-w"})),
+    "chronic": Wrapper(),
+    "unbuffer": Wrapper(),
+    "rtk": Wrapper(),
+}
+
 # An operator of a redirection, whose target is the next word: `>`, `>>`, `<`, `<<`, `<<<`, `<>`,
 # `>&`, `<&`, `>|`, `&>`, `&>>`. A process substitution `<(` or `>(` is none.
 REDIRECTION = re.compile(r"&>>?|[<>]{1,3}[&|]?")
@@ -270,7 +323,8 @@ def script_of(tokens: Tokens, index: int) -> tuple[str, int, int] | None:
     the `eval` whose name is the word at `index`, or None. The script of a shell of SHELLS is the
     first word after its options when one of them is `-c`, also in a cluster such as `-lc`, or
     fish's `--command`; the value of `--command=<script>`; the script of `eval` is its words up to
-    the next operator, joined by blanks, as `eval` joins them."""
+    the next operator, joined by blanks, as `eval` joins them; the script of `env` is the value of
+    its `-S` or `--split-string` option (`split_string`)."""
     name = tokens[index][1]
     if name == "eval":
         end = index + 1
@@ -278,7 +332,10 @@ def script_of(tokens: Tokens, index: int) -> tuple[str, int, int] | None:
             end += 1
         script = " ".join(text for _, text in tokens[index + 1 : end])
         return (script, index + 1, end) if end > index + 1 else None
-    if name.rsplit("/", 1)[-1] not in SHELLS:
+    called = program(name)
+    if called == "env":
+        return split_string(tokens, index)
+    if called not in SHELLS:
         return None
     command, at = False, index + 1
     while at < len(tokens) and tokens[at][0] == "word":
@@ -297,6 +354,26 @@ def script_of(tokens: Tokens, index: int) -> tuple[str, int, int] | None:
     if not command or at >= len(tokens) or tokens[at][0] != "word":
         return None
     return tokens[at][1], at, at + 1
+
+
+def split_string(tokens: Tokens, index: int) -> tuple[str, int, int] | None:
+    """(the string, the index of its token, the index after it) of the `-S <string>`,
+    `-S<string>`, `--split-string <string>` or `--split-string=<string>` option of the `env` call
+    at `index`, which `env` splits into a command and runs; None without one. `env` splits the
+    string on blanks and reads its quotes, so the check reads it as a shell script, which can only
+    find more."""
+    at = index + 1
+    while at < len(tokens) and tokens[at][0] == "word" and tokens[at][1].startswith("-"):
+        option = tokens[at][1]
+        if option in ("-S", "--split-string"):
+            follows = at + 1 < len(tokens) and tokens[at + 1][0] == "word"
+            return (tokens[at + 1][1], at + 1, at + 2) if follows else None
+        if option.startswith("--split-string="):
+            return option.removeprefix("--split-string="), at, at + 1
+        if option.startswith("-S"):
+            return option[2:], at, at + 1
+        at += 2 if option in WRAPPERS["env"].valued else 1
+    return None
 
 
 def script_tokens(script: str, dialect: Dialect) -> Tokens | None:
@@ -394,6 +471,80 @@ def unredirected(tokens: Tokens) -> Tokens:
         target = kind == "op" and REDIRECTION.fullmatch(text) is not None
         result.append((kind, text))
     return tuple(result)
+
+
+def program(word: str) -> str:
+    """The name of the program that the command word `word` runs: its last path name, in lower
+    case, since a file system that ignores case, as macOS's does, runs git for `GIT`. A string
+    split, not `PurePosixPath`, since `scripts` asks it for every word of a command of 1 MiB."""
+    return word.rstrip("/").rsplit("/", 1)[-1].lower()
+
+
+def after_wrapper(words: list[str], at: int, wrapper: Wrapper) -> int | None:
+    """The index of the first word after the wrapper at `at` with its options and operands, or
+    None when a short option makes it run nothing. Each word that starts with `-` is an option,
+    `--` too."""
+    at += 1
+    while at < len(words) and words[at].startswith("-"):
+        short = not words[at].startswith("--")
+        if short and any(letter in words[at][1:] for letter in wrapper.runs_nothing):
+            return None
+        at += 2 if words[at] in wrapper.valued else 1
+    return at + wrapper.operands
+
+
+def command_word(words: list[str]) -> int | None:
+    """The index of the command word of the simple command `words`, or None when it runs nothing:
+    the first word after the reserved words of RESERVED, the assignments, and each wrapper of
+    WRAPPERS with its options and operands, as in `env X=1 sudo -u u git`."""
+    at = 0
+    while at < len(words):
+        if words[at] in RESERVED or ASSIGNMENT.match(words[at]):
+            at += 1
+            continue
+        wrapper = WRAPPERS.get(program(words[at]))
+        if wrapper is None:
+            return at
+        found = after_wrapper(words, at, wrapper)
+        if found is None:
+            return None
+        at = found
+    return None
+
+
+def commands(tokens: Tokens) -> list[list[str]]:
+    """The words of each simple command of `tokens`, in order, from its command word on
+    (`command_word`); a command that runs nothing is left out. A command ends at each separator and
+    at each parenthesis, so the body of a subshell `( … )` or of a substitution `$( … )` is a
+    command of its own, and so is the text between two backticks. The target of a redirection is
+    no word of a command (`unredirected`). It reads a backtick in a quote as one too, which can
+    only find more commands."""
+    found: list[list[str]] = []
+    current: list[str] = []
+
+    def close() -> None:
+        nonlocal current
+        at = command_word(current)
+        if at is not None:
+            found.append(current[at:])
+        current = []
+
+    for kind, text in unredirected(tokens):
+        if kind == "op":
+            redirection = REDIRECTION.fullmatch(text) is not None
+            if not redirection and (not SEPARATORS.isdisjoint(text) or "(" in text or ")" in text):
+                close()
+            continue
+        if "`" not in text:
+            current.append(text)
+            continue
+        for index, piece in enumerate(text.split("`")):
+            if index > 0:
+                close()
+            if piece:
+                current.append(piece)
+    close()
+    return found
 
 
 def words(text: str) -> list[str] | None:

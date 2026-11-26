@@ -82,7 +82,7 @@ from .gh_api_writes import own_organisations
 from .paths import Place, place
 from .rm_scope import TAKES_VALUE, WORKTREES, below, expand, resolve
 from .sandbox_lift import PLAIN
-from .shell import Tokens, joined, parts, readings, unredirected
+from .shell import Tokens, joined, parts, program, readings, unredirected
 
 # Seconds for each `git` the check runs.
 TIMEOUT = 5
@@ -354,7 +354,7 @@ def lease_option(argument: str) -> bool:
 def is_git(word: str) -> bool:
     """True when the program `word` is `git`, by its last name in any case: a file system that
     ignores case, as macOS's does, runs git for `GIT` and `/usr/bin/Git`."""
-    return PurePosixPath(word).name.lower() == "git"
+    return program(word) == "git"
 
 
 def subcommand(words: list[str], index: int) -> tuple[int, bool]:
