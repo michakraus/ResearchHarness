@@ -49,7 +49,7 @@ the branch onto another remote branch. Any other command that holds one of these
 `-C`, a `cd` before it, a pipeline, `-f` twice, a lease after the remote, a second refspec. A
 `deny` rule of the settings template still refuses those it names, such as a plain `--force`.
 `git` that cannot be run, or that fails, asks. A command that `shell.readings` cannot read, such as
-one with an open quote in a heredoc body, asks when it holds a word `git` and after it `push`,
+one with an open quote in a heredoc body, asks when it holds a word that ends in `git` and after it `push`,
 `worktree` or `cherry-pick` as a word of its own, or a `$` before a quote or a backslash, which can
 open an ANSI-C quote that decodes into either (`unread_write`); without them it passes, as Julia's
 `push!` or a path below `.worktrees/` do.
@@ -101,8 +101,10 @@ REPOSITORY = ("-C", "--git-dir")
 SHAPE = "`git push --force-with-lease[=<ref>[:<expect>]] origin <branch>`, or with `HEAD:refs/heads/<branch>`"
 # The changed files that a reason names.
 NAMED = 5
-# A word `git`, also as the last name of a path (`unread_write`).
-GIT_WORD = re.compile(r"(?<![\w.-])git(?![\w.-])")
+# A word that ends in `git`, such as `git` or a path to it (`unread_write`). It has no left
+# boundary: `joined` removes each backslash-newline, also one that the shell keeps as two lines (a
+# `\\` or a `\` that ends a comment), and then glues the `git` of the next line to the word before.
+GIT_WORD = re.compile(r"git(?![\w.-])")
 # A keyword of the check as a word of its own: one inside a longer word, such as Julia's `push!`
 # or the path `.worktrees/`, is none (`unread_write`).
 KEYWORD_WORD = re.compile(r"(?<![\w./-])(?:push|worktree|cherry-pick)(?![\w./!-])")
@@ -429,13 +431,14 @@ def decide(tokens: Tokens, cwd: str | None) -> Verdict:
 
 def unread_write(command: str, keywords: str) -> bool:
     """True when `command`, which `readings` cannot read, may hold a write of the check: a `$`
-    before a quote or a backslash (ANSI_C_OPENER), or in its `joined` text `keywords` a word `git`
-    (GIT_WORD) and after it, on any line, a keyword as a word of its own (KEYWORD_WORD). A keyword
-    in a heredoc body or a path with no `git` before it is none. An ANSI-C quote decodes its
-    escapes into a word, as `$'\\x67it'` gives `git`, and `joined` decodes it only where its quotes
-    pair as the shell pairs them; with no ANSI-C quote, a `git` call with a write of `writes` holds
-    both words in this order in the `joined` text, so the narrowing keeps each write that the
-    check reads."""
+    before a quote or a backslash (ANSI_C_OPENER), or in its `joined` text `keywords` a word that
+    ends in `git` (GIT_WORD) and after it, on any line, a keyword as a word of its own
+    (KEYWORD_WORD). A keyword in a heredoc body or a path with no `git` before it is none. An ANSI-C
+    quote decodes its escapes into a word, as `$'\\x67it'` gives `git`, and `joined` decodes it
+    only where its quotes pair as the shell pairs them. With no ANSI-C quote, a `git` call with a
+    write of `writes` leaves in the `joined` text a word that ends in `git`, also where `joined`
+    glues it to the line before, and its keyword after it, so the narrowing keeps each write that
+    the check reads."""
     if ANSI_C_OPENER.search(command) is not None:
         return True
     first_git = GIT_WORD.search(keywords)
