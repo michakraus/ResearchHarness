@@ -1,7 +1,10 @@
 """Refuse a recursive `rm` outside the scratch zones; ask for a `git rm` or `git merge` outside a worktree.
 
 The check follows the working directory through each `cd` of the command and resolves every
-operand.
+operand. A `cd` that can fail, that is, one not joined by `&&` to the next command, and one that
+one shell runs as its own and another in a child, leave either directory, and the check reads
+the commands after it in both (`moved_to`). A recursive `rm` of a relative operand after a `cd`
+to a directory that the check cannot know asks.
 
   * **`rm`**: pass when every operand lies strictly below a worktree, `~/Research/.worktrees/<name>/`,
     or strictly below `~/Research/.scratch/`. Deny a **recursive** `rm` of any other path under the
@@ -24,7 +27,7 @@ from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place
-from .shell import Tokens, builtin_commands, cut_heredocs, joined, program, readings
+from .shell import Simple, Tokens, builtin_commands, cut_heredocs, joined, program, readings
 
 HOME = str(Path.home().resolve())
 ROOT = Path(HOME, "Research").resolve()
@@ -35,6 +38,8 @@ USERS = PurePosixPath(HOME).parent.parts
 LEADING_HOME = re.compile(r"^\$(?:HOME|\{HOME\})(?=/|$)")
 GLOB = frozenset("*?[{")
 RECURSIVE = "--recursive"
+# The directories in which `moved_to` follows a command; a `cd` that can fail doubles them.
+DIRECTORIES = 16
 
 # `git` global options that consume the token after them.
 TAKES_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--exec-path", "--namespace"})
@@ -49,9 +54,16 @@ worktree, `~/Research/.worktrees/<name>/`, and below `~/Research/.scratch/`.
   * A worktree itself: `git worktree remove <path>` from the main checkout.
   * Build output in a checkout: remove it in a worktree, or name the files with a plain `rm`.
   * A probe environment: put it under `~/Research/.scratch/<task>/` and remove it there.
+  * After a `cd`: the check also reads the directory before it, unless `&&` joins the `cd` to the
+    next command, since the shell runs that command where it was when the `cd` fails.
 """
 
 UNREADABLE = "rm-scope could not read a command that mentions rm or merge."
+
+UNKNOWN_DIRECTORY = (
+    "`{segment}` removes a relative path after a `cd` to a directory that the check cannot know, "
+    "such as `cd $X` or `cd -`, so it cannot tell what the removal reaches."
+)
 
 
 class Missing:
@@ -236,38 +248,75 @@ def change_directory(words: list[str], cwd: Cwd) -> Cwd:
     return cwd.go(target, "real")
 
 
+def moved_to(simple: Simple, cwds: list[Cwd]) -> list[Cwd]:
+    """The directories in which the commands after the `cd` or `pushd` `simple` can run, from the
+    directories `cwds` before it. A `cd` that the shell runs as its own and that `&&` joins to the
+    next command moves it for sure. One that can fail before `;`, a newline, `||` or `|`, or that
+    one shell runs as its own and another in a child (`shell.Runs`), leaves either directory; one
+    that a child runs leaves the directory as it was."""
+    if simple.runs == "child":
+        return cwds
+    moved = [change_directory(simple.words, cwd) for cwd in cwds]
+    found = moved if simple.runs == "shell" and simple.then.strip() == "&&" else [*cwds, *moved]
+    kept: list[Cwd] = []
+    for cwd in found:
+        if not any(same_cwd(cwd, other) for other in kept):
+            kept.append(cwd)
+    # Past DIRECTORIES, a directory that the check cannot know stands for them all.
+    return kept if len(kept) <= DIRECTORIES else [None]
+
+
+def same_cwd(one: Cwd, other: Cwd) -> bool:
+    """True when both are one directory, or both the same unknown or missing one."""
+    if isinstance(one, Place) and isinstance(other, Place):
+        return one.same(other)
+    return one is other
+
+
+def unknown_operand(operand: str, cwd: Cwd) -> bool:
+    """True when the operand `operand` is a path that the shell resolves against a directory that
+    the check cannot know: a relative path, with no expansion, after a `cd` to such a directory."""
+    path = expand(operand)
+    return cwd is None and path is not None and not path.startswith("/")
+
+
 def decide(tokens: Tokens, cwd: Cwd) -> Verdict:
     """The verdict on one reading of the command: each simple command from its command word on
     (`shell.commands`), so also an `rm` behind `sudo`, `env` or `then`, or spelled `RM`. A `cd`
-    moves the directory only where the shell runs its own `cd` (`shell.builtin_commands`)."""
-    for words, builtin in builtin_commands(tokens):
+    moves the directory as `moved_to` reads it, and each command after it is read in each
+    directory where it can run. A recursive `rm` of a relative operand in a directory that the
+    check cannot know asks."""
+    cwds: list[Cwd] = [cwd]
+    unknown = None
+    for simple in builtin_commands(tokens):
+        words = simple.words
         head = program(words[0])
         if head in ("cd", "pushd"):
-            # Only the shell's own `cd` moves it (`shell.builtin_commands`).
-            if builtin and words[0] == head:
-                cwd = change_directory(words, cwd)
+            cwds = moved_to(simple, cwds)
         elif head == "rm":
             recursive, operands = rm_arguments(words)
             if not recursive:
                 continue
-            for operand in operands:
-                path = resolve(operand, cwd)
+            for operand, here in ((operand, here) for operand in operands for here in cwds):
+                path = resolve(operand, here)
                 if path is not None and not in_zone(path) and guarded(path):
                     return Verdict(
                         "deny", MESSAGE.format(segment=" ".join(words), operand=operand, path=path.text())
                     )
+                if unknown is None and unknown_operand(operand, here):
+                    unknown = Verdict("ask", UNKNOWN_DIRECTORY.format(segment=" ".join(words)))
         elif head == "git":
             subcommand, arguments, elsewhere = git_subcommand(words)
             if subcommand not in ("rm", "merge"):
                 continue
-            local = not elsewhere and in_worktree(cwd)
+            local = not elsewhere and all(in_worktree(here) for here in cwds)
             if subcommand == "rm" and (not local or git_rm_forced(arguments)):
                 return Verdict(
                     "ask", "`git rm` outside a worktree, with --force, or aimed at another repository."
                 )
             if subcommand == "merge" and not local and git_merge_asks(arguments):
                 return Verdict("ask", "`git merge` outside a worktree, or aimed at another repository.")
-    return PASS
+    return unknown or PASS
 
 
 def check(call: Call) -> Verdict:

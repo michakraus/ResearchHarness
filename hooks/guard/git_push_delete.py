@@ -49,7 +49,7 @@ def pushed(
     for index, word in enumerate(words):
         if not is_git(word):
             continue
-        at, unknown = subcommand(words, index, directory, configured)
+        at, unknown = subcommand(words, index, directory, configured, lookup=True)
         if unknown or words[at : at + 1] == ["push"]:
             found.append(words[at + 1 :])
     return found
@@ -88,5 +88,5 @@ def check(call: Call) -> Verdict:
         return PASS
     found = readings(command, nested=True)
     if found is None:
-        return Verdict("ask", UNREAD) if unread_write(command, keywords) else PASS
+        return Verdict("ask", UNREAD) if unread_write(command, keywords, call.cwd) else PASS
     return strongest(verdict_of(tokens, call.cwd) for tokens in found)

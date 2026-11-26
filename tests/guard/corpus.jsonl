@@ -420,6 +420,17 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/bin/rm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "X=1 rm -rf ~/Research/Papers"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "builtin cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x\nrm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x | true; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x && cd y && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "command cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "time cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $X && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd - && rm -rf build"}, "cwd": "@@R@@"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $X && rm -rf ~/Research/.scratch/y"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $X && rm -rf $Y"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "D=/opt/env cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "CD .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "/usr/bin/cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
@@ -432,7 +443,7 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf \"$TMPDIR/probe\""}, "cwd": "@@PKG@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf $(mktemp -d)"}, "cwd": "@@PKG@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf /tmp/claude/x"}, "cwd": "@@PKG@@"}, "decision": "pass"}
-{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $W && rm -rf build"}, "cwd": "@@PKG@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $W && rm -rf build"}, "cwd": "@@PKG@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf build 2>/dev/null"}, "cwd": "@@PKG@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "rm -rf build 2>/dev/null"}, "cwd": "@@WT@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git commit -m 'rm -rf ~/Research'"}, "cwd": "@@PKG@@"}, "decision": "pass"}
@@ -830,6 +841,14 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git pp --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git p --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git sh"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\ngit sh"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\ngit p origin :topic"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\ngit lg -3"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cat <<'EOF'\nit's\nEOF\nGIT_CONFIG_COUNT=1 git q"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $D && git p --force-with-lease origin feature"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $D && git p --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $D && git p origin :topic"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $D && grep -r git src"}, "cwd": "@@R@@/Packages/Own"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "git x --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.q GIT_CONFIG_VALUE_0=push; git q origin :topic"}, "cwd": "@@R@@/Packages/Own"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.q GIT_CONFIG_VALUE_0=push; git q --force-with-lease origin main"}, "cwd": "@@R@@/Packages/Own"}, "decision": "deny"}
@@ -1354,7 +1373,11 @@
 {"frontend": "omp", "tool": "bash", "input": {"command": "git clone https://github.com/example-org/X.jl.git X"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "git init probe"}, "cwd": "@@OMPHOME@@/Research", "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
-{"frontend": "omp", "tool": "bash", "input": {"command": "command cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "command cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "builtin cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "cd ..; git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "pushd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "pushd P && git init probe"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "CD .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "env cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "/usr/bin/cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}

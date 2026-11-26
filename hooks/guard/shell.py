@@ -510,9 +510,28 @@ def program(word: str) -> str:
     return word.rstrip("/").rsplit("/", 1)[-1].lower()
 
 
-# The wrappers, spelled exactly, after which the shell still runs its own builtin: `command cd`,
-# `builtin cd` and `time cd` move the shell (`builtin_commands`).
-KEEPS_BUILTIN = frozenset({"command", "builtin", "time"})
+# The wrapper, spelled exactly, after which every shell runs its own builtin: `builtin cd` moves
+# the shell (`builtin_commands`).
+KEEPS_BUILTIN = frozenset({"builtin"})
+# The wrappers, spelled exactly, after which one shell runs its builtin and another a program:
+# `command cd` moves bash and not zsh, and `time cd` moves bash and not `"time" cd`, which `lex`
+# reads as the same word (`builtin_commands`).
+MAY_KEEP_BUILTIN = frozenset({"command", "time"})
+
+# Where a simple command runs (`builtin_commands`): in the shell, as its own builtin; in the shell
+# or in a child, by the shell that runs it; or in a child, as a program.
+type Runs = Literal["shell", "either", "child"]
+
+
+@dataclass(frozen=True, slots=True)
+class Simple:
+    """A simple command of `builtin_commands`: its words from its command word on, where the shell
+    runs its command word if that is a builtin (`Runs`), and the operator after it (`then`): `&&`,
+    `;`, `|`, a parenthesis, a newline, a backtick, or empty at the end."""
+
+    words: list[str]
+    runs: Runs
+    then: str
 
 
 def after_wrapper(words: list[str], at: int, wrapper: Wrapper) -> int | None:
@@ -554,44 +573,51 @@ def commands(tokens: Tokens) -> list[list[str]]:
     command of its own, and so is the text between two backticks. The target of a redirection is
     no word of a command (`unredirected`). It reads a backtick in a quote as one too, which can
     only find more commands."""
-    return [words for words, _ in builtin_commands(tokens)]
+    return [simple.words for simple in builtin_commands(tokens)]
 
 
-def builtin_commands(tokens: Tokens) -> list[tuple[list[str], bool]]:
-    """(the words, whether the shell can run the command word as its own builtin) of each simple
-    command of `tokens`, as `commands` gives them. The shell runs a builtin such as `cd` only for
-    a command word spelled as its name, and only behind the wrappers of KEEPS_BUILTIN, spelled as
-    theirs; `CD`, `/usr/bin/cd`, `env cd` and `sudo cd` run the program `/usr/bin/cd` in a child,
-    which leaves the shell's directory as it was."""
-    found: list[tuple[list[str], bool]] = []
+def runs_of(prefix: list[str], word: str) -> Runs:
+    """Where the shell runs the command word `word` after the words `prefix` if it is a builtin
+    (`Runs`). The shell runs a builtin such as `cd` only for a command word spelled as its name, so
+    `CD` and `/usr/bin/cd` run the program `/usr/bin/cd` in a child; behind a wrapper of WRAPPERS
+    other than those of KEEPS_BUILTIN and MAY_KEEP_BUILTIN, spelled as theirs, as in `env cd` or
+    `sudo cd`, a child runs it too. An assignment is no wrapper."""
+    if word != program(word):
+        return "child"
+    wrappers = [found for found in prefix if ASSIGNMENT.match(found) is None and program(found) in WRAPPERS]
+    if any(found not in KEEPS_BUILTIN | MAY_KEEP_BUILTIN for found in wrappers):
+        return "child"
+    return "either" if any(found in MAY_KEEP_BUILTIN for found in wrappers) else "shell"
+
+
+def builtin_commands(tokens: Tokens) -> list[Simple]:
+    """Each simple command of `tokens` (`Simple`), with the words that `commands` gives, where the
+    shell runs its command word if that is a builtin (`runs_of`), and the operator after it."""
+    found: list[Simple] = []
     current: list[str] = []
 
-    def close() -> None:
+    def close(then: str) -> None:
         nonlocal current
         at = command_word(current)
         if at is not None:
-            builtin = all(
-                ASSIGNMENT.match(word) is not None or program(word) not in WRAPPERS or word in KEEPS_BUILTIN
-                for word in current[:at]
-            )
-            found.append((current[at:], builtin))
+            found.append(Simple(current[at:], runs_of(current[:at], current[at]), then))
         current = []
 
     for kind, text in unredirected(tokens):
         if kind == "op":
             redirection = REDIRECTION.fullmatch(text) is not None
             if not redirection and (not SEPARATORS.isdisjoint(text) or "(" in text or ")" in text):
-                close()
+                close(text)
             continue
         if "`" not in text:
             current.append(text)
             continue
         for index, piece in enumerate(text.split("`")):
             if index > 0:
-                close()
+                close("`")
             if piece:
                 current.append(piece)
-    close()
+    close("")
     return found
 
 
