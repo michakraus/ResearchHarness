@@ -1231,3 +1231,46 @@
   known `cd` target are read as before.
 - kind: defect
 - found: 2026-11-26, the branch `guard/cd-and-alias-limits`, a limit of the form of K199's fix
+
+### K205 · The rm and work-tree checks do not see a `cd` behind a zsh precommand modifier such as `noglob` or `nocorrect`.
+
+- location: `hooks/guard/shell.py:73`
+- evidence: WRAPPERS holds no `noglob`, `nocorrect` or `-`, so the command word of `noglob cd x`
+  is `noglob`, and `moved_to` keeps the directory. zsh runs its own `cd` behind each modifier.
+  With the call's working directory a worktree under `~/Research/.worktrees/`, `guard --from
+  claude` answers `pass` to `noglob cd ~/Research/Harness && rm -rf build` and to
+  `nocorrect cd ~/Research/Harness && rm -rf build`, which remove `~/Research/Harness/build`. The
+  same holds on `origin/main`.
+- kind: defect
+- found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`
+
+### K206 · The rm and work-tree checks read a `cd` that `||` follows a command before it as sure, though the shell skips it when that command succeeds.
+
+- location: `hooks/guard/shell.py:598`
+- evidence: `sure_move` reads only the operator after the `cd`. In `true || cd .scratch/x && rm
+  -rf Papers` the shell skips the `cd` and runs the `rm` in the old directory. With the call's
+  working directory `~/Research`, `guard --from claude` answers `pass`, and the command removes
+  `~/Research/Papers`. The same holds on `origin/main`.
+- kind: defect
+- found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`
+
+### K207 · The rm and work-tree checks read a `cd` at the end of a pipeline as zsh runs it, in the shell, while bash runs it in a child.
+
+- location: `hooks/guard/shell.py:598`
+- evidence: zsh runs the last command of a pipeline in the shell, and bash runs each command of
+  it in a child. With the call's working directory `~/Research`, `guard --from claude` answers
+  `pass` to `echo | cd .scratch/x && rm -rf Papers`, which removes `~/Research/Papers` under
+  bash. The same holds on `origin/main`.
+- kind: defect
+- found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`
+
+### K208 · The rm check refuses a recursive `rm` in the body of `if cd x; then`, though the body runs only after the `cd` succeeds.
+
+- location: `hooks/guard/shell.py:598`
+- evidence: `sure_move` reads the `;` after the `cd` of the condition as a `cd` that can fail.
+  With the call's working directory `~/Research`, `guard --from claude` refuses `if cd
+  .scratch/x; then rm -rf build; fi`, because it also reads `build` as
+  `/Users/<user>/Research/build`. `cd .scratch/x && rm -rf build` passes. On `origin/main` the
+  command passes.
+- kind: defect
+- found: 2026-11-26, the branch `guard/cd-and-alias-limits`, a limit of the form of K200's fix

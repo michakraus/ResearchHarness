@@ -427,6 +427,11 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x && cd y && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "command cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "time cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x || exit 1; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x || return; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if cd .scratch/x; then rm -rf build; fi"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "pushd .scratch/x && popd && rm -rf build"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "pushd .scratch/x && rm -rf build && popd"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $X && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd - && rm -rf build"}, "cwd": "@@R@@"}, "decision": "ask"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd $X && rm -rf ~/Research/.scratch/y"}, "cwd": "@@R@@"}, "decision": "pass"}
@@ -1377,6 +1382,7 @@
 {"frontend": "omp", "tool": "bash", "input": {"command": "builtin cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "cd ..; git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "pushd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "pushd .. && popd && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "pushd P && git init probe"}, "cwd": "@@OMPHOME@@/Research", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "CD .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "env cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}

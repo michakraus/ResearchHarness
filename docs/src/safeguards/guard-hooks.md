@@ -347,9 +347,15 @@ bash runs its own `cd` and zsh the program; after `time`, both shells run their 
 after a quoted `"time"`, which the check reads as the same word, the program. So the check reads
 the commands after either wrapper in both directories. The same holds for a `cd` that can fail: one
 that `&&` does not join to the next command, as in `cd x; rm -rf y`, where the shell runs the
-`rm` in the old directory when the `cd` fails. Join the `cd` with `&&`. A recursive `rm` of a
+`rm` in the old directory when the `cd` fails. Join the `cd` with `&&`. A `cd` that `|| exit` or
+`|| return` follows is also sure, because the shell stops when it fails. The check reads the `cd`
+of `if cd x; then rm -rf y; fi` as one that can fail and refuses such an `rm` (K208): write
+`cd x && rm -rf y`. A `popd` returns to the directory before the matching `pushd`. The check
+follows at most 4 directories; past that, it reads the commands after the last `cd` in the first
+directory and in an unknown one. A recursive `rm` of a
 relative operand after a `cd` to a directory that the check cannot know, such as `cd $X` or
-`cd -`, asks. A `cd` inside a subshell still moves the check's directory for the commands after
+`cd -`, asks, and so does a command whose operands need too many resolutions in all the
+directories. A `cd` inside a subshell still moves the check's directory for the commands after
 the subshell (K203). An `rm` is
 recursive with `-r`, `-R` or a prefix of `--recursive` such as `--r`, which GNU `rm` takes. A recursive `rm`
 passes when every operand is strictly below a worktree, `~/Research/.worktrees/<name>/`, or
