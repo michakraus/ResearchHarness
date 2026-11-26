@@ -285,7 +285,8 @@ Checks this machine's setup and changes nothing. It prints one line per check: `
 `FAIL` or `SKIP`, the name of the check and a detail. A `FAIL` line also names the section of the
 setup pages that fixes it. The checks are, in this order: the machine; the tools of
 [dependencies.md](dependencies.md), each with its minimum version; the profile; the dry run of
-`install` and its warnings; and the jobs (Kaimon, the update job, the autocommit job). Where the
+`install` and its warnings; and the jobs (Kaimon, the update job, the autocommit job, the
+worktree-sweep job). Where the
 profile's `[setup]` does not choose `opencode`, the OpenCode directory check is a `SKIP`, and
 without the `julia` component so are the Julia packages. A layer of a frontend that `[setup]`
 does not choose and that is still on disk is a `WARN` that names `[setup]` and the frontend, and
@@ -1765,7 +1766,8 @@ It checks, in this order:
 - the jobs: Kaimon, `~/.julia/bin/kaimon`; its server and the update job, with `systemctl --user`
   on Linux and `launchctl list` with the profile's `launchd_prefix` on macOS; lingering on Linux.
   When the autocommit job is enabled, `~/.claude` must be the top of its own git repository, with
-  an `origin`. The Kaimon token file must exist, with mode 600, and not be empty. Without Kaimon,
+  an `origin`. The worktree-sweep job must be loaded on macOS and its timer listed on Linux; it
+  does not need Kaimon, and it is a `FAIL` when it is missing. The Kaimon token file must exist, with mode 600, and not be empty. Without Kaimon,
   its jobs and the token are `SKIP`, and so is the token without OpenCode, oh-my-pi and
   Antigravity, which read it. Antigravity counts as installed when `~/.gemini` is a directory.
 - with `--full`, `harness test` and `julia -e 'using Revise'`. Without `--full`, both are `SKIP`.
