@@ -590,23 +590,30 @@ def runs_of(prefix: list[str], word: str) -> Runs:
     return "either" if any(found in MAY_KEEP_BUILTIN for found in wrappers) else "shell"
 
 
-# The builtins that end the script or the function, so that the commands after `cd x || exit`
-# run only where the `cd` succeeded (`sure_move`).
-STOPS = frozenset({"exit", "return"})
+# The builtins that end the shell, so that the commands after `cd x || exit` run only where the
+# `cd` succeeded (`sure_move`). Not `return`: bash goes on after a `return` outside a function.
+STOPS = frozenset({"exit"})
 
 
 def sure_move(simples: list[Simple], index: int) -> bool:
     """True when the commands after the `cd` or `pushd` `simples[index]` run only in the directory
     that it moves to: the shell runs it as its own (`Runs`), and `&&` joins it to the next command,
-    or `||` to an `exit` or a `return`, as in `cd x || exit 1; rm -rf y`. Any other `cd` can leave
-    the shell where it was, for example one that `;`, a newline or `|` follows, or one in the
-    condition of an `if`."""
+    or `||` to an `exit` that the shell runs as its own and outside a pipeline, as in
+    `cd x || exit 1; rm -rf y`. Any other `cd` can leave the shell where it was, for example one
+    that `;`, a newline or `|` follows, one in the condition of an `if`, or one before `return`,
+    `env exit`, `exit | cat` or `(exit 1)`, which end no shell or only a child."""
     simple = simples[index]
     if simple.runs != "shell":
         return False
-    then = simple.then.strip()
+    then = simple.then.replace(" ", "")
     following = simples[index + 1] if index + 1 < len(simples) else None
-    return then == "&&" or (then == "||" and following is not None and following.words[0] in STOPS)
+    stops = (
+        following is not None
+        and following.words[0] in STOPS
+        and following.runs == "shell"
+        and following.then.replace(" ", "").rstrip("(") not in ("|", "|&")
+    )
+    return then.startswith("&&") or (then == "||" and stops)
 
 
 def builtin_commands(tokens: Tokens) -> list[Simple]:
@@ -620,6 +627,11 @@ def builtin_commands(tokens: Tokens) -> list[Simple]:
         at = command_word(current)
         if at is not None:
             found.append(Simple(current[at:], runs_of(current[:at], current[at]), then))
+        elif "(" in then and found and not current:
+            # An opening parenthesis right after a command joins its operator, so that the `||`
+            # of `cd x || (exit 1)` is no `||` before an `exit` of the shell (`sure_move`).
+            last = found[-1]
+            found[-1] = Simple(last.words, last.runs, last.then + then)
         current = []
 
     for kind, text in unredirected(tokens):

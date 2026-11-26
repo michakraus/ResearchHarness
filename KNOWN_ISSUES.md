@@ -1212,7 +1212,7 @@
 
 ### K203 · The rm and work-tree checks keep the directory of a `cd` inside a subshell for the commands after the subshell.
 
-- location: `hooks/guard/rm_scope.py:291`
+- location: `hooks/guard/rm_scope.py:263`
 - evidence: `shell.builtin_commands` gives the commands of `( … )` and `$( … )` in order, with no
   depth, so `moved_to` keeps the directory of a `cd` in them. With the call's working directory
   `~/Research`, `guard --from claude` answers `pass` to
@@ -1234,7 +1234,7 @@
 
 ### K205 · The rm and work-tree checks do not see a `cd` behind a zsh precommand modifier such as `noglob` or `nocorrect`.
 
-- location: `hooks/guard/shell.py:73`
+- location: `hooks/guard/shell.py:70`
 - evidence: WRAPPERS holds no `noglob`, `nocorrect` or `-`, so the command word of `noglob cd x`
   is `noglob`, and `moved_to` keeps the directory. zsh runs its own `cd` behind each modifier.
   With the call's working directory a worktree under `~/Research/.worktrees/`, `guard --from
@@ -1274,3 +1274,14 @@
   command passes.
 - kind: defect
 - found: 2026-11-26, the branch `guard/cd-and-alias-limits`, a limit of the form of K200's fix
+
+### K209 · The rm check reads a `pushd` with no operand as `cd ~`, though bash and zsh swap the top two directories of the stack.
+
+- location: `hooks/guard/rm_scope.py:247`
+- evidence: `bash -c` and `zsh -fc` with `pushd p/q && pushd && pwd` print the start directory,
+  not `$HOME`. With the call's working directory `~/Research`, `guard --from claude` refuses
+  `pushd .scratch/x && pushd && rm -rf Papers` with "`Papers` resolves to `<home>/Papers`"; the
+  `rm` removes `~/Research/Papers`. The decision is right and the reason is wrong; a safe
+  removal can be refused. The same holds on `origin/main`.
+- kind: defect
+- found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`

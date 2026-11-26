@@ -3,11 +3,11 @@
 The check follows the working directory through each `cd` of the command and resolves every
 operand. A `cd` that can fail, that is, one not joined by `&&` to the next command, and one that
 one shell runs as its own and another in a child, leave either directory, and the check reads
-the commands after it in both (`moved_to`). A `cd` that `|| exit` or `|| return` follows is
-sure; a `popd` returns to the directory before its `pushd`. Past DIRECTORIES, the check reads the
-first directory and an unknown one. A recursive `rm` of a relative operand after a `cd` to a
-directory that the check cannot know asks, and so does one whose operands need more than EXTRA
-further resolutions (TOO_MANY).
+the commands after it in both (`moved_to`). A `cd` that `|| exit` follows is sure; a `popd`
+returns to the directory before its `pushd`. Past DIRECTORIES, the check reads the first
+directory and an unknown one. A recursive `rm` of a relative operand after a `cd` to a directory
+that the check cannot know asks, and so does one whose operands need more than EXTRA further
+resolutions (TOO_MANY).
 
   * **`rm`**: pass when every operand lies strictly below a worktree, `~/Research/.worktrees/<name>/`,
     or strictly below `~/Research/.scratch/`. Deny a **recursive** `rm` of any other path under the
@@ -68,7 +68,8 @@ UNREADABLE = "rm-scope could not read a command that mentions rm or merge."
 
 UNKNOWN_DIRECTORY = (
     "`{segment}` removes a relative path after a `cd` to a directory that the check cannot know, "
-    "such as `cd $X` or `cd -`, so it cannot tell what the removal reaches."
+    "such as `cd $X` or `cd -`, or after more `cd`s that can fail than the check follows, so it "
+    "cannot tell what the removal reaches. Join each `cd` with `&&`."
 )
 
 TOO_MANY = (

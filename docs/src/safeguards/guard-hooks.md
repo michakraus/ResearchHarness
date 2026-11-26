@@ -171,8 +171,9 @@ certificate error. The check refuses four shapes:
 It also refuses a `git init` or `git clone` whose target is inside a git working tree: the
 working-tree check. It follows each `cd` and `pushd` of the command to find the target, as the
 rm check does: `CD` or `env cd` leaves the directory as it is, and after a `cd` that can fail or
-that follows `command` or `time` the check reads the target in both directories. Under Claude
-Code a
+that follows `command` or `time` the check reads the target in both directories. It follows at
+most 4 directories, the one in which each `cd` succeeds among them, and drops the others. Under
+Claude Code a
 `cd` outside the agent's working directories is reset before the next call, so such a command runs
 in the agent's root and leaves a repository in another working tree. Each refusal gives the form
 that works, for example a separate Bash call.
@@ -347,8 +348,9 @@ bash runs its own `cd` and zsh the program; after `time`, both shells run their 
 after a quoted `"time"`, which the check reads as the same word, the program. So the check reads
 the commands after either wrapper in both directories. The same holds for a `cd` that can fail: one
 that `&&` does not join to the next command, as in `cd x; rm -rf y`, where the shell runs the
-`rm` in the old directory when the `cd` fails. Join the `cd` with `&&`. A `cd` that `|| exit` or
-`|| return` follows is also sure, because the shell stops when it fails. The check reads the `cd`
+`rm` in the old directory when the `cd` fails. Join the `cd` with `&&`. A `cd` that `|| exit` follows is
+also sure, because the shell stops when it fails. `|| return` is not: bash goes on after a
+`return` outside a function. Nor is `|| (exit 1)`, which ends only a subshell. The check reads the `cd`
 of `if cd x; then rm -rf y; fi` as one that can fail and refuses such an `rm` (K208): write
 `cd x && rm -rf y`. A `popd` returns to the directory before the matching `pushd`. The check
 follows at most 4 directories; past that, it reads the commands after the last `cd` in the first
