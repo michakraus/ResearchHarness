@@ -411,9 +411,8 @@ command, after the global options of `git` such as `-C`, also behind another com
 the remote that is neither an option nor the value of one, as the git write check does. A command
 that the check cannot read, such as one with an open quote, gets `ask` when it can hold a
 `git push`: when it holds a word that ends in `git` and after it a word `push`, `worktree` or
-`cherry-pick`, or
-a `$` before a quote or a backslash, which can open an ANSI-C quote. A Julia heredoc with `push!`,
-an adjoint `x'` and a range `1:n` passes.
+`cherry-pick`, or a `$` before a quote or a backslash, which can open an ANSI-C quote. A Julia
+heredoc with `push!`, an adjoint `x'` and a range `1:n` passes.
 
 A permission rule cannot state this in Claude Code without a warning at each start: the rule needs
 a literal `:` and then a wildcard, and Claude Code reports every `:*` that is not at the end of a
