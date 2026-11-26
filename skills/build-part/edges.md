@@ -528,6 +528,14 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   round-off and no step reduces it by `√eps`; a composite method that runs it as its last
   corrector inherits the stall. Test the member and the composite from a start within a few ulps
   of the root (CO verify 2, the solver package)
+- **a record that one step writes for the next step, read by no test:** a refactor moved the
+  writes of the forcing record into a helper. The next Newton step's Eisenstat–Walker term reads
+  that record: the step count, the previous residual norm and the linear residual. Three mutants
+  that deleted or misdirected those writes survived every test, because each test ran with a fixed
+  forcing term and so read none of the fields. A final status cannot show a stale record that only
+  changes the next inner tolerance. For every field that a step writes and only a later step reads,
+  run two steps or more with a consumer that reads it, and compare the later step's value with one
+  computed by hand from the earlier step's record (KM verify 2, the solver package)
 
 ## A type or an interface
 
