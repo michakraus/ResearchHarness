@@ -299,7 +299,7 @@ def preamble(name: str, meta: dict[str, Any], body: str, models: profile_module.
             "  It makes a worktree detached at the base and prints its path. Then pass the worktree "
             "as `workdir` on every command. Where the text below says that your "
             "caller made the worktree, or that `pwd` is already in it, read it as the worktree that "
-            "you made. Report its path; your caller removes it."
+            "you made. Report its path."
         )
     if "agent" in tools:
         rules.append(

@@ -101,7 +101,7 @@ instruction to post. Do not review it yourself. The separation is the point: the
 that has not yet decided how to fix anything.
 
 Take from its report: the findings table, the CI verdict, the posted review URL, and its worktree.
-**Name the reviewer's worktree in your report.** Your caller removes it with yours.
+**Name the reviewer's worktree in your report.**
 
 **CodeRabbit's comments are findings too.** Read them with the GET calls of step 7 of
 `~/.claude/skills/build-part/SKILL.md`, and add each to the findings table with its `source`.
@@ -237,8 +237,7 @@ anywhere in a `gh` command, even inside single quotes, makes the harness run it 
 `gh` then fails with `x509: OSStatus -26276`.
 
 **Do not remove your own worktree.** Removing it ends your session. Name its path and the
-`pr<n>-fix` branch in your report; your caller removes the worktree and deletes `pr<n>-fix` once
-the branch is pushed.
+`pr<n>-fix` branch in your report.
 
 ## One turn, one report
 

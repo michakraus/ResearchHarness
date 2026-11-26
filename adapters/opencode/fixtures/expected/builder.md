@@ -29,7 +29,7 @@ This agent is ported from Claude Code. Where the text below names a Claude Code 
   harness worktree add agent-<hex> --apply
   ```
 
-  It makes a worktree detached at the base and prints its path. Then pass the worktree as `workdir` on every command. Where the text below says that your caller made the worktree, or that `pwd` is already in it, read it as the worktree that you made. Report its path; your caller removes it.
+  It makes a worktree detached at the base and prints its path. Then pass the worktree as `workdir` on every command. Where the text below says that your caller made the worktree, or that `pwd` is already in it, read it as the worktree that you made. Report its path.
 - The `Agent` tool is the `task` tool here. A `task` call returns when the child returns. Ignore each instruction about `run_in_background` for an agent call.
 - The `bash` tool has no background mode, and its default `timeout` is short. Every command runs in the foreground until it ends or its `timeout` expires, so give a test suite, a precompile or any other long run a `timeout` that covers it.
 

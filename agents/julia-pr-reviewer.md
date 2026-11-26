@@ -50,8 +50,7 @@ describes it reads as false.
 **Your working directory is pinned to the worktree.** A `cd` has no effect, so give every path
 outside it in full, and pass `-R <owner>/<repo>` to `gh`.
 
-**Do not remove the worktree.** Removing it ends your session. Name its path in your report; your
-caller removes it.
+**Do not remove the worktree.** Removing it ends your session. Name its path in your report.
 
 ## GitHub access is `gh`, not an MCP server
 
