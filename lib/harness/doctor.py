@@ -19,8 +19,8 @@ The checks, in this order:
   frontend that `[setup]` does not choose and whose layer is still installed or whose plan
   refuses;
 - the jobs: Kaimon, its server and the update job; the autocommit job, and when it is enabled,
-  `~/.claude` as the top of its own git repository with an `origin`; the Kaimon token file; on
-  Linux also linger;
+  `~/.claude` as the top of its own git repository with an `origin`; the worktree-sweep job; the
+  Kaimon token file; on Linux also linger;
 - with `--full`, `harness test` and `julia -e 'using Revise'`; without it, both are SKIP.
 
 Each line is `PASS`, `WARN`, `FAIL` or `SKIP`, the name of the check and a detail. A FAIL line
@@ -133,6 +133,7 @@ FIX = {
     "kaimon job": ("setup-reference.md, The jobs", "setup-reference.md, The jobs"),
     "update job": ("setup-reference.md, The jobs", "setup-reference.md, The jobs"),
     "autocommit": ("setup-reference.md, The jobs", "setup-reference.md, The jobs"),
+    "worktree-sweep": ("setup-reference.md, The jobs", "setup-reference.md, The jobs"),
     "token": ("setup-reference.md, The Kaimon token", "setup-reference.md, The Kaimon token"),
     "test": ("setup-linux.md, The check that it worked", "setup-macos.md, The check that it worked"),
 }
@@ -240,21 +241,21 @@ class Doctor:
         self.linux = self.system == "Linux"
         self.home = pathlib.Path.home()
         try:
-            self.profile, self.profile_error = profile_module.load(args.profile), None
+            self.profile, self.profile_error = profile_module.load(args.profile), ""
         except HarnessError as e:
             self.profile, self.profile_error = None, str(e)
         except OSError as e:
             self.profile, self.profile_error = None, f"cannot read the profile: {e.strerror or e}"
 
-    def fix(self, topic):
+    def fix(self, topic: str) -> str:
         """The section of FIX for `topic`: the macOS one on macOS, else the Linux one."""
         linux, macos = FIX[topic]
         return macos if self.system == "Darwin" and macos else linux
 
-    def fail(self, name, detail, topic):
+    def fail(self, name: str, detail: str, topic: str) -> Result:
         return Result("FAIL", name, f"{detail} (fix: {self.fix(topic)})")
 
-    def refused(self, name, detail, topic):
+    def refused(self, name: str, detail: str, topic: str) -> Result:
         """A command or a file that gave no answer: SKIP in a session's sandbox, which can refuse
         it, else FAIL."""
         if sandboxed():
@@ -605,7 +606,13 @@ class Doctor:
                 out
                 + [
                     Result("SKIP", name, skip)
-                    for name in ("kaimon job", "julia-update job", "autocommit job", "~/.claude repository")
+                    for name in (
+                        "kaimon job",
+                        "julia-update job",
+                        "autocommit job",
+                        "~/.claude repository",
+                        "worktree-sweep job",
+                    )
                 ]
                 + [self.token(installed)]
             )
@@ -641,16 +648,24 @@ class Doctor:
                 else self.fail("autocommit job", detail, "autocommit"),
                 Result("SKIP", "~/.claude repository", "cannot tell whether the autocommit job is enabled"),
             ]
+        answer, detail = ask("worktree-sweep")
+        out.append(
+            Result("PASS", "worktree-sweep job", detail)
+            if answer == "yes"
+            else self.refused("worktree-sweep job", detail, "worktree-sweep")
+            if answer == "none"
+            else self.fail("worktree-sweep job", detail, "worktree-sweep")
+        )
         return out + [self.token(installed)]
 
     # The `ask(job)` of a service manager gives (answer, detail) for the job `kaimon`,
-    # `julia-update` or `claude-autocommit`: answer "yes" when the job runs or is loaded, "no" when
-    # it does not, "missing" when the manager's command is not found, and "none" when the command
-    # gives no answer.
+    # `julia-update`, `claude-autocommit` or `worktree-sweep`: answer "yes" when the job runs or is
+    # loaded, "no" when it does not, "missing" when the manager's command is not found, and "none"
+    # when the command gives no answer.
 
     def systemd(self):
         """The status query of the systemd user units: `is-active` of kaimon.service, and the list
-        of the timers for the other two jobs, which it reads once."""
+        of the timers for the other three jobs, which it reads once."""
         systemctl = shutil.which("systemctl")
         timers = []
 
@@ -856,7 +871,9 @@ SYSTEMD_TIMERS = (
     "Wed 2026-10-21 04:30:00 CEST      9h -                                      - julia-update.timer      "
     "julia-update.service\n"
     "Tue 2026-10-20 19:12:13 CEST 13min Tue 2026-10-20 18:57:13 CEST 1min 2s ago claude-autocommit.timer "
-    "claude-autocommit.service\n\n2 timers listed.\nPass --all to see loaded but inactive timers, too.\n"
+    "claude-autocommit.service\n"
+    "Wed 2026-10-21 05:00:00 CEST      9h -                                      - worktree-sweep.timer    "
+    "worktree-sweep.service\n\n3 timers listed.\nPass --all to see loaded but inactive timers, too.\n"
 )
 NO_BUS = "Failed to connect to user scope bus via local transport: No such file or directory\n"
 COMMON = {
@@ -937,7 +954,7 @@ MACOS = COMMON | {
     "jq": [("--version", "jq-1.7.1-apple\n", "", 0)],
     "launchctl": [
         (f"list org.example.{job}", LAUNCHCTL.replace("{job}", job), "", 0)
-        for job in ("kaimon", "julia-update", "claude-autocommit")
+        for job in ("kaimon", "julia-update", "claude-autocommit", "worktree-sweep")
     ],
 }
 # The dry run of `harness install` and `harness test`, as their lines end.
@@ -1331,6 +1348,7 @@ def status_cases(check, root, system_name):
                 "julia-update job",
                 "autocommit job",
                 "~/.claude repository",
+                "worktree-sweep job",
                 "Kaimon token",
             ),
             "PASS",
@@ -1744,7 +1762,12 @@ def status_cases(check, root, system_name):
                 "install": "SKIP",
             }
             | (
-                {"kaimon job": "SKIP", "julia-update job": "SKIP", "autocommit job": "SKIP"}
+                {
+                    "kaimon job": "SKIP",
+                    "julia-update job": "SKIP",
+                    "autocommit job": "SKIP",
+                    "worktree-sweep job": "SKIP",
+                }
                 if not linux
                 else {}
             ),
@@ -1877,6 +1900,7 @@ def status_cases(check, root, system_name):
             "julia-update job": "SKIP",
             "Kaimon token": "SKIP",
             "autocommit job": "PASS",
+            "worktree-sweep job": "PASS",
         },
         lambda f: f.kaimon.unlink(),
         ("jobs",),
@@ -2040,6 +2064,7 @@ def status_cases(check, root, system_name):
                 "julia-update job": "FAIL",
                 "autocommit job": "FAIL",
                 "~/.claude repository": "SKIP",
+                "worktree-sweep job": "FAIL",
             },
             lambda f: f.tool("systemctl", *no_bus),
             ("jobs",),
@@ -2051,6 +2076,7 @@ def status_cases(check, root, system_name):
                 "julia-update job": "SKIP",
                 "autocommit job": "SKIP",
                 "~/.claude repository": "SKIP",
+                "worktree-sweep job": "SKIP",
             },
             lambda f: f.tool("systemctl", *no_bus),
             ("jobs",),
@@ -2093,9 +2119,29 @@ def status_cases(check, root, system_name):
             ),
             ("jobs",),
         )
+
+        def no_sweep_timer(f: Fixture) -> None:
+            listed = [line for line in SYSTEMD_TIMERS.splitlines() if "worktree-sweep" not in line]
+            f.tool(
+                "systemctl",
+                ("--user is-active kaimon.service", "active\n", "", 0),
+                ("--user list-timers --no-pager", "\n".join(listed) + "\n", "", 0),
+            )
+
+        case(
+            "no worktree-sweep.timer",
+            {"worktree-sweep job": "FAIL", "autocommit job": "PASS", "julia-update job": "PASS"},
+            no_sweep_timer,
+            ("jobs",),
+        )
         case(
             "no systemctl",
-            {"kaimon job": "FAIL", "julia-update job": "FAIL", "autocommit job": "FAIL"},
+            {
+                "kaimon job": "FAIL",
+                "julia-update job": "FAIL",
+                "autocommit job": "FAIL",
+                "worktree-sweep job": "FAIL",
+            },
             lambda f: (f.bin / "systemctl").unlink(),
             ("jobs",),
         )
@@ -2104,7 +2150,7 @@ def status_cases(check, root, system_name):
         def launchctl(*missing, error=None):
             def change(f):
                 cases = []
-                for job in ("kaimon", "julia-update", "claude-autocommit"):
+                for job in ("kaimon", "julia-update", "claude-autocommit", "worktree-sweep"):
                     if error is not None:
                         cases.append((f"list org.example.{job}", "", error, 1))
                     elif job in missing:
@@ -2146,6 +2192,12 @@ def status_cases(check, root, system_name):
             lambda f: (launchctl("claude-autocommit")(f), shutil.rmtree(f.home / ".claude" / ".git")),
             ("jobs",),
         )
+        case(
+            "worktree-sweep not loaded",
+            {"worktree-sweep job": "FAIL", "autocommit job": "PASS", "julia-update job": "PASS"},
+            launchctl("worktree-sweep"),
+            ("jobs",),
+        )
         # In a session's sandbox, `launchctl list <label>` exits 1 and prints nothing.
         case(
             "launchctl without an answer",
@@ -2154,6 +2206,7 @@ def status_cases(check, root, system_name):
                 "julia-update job": "FAIL",
                 "autocommit job": "FAIL",
                 "~/.claude repository": "SKIP",
+                "worktree-sweep job": "FAIL",
             },
             launchctl(error=""),
             ("jobs",),
@@ -2165,6 +2218,7 @@ def status_cases(check, root, system_name):
                 "julia-update job": "SKIP",
                 "autocommit job": "SKIP",
                 "~/.claude repository": "SKIP",
+                "worktree-sweep job": "SKIP",
             },
             launchctl(error=""),
             ("jobs",),
@@ -2172,7 +2226,12 @@ def status_cases(check, root, system_name):
         )
         case(
             "no launchctl",
-            {"kaimon job": "FAIL", "julia-update job": "FAIL", "autocommit job": "FAIL"},
+            {
+                "kaimon job": "FAIL",
+                "julia-update job": "FAIL",
+                "autocommit job": "FAIL",
+                "worktree-sweep job": "FAIL",
+            },
             lambda f: (f.bin / "launchctl").unlink(),
             ("jobs",),
         )
