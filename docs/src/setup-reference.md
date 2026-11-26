@@ -1015,10 +1015,10 @@ every plist of `~/Library/LaunchAgents` at the next login. The script `claude-au
 still copied into `~/.local/bin`, but its job is not enabled.
 
 **What it does.** The jobs are four: the Kaimon server, the Julia update job, the autocommit job
-of `~/.claude` and the [worktree](concepts.md#worktree) sweep. On macOS, launch agents run them: a launch agent is a job that launchd, the
-service manager of macOS, runs for your account while you are logged in. On Linux, the
-`systemd --user` units run them. [components/other.md](components/other.md) says what each job
-runs.
+of `~/.claude` and the [worktree](concepts.md#worktree) sweep. On macOS, launch agents run them: a
+launch agent is a job that launchd, the service manager of macOS, runs for your account while you
+are logged in. On Linux, the `systemd --user` units run them.
+[components/other.md](components/other.md) says what each job runs.
 
 The update job and the autocommit job run installed copies of two scripts of the checkout, in
 `~/.local/bin`, not the scripts in the checkout: a session cannot write `~/.local/bin`, and the
@@ -1052,7 +1052,8 @@ error without Kaimon. [Kaimon](#kaimon) installs it.
 **Why.** The server must run before the agents of OpenCode, oh-my-pi and Antigravity can use
 Kaimon. The update job keeps the Julia releases and Kaimon current, the autocommit job commits
 and pushes `~/.claude`, and the worktree sweep removes the finished worktrees below
-`~/Research/.worktrees`, which no session can remove.
+`~/Research/.worktrees`, also those that hold a `.githooks` or a `.claude`, which no session can
+remove.
 
 ### macOS
 
