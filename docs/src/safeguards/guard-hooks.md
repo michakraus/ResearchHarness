@@ -339,8 +339,9 @@ work to the route that works.
 `git merge` outside a worktree, on each shell call of every frontend.
 
 It follows the working directory through each `cd` and resolves each operand. Only the shell's own
-`cd` moves it: `cd`, also after `command`, `builtin` or `time`, as bash reads them (K201). `CD`, `/usr/bin/cd`, `env cd` and
-`sudo cd` run the program `/usr/bin/cd` in a child, so the directory stays. An `rm` is
+`cd` moves it: `cd`, also after `command`, `builtin` or `time`, as bash reads them (K201). `CD`,
+`/usr/bin/cd`, `env cd` and `sudo cd` run the program `/usr/bin/cd` in a child, so the directory
+stays. An `rm` is
 recursive with `-r`, `-R` or a prefix of `--recursive` such as `--r`, which GNU `rm` takes. A recursive `rm`
 passes when every operand is strictly below a worktree, `~/Research/.worktrees/<name>/`, or
 strictly below `~/Research/.scratch/`. It refuses a recursive `rm` of `/`, of the parent
