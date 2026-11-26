@@ -170,8 +170,10 @@ certificate error. The check refuses four shapes:
 
 It also refuses a `git init` or `git clone` whose target is inside a git working tree: the
 working-tree check. It follows each `cd` and `pushd` of the command to find the target, as the
-rm check does: `CD` or `env cd` leaves the directory as it is, and after a `cd` that can fail or
-that follows `command` or `time` the check reads the target in both directories. It follows at
+rm check does: `CD` or `env cd` leaves the directory as it is, and after a `cd` that can fail,
+past the end of a sure `cd`'s `&&` list or `if`, or after a `cd` that follows `command` or `time`,
+the check reads the target in both directories. A `pushd` with no operand swaps the top two
+directories. It follows at
 most 4 directories, the one in which each `cd` succeeds among them, and drops the others. Under
 Claude Code a
 `cd` outside the agent's working directories is reset before the next call, so such a command runs
@@ -342,23 +344,28 @@ work to the route that works.
 `git merge` outside a worktree, on each shell call of every frontend.
 
 It follows the working directory through each `cd` and `pushd` and resolves each operand. Only
-the shell's own `cd` moves it: `cd`, also after `builtin`. `CD`, `/usr/bin/cd`, `env cd` and
+the shell's own `cd` moves it: `cd`, also after `builtin` and after zsh's `noglob`, `nocorrect`
+and `-`. `CD`, `/usr/bin/cd`, `env cd` and
 `sudo cd` run the program `/usr/bin/cd` in a child, so the directory stays. After `command`,
 bash runs its own `cd` and zsh the program; after `time`, both shells run their own `cd`, and
 after a quoted `"time"`, which the check reads as the same word, the program. So the check reads
-the commands after either wrapper in both directories. The same holds for a `cd` that can fail: one
-that `&&` does not join to the next command, as in `cd x; rm -rf y`, where the shell runs the
-`rm` in the old directory when the `cd` fails. Join the `cd` with `&&`. A `cd` that `|| exit` follows is
-also sure, because the shell stops when it fails. `|| return` is not: bash goes on after a
-`return` outside a function. Nor is `|| (exit 1)`, which ends only a subshell. The check reads the `cd`
-of `if cd x; then rm -rf y; fi` as one that can fail and refuses such an `rm` (K208): write
-`cd x && rm -rf y`. A `popd` returns to the directory before the matching `pushd`. The check
+the commands after either wrapper in both directories. The same holds for a `cd` that can fail.
+A `cd` is sure only for the commands that run after it succeeds: the rest of its `&&` list, as in
+`cd x && rm -rf y`; every command after `cd x || exit`, since the shell stops when it fails; and
+the commands of `if cd x; then … fi` up to the `else`, `elif` or `fi`. For any other command, the
+check reads the directory before the `cd` too: after `cd x; rm -rf y`, after the end of the `&&`
+list in `cd x && true; rm -rf y`, `cd x && true || rm -rf y` and `cd x && true & rm -rf y`, and
+after the parenthesis of `(cd x && true); rm -rf y` closes. `|| return` makes no `cd` sure: bash
+goes on after a `return` outside a function. Nor does `|| (exit 1)`, which ends only a subshell.
+A `cd` that `||` or a pipe comes before, as in `true || cd x` or `echo | cd x`, is never sure:
+the shell can skip it, and bash runs a pipeline's commands in a child. A `{ … }` group ends the
+`&&` list at its `;` (K211). A `popd` returns to the directory before the matching `pushd`, and
+a `pushd` with no operand swaps the top two directories. The check
 follows at most 4 directories; past that, it reads the commands after the last `cd` in the first
 directory and in an unknown one. A recursive `rm` of a
 relative operand after a `cd` to a directory that the check cannot know, such as `cd $X` or
 `cd -`, asks, and so does a command whose operands need too many resolutions in all the
-directories. A `cd` inside a subshell still moves the check's directory for the commands after
-the subshell (K203). An `rm` is
+directories. An `rm` is
 recursive with `-r`, `-R` or a prefix of `--recursive` such as `--r`, which GNU `rm` takes. A recursive `rm`
 passes when every operand is strictly below a worktree, `~/Research/.worktrees/<name>/`, or
 strictly below `~/Research/.scratch/`. It refuses a recursive `rm` of `/`, of the parent

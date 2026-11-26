@@ -77,6 +77,10 @@ WRAPPERS = {
     "exec": Wrapper(frozenset({"-a"})),
     "command": Wrapper(runs_nothing="vV"),
     "builtin": Wrapper(),
+    # zsh's precommand modifiers; bash finds no such program, so the command fails there.
+    "noglob": Wrapper(),
+    "nocorrect": Wrapper(),
+    "-": Wrapper(),
     "sudo": Wrapper(
         frozenset(
             {"-u", "-g", "-h", "-p", "-C", "-U", "-r", "-t", "-T", "-D", "-R"}
@@ -437,7 +441,16 @@ def readings(text: str, *, nested: bool = False) -> list[Tokens] | None:
     """The readings of `text` that a check decides on, in each of its `dialects`, or None when a
     quote of bash's reading is open. Where `text` holds `<<`, also the readings of the text without
     its heredoc bodies (`cut_heredocs`), each with an open quote closed (`script_tokens`). With
-    `nested`, also each reading with its scripts spliced in (`scripts`)."""
+    `nested`, also each reading with its scripts spliced in (`scripts`). Each check of a call reads
+    the same command, so the readings are made once (`cached_readings`); each caller gets a list of
+    its own."""
+    found = cached_readings(text, nested=nested)
+    return None if found is None else list(found)
+
+
+@functools.lru_cache(maxsize=4)
+def cached_readings(text: str, *, nested: bool) -> tuple[Tokens, ...] | None:
+    """The readings of `readings`, made once for each text."""
     if lex(text, "bash") is None:
         return None
     found: list[Tokens] = []
@@ -467,7 +480,7 @@ def readings(text: str, *, nested: bool = False) -> list[Tokens] | None:
             for extra in (spliced, tuple(as_operator(token) for token in spliced)):
                 if extra not in found:
                     found.append(extra)
-    return found
+    return tuple(found)
 
 
 def parts(tokens: Tokens) -> list[list[str]]:
@@ -510,9 +523,10 @@ def program(word: str) -> str:
     return word.rstrip("/").rsplit("/", 1)[-1].lower()
 
 
-# The wrapper, spelled exactly, after which every shell runs its own builtin: `builtin cd` moves
-# the shell (`builtin_commands`).
-KEEPS_BUILTIN = frozenset({"builtin"})
+# The wrappers, spelled exactly, after which a shell runs its own builtin or nothing: `builtin cd`
+# moves the shell, and so does `noglob cd` in zsh, while bash finds no program `noglob`
+# (`builtin_commands`).
+KEEPS_BUILTIN = frozenset({"builtin", "noglob", "nocorrect", "-"})
 # The wrappers, spelled exactly, after which one shell runs its builtin and another a program:
 # `command cd` moves bash and not zsh, and `time cd` moves bash and not `"time" cd`, which `lex`
 # reads as the same word (`builtin_commands`).
@@ -526,12 +540,16 @@ type Runs = Literal["shell", "either", "child"]
 @dataclass(frozen=True, slots=True)
 class Simple:
     """A simple command of `builtin_commands`: its words from its command word on, where the shell
-    runs its command word if that is a builtin (`Runs`), and the operator after it (`then`): `&&`,
-    `;`, `|`, a parenthesis, a newline, a backtick, or empty at the end."""
+    runs its command word if that is a builtin (`Runs`), the operators after it (`then`): `&&`,
+    `;`, `|`, a parenthesis, a newline, a backtick, or empty at the end, with those of a part that
+    runs nothing after it, as in `x; } && y`; the reserved words before it (`lead`), with those of
+    such a part before it, as in `fi; y`; and the number of parentheses open before it (`depth`)."""
 
     words: list[str]
     runs: Runs
     then: str
+    lead: tuple[str, ...] = ()
+    depth: int = 0
 
 
 def after_wrapper(words: list[str], at: int, wrapper: Wrapper) -> int | None:
@@ -591,49 +609,167 @@ def runs_of(prefix: list[str], word: str) -> Runs:
 
 
 # The builtins that end the shell, so that the commands after `cd x || exit` run only where the
-# `cd` succeeded (`sure_move`). Not `return`: bash goes on after a `return` outside a function.
+# `cd` succeeded (`flow`). Not `return`: bash goes on after a `return` outside a function.
 STOPS = frozenset({"exit"})
+# The operators of a `then` (`operators`): a newline is read as `;`.
+OPERATORS = re.compile(r"&&|\|\||\|&|[|;&()`]")
+# A newline right after an operator, which only goes on with the line (`operators`).
+GOES_ON = re.compile(r"(&&|\|\||\|&|\|)[ \t]*\n")
+# What stands for a part that runs nothing, such as an assignment, between the operators of a
+# `then` (`cached_commands`).
+PART = "\x1f"
+# The operators after a command that keep the commands after it in its `&&` list: they run only
+# when it succeeded, or in a pipeline with it.
+IN_LIST = frozenset({"&&", "|", "|&", ""})
 
 
-def sure_move(simples: list[Simple], index: int) -> bool:
-    """True when the commands after the `cd` or `pushd` `simples[index]` run only in the directory
-    that it moves to: the shell runs it as its own (`Runs`), and `&&` joins it to the next command,
-    or `||` to an `exit` that the shell runs as its own, outside a pipeline and not in the
-    background, as in `cd x || exit 1; rm -rf y`. Any other `cd` can leave the shell where it was,
-    for example one that `;`, a newline or `|` follows, one in the condition of an `if`, or one
-    before `return`, `env exit`, `exit | cat`, `exit &` or `(exit 1)`, which end no shell or only
-    a child."""
+def operators(then: str) -> list[str]:
+    """The operators of the `then` of a `Simple`, a newline as `;`, but none for a newline right
+    after an operator of GOES_ON, where it only goes on with the line. A part that runs nothing
+    stands between two operators as PART (`cached_commands`), so a newline after the assignment of
+    `cd x && X=1` is a `;`."""
+    return OPERATORS.findall(GOES_ON.sub(r"\1", then).replace("\n", ";"))
+
+
+def last_operator(then: str) -> str:
+    """The last operator of `then` that is no parenthesis, or empty."""
+    return next((found for found in reversed(operators(then)) if found not in "()"), "")
+
+
+@dataclass(frozen=True, slots=True)
+class Flow:
+    """The directories that the commands of a list of `Simple` run in, after each `cd` or `pushd`
+    (`flow`): whether the commands after the one at an index run only where it moved to (`sure`),
+    until the index of `ends` where the shell can be where it was before it again; past that
+    index, a check reads the directories before it too. A `cd` that is not sure leaves either
+    directory for every command after it."""
+
+    sure: tuple[bool, ...]
+    ends: tuple[int | None, ...]
+
+
+# How a `cd` makes the commands after it run only where it moved to (`sure_kind`).
+type Sure = Literal["list", "exit", "if"]
+
+
+def sure_kind(simples: list[Simple], index: int) -> Sure | None:
+    """How the commands after the `cd` or `pushd` `simples[index]` run only where it moved to, or
+    None when they can run where the shell was. The shell runs it as its own (`Runs`), and no
+    `||`, `|` or backtick before it lets the commands after it run when it never ran, as in
+    `true || cd x && y` or `echo | cd x && y`, which bash runs in a child. Then `list`: `&&`
+    joins it to the next command, as in `cd x && y`; `exit`: `||` joins it to an `exit` that the
+    shell runs as its own, outside a pipeline and not in the background, as in `cd x || exit 1; y`
+    and unlike `cd x || (exit 1)` or `exit &`; `if`: it is the condition of an `if`, as in
+    `if cd x; then y; fi`."""
     simple = simples[index]
-    if simple.runs != "shell":
-        return False
-    then = "".join(simple.then.split())
+    if simple.runs != "shell" or program(simple.words[0]) not in ("cd", "pushd"):
+        return None
+    if index > 0:
+        before = simples[index - 1].then
+        if "`" in before or last_operator(before) in ("||", "|", "|&"):
+            return None
+    own = operators(simple.then)
     following = simples[index + 1] if index + 1 < len(simples) else None
-    stops = (
-        following is not None
-        and following.words[0] in STOPS
-        and following.runs == "shell"
-        and "".join(following.then.split()).rstrip("(") not in ("|", "|&", "&")
+    if last_operator(simple.then) == "&&":
+        return "list"
+    if own == ["||"] and following is not None:
+        stops = following.words[0] in STOPS and following.runs == "shell" and following.depth == simple.depth
+        after = [found for found in operators(following.then) if found not in "()"]
+        if stops and "`" not in following.then and after[:1] not in (["|"], ["|&"], ["&"]):
+            return "exit"
+    if (
+        simple.lead[-1:] == ("if",)
+        and own == [";"]
+        and following is not None
+        and following.lead[:1] == ("then",)
+    ):
+        return "if"
+    return None
+
+
+def ends_list(simple: Simple, depth: int) -> bool:
+    """True when an operator after `simple`, open in `depth` parentheses, ends an `&&` list: one
+    other than `&&` or a pipe, or a backtick. An operator inside a parenthesis opened after the list
+    began, as the `;` of `cd x && (y; z)`, ends nothing."""
+    level = simple.depth
+    for operator in operators(simple.then):
+        if operator == "`":
+            return True
+        if operator in "()":
+            level += 1 if operator == "(" else -1
+        elif level <= depth and operator not in IN_LIST:
+            return True
+    return False
+
+
+def scope_end(simples: list[Simple], index: int, kind: Sure) -> int | None:
+    """The index of the first command after the sure move `simples[index]` of `kind` (`sure_kind`)
+    that can run where the shell was before it, or None. Every kind ends where a parenthesis
+    closes that was open before it. A `list` ends after the `&&` list that it starts: after an
+    operator other than `&&` or a pipe, such as `;`, `||` or `&`, or after a backtick; an `if`
+    ends at the `else`, `elif` or `fi` of its `if`."""
+    depth = simples[index].depth
+    level = 1
+    for at in range(index + 1, len(simples)):
+        simple = simples[at]
+        if simple.depth < depth:
+            return at
+        if kind == "list" and ends_list(simples[at - 1], depth):
+            return at
+        if kind == "if":
+            for word in simple.lead:
+                level += {"if": 1, "fi": -1}.get(word, 0)
+                if level == 0 or (level == 1 and word in ("else", "elif")):
+                    return at
+    return None
+
+
+def flow(simples: list[Simple]) -> Flow:
+    """The `Flow` of `simples`: for each `cd` or `pushd`, whether it is sure (`sure_kind`) and the
+    index where that ends (`scope_end`)."""
+    kinds: list[Sure | None] = [sure_kind(simples, index) for index in range(len(simples))]
+    return Flow(
+        tuple(kind is not None for kind in kinds),
+        tuple(None if kind is None else scope_end(simples, index, kind) for index, kind in enumerate(kinds)),
     )
-    return then.startswith("&&") or (then == "||" and stops)
 
 
 def builtin_commands(tokens: Tokens) -> list[Simple]:
     """Each simple command of `tokens` (`Simple`), with the words that `commands` gives, where the
-    shell runs its command word if that is a builtin (`runs_of`), and the operator after it."""
+    shell runs its command word if that is a builtin (`runs_of`), the operators after it, the
+    reserved words before it and the parentheses open before it. Several checks read the same
+    tokens, so the commands are made once (`cached_commands`); each caller gets lists of its own."""
+    return [
+        Simple(list(simple.words), simple.runs, simple.then, simple.lead, simple.depth)
+        for simple in cached_commands(tokens)
+    ]
+
+
+@functools.lru_cache(maxsize=4)
+def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
+    """The simple commands of `builtin_commands`, made once for each reading."""
     found: list[Simple] = []
     current: list[str] = []
+    lead: list[str] = []
+    depth = 0
 
     def close(then: str) -> None:
-        nonlocal current
+        nonlocal current, lead, depth
         at = command_word(current)
         if at is not None:
-            found.append(Simple(current[at:], runs_of(current[:at], current[at]), then))
-        elif "(" in then and found and all(word in RESERVED for word in current):
-            # An opening parenthesis right after a command, or after a reserved word such as `{`,
-            # joins its operator, so that the `||` of `cd x || (exit 1)` or `cd x || { (exit 1); }`
-            # is no `||` before an `exit` of the shell (`sure_move`).
-            last = found[-1]
-            found[-1] = Simple(last.words, last.runs, last.then + then)
+            lead.extend(word for word in current[:at] if word in RESERVED)
+            found.append(Simple(current[at:], runs_of(current[:at], current[at]), then, tuple(lead), depth))
+            lead = []
+        else:
+            # A part that runs nothing, such as `}`, `fi` or an assignment, passes its reserved
+            # words to the next command and its operators to the command before it, so that the
+            # `;` of `cd x && X=1; y` and the `(` of `cd x || (exit 1)` reach the `cd` (`flow`).
+            lead.extend(word for word in current if word in RESERVED)
+            if found:
+                last = found[-1]
+                joined_then = last.then + (PART if current else "") + then
+                found[-1] = Simple(last.words, last.runs, joined_then, last.lead, last.depth)
+        depth += then.count("(") - then.count(")")
         current = []
 
     for kind, text in unredirected(tokens):
@@ -651,7 +787,7 @@ def builtin_commands(tokens: Tokens) -> list[Simple]:
             if piece:
                 current.append(piece)
     close("")
-    return found
+    return tuple(found)
 
 
 def words(text: str) -> list[str] | None:

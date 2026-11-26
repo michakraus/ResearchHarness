@@ -31,13 +31,14 @@ from .paths import Place, place, work_tree
 from .shell import (
     SEGMENT,
     SEPARATORS,
+    Flow,
     Simple,
     Tokens,
     builtin_commands,
+    flow,
     joined,
     program,
     readings,
-    sure_move,
     words,
 )
 
@@ -283,36 +284,71 @@ def path_screened(heads: list[Head]) -> tuple[str, str] | None:
 
 def moved(cwds: list[Place | None], target: str, *, either: bool) -> list[Place | None]:
     """The directories after a `cd` or `pushd` to `target` from each of `cwds`; with `either`,
-    also `cwds` themselves. At most DIRECTORIES, the first ones kept; the moved ones come first, so
-    the directory in which each `cd` succeeded is always kept."""
+    also `cwds` themselves (`distinct`)."""
     found = [None if cwd is None else cwd.go(expanded(target), "real") for cwd in cwds]
+    return distinct([*found, *cwds] if either else found)
+
+
+def moved_by(
+    head: str,
+    arguments: list[str],
+    cwds: list[Place | None],
+    stack: list[list[Place | None]],
+    *,
+    either: bool,
+) -> list[Place | None]:
+    """The directories after the `cd`, `pushd` or `popd` `head` with `arguments` from `cwds`
+    (`moved`), with the stack of `pushd` in `stack`. A `pushd` with no operand swaps the top two
+    directories of the stack, which cannot be known with no `pushd` before it in the command; a
+    `popd` returns to the top one, or leaves the directories as they are. A `cd` with no operand
+    leaves them as they are too."""
+    if head == "popd":
+        return stack.pop() if stack else cwds
+    if head == "pushd" and not arguments:
+        unknown: list[Place | None] = [None]
+        top = stack.pop() if stack else unknown
+        stack.append(cwds)
+        return distinct([*top, *cwds]) if either else top
+    if not arguments:
+        return cwds
+    if head == "pushd":
+        stack.append(cwds)
+    return moved(cwds, arguments[0], either=either)
+
+
+def distinct(cwds: list[Place | None]) -> list[Place | None]:
+    """Each directory of `cwds` once, at most DIRECTORIES, the first ones kept; a moved directory
+    comes first, so the directory in which each `cd` succeeded is always kept."""
     kept: list[Place | None] = []
-    for cwd in [*found, *cwds] if either else found:
+    for cwd in cwds:
         if not any(cwd is other or (cwd and other and cwd.same(other)) for other in kept):
             kept.append(cwd)
     return kept[:DIRECTORIES]
 
 
 def in_work_tree(
-    heads: list[Head], cwd: Place | None, either: frozenset[int] = frozenset()
+    heads: list[Head], cwd: Place | None, plan: Flow | None = None
 ) -> tuple[str, str, str] | None:
     """(command, root, directory) for a `git init` or `git clone` that lands in a work tree, or
     None. The target is the last argument that is not a flag, resolved against the working
-    directory after each `cd` or `pushd` before it; without one it is that working directory. A
-    `cd` whose index is in `either` can leave the directory as it was, so the target is read in
-    both. A `popd` returns to the directories before its `pushd`; one with no `pushd` before it
-    in the command leaves them as they are. A clone's URL, read as the target, lies below the
-    working directory too, so the verdict is the working directory's."""
+    directory after each `cd` or `pushd` before it; without one it is that working directory. With
+    a `plan` (`shell.flow`), a `cd` that is not sure there can leave the directory as it was, so
+    the target is read in both, and after a sure one the directories before it come back where its
+    scope ends; without one, each `cd` is sure. A `popd` returns to the directories before its
+    `pushd`; one with no `pushd` before it in the command leaves them as they are. A clone's URL,
+    read as the target, lies below the working directory too, so the verdict is the working
+    directory's."""
     cwds: list[Place | None] = [cwd]
     stack: list[list[Place | None]] = []
+    returning: dict[int, list[list[Place | None]]] = {}
     for index, (head, arguments) in enumerate(heads):
-        if head in ("cd", "pushd") and arguments:
-            if head == "pushd":
-                stack.append(cwds)
-            cwds = moved(cwds, arguments[0], either=index in either)
-            continue
-        if head == "popd":
-            cwds = stack.pop() if stack else cwds
+        for before in returning.pop(index, []):
+            cwds = distinct([*cwds, *before])
+        end = None if plan is None else plan.ends[index]
+        if end is not None:
+            returning.setdefault(end, []).append(cwds)
+        if head in ("cd", "pushd", "popd"):
+            cwds = moved_by(head, arguments, cwds, stack, either=plan is not None and not plan.sure[index])
             continue
         if head != "git":
             continue
@@ -481,7 +517,8 @@ def work_tree_check(call: Call) -> Verdict:
     `excludedCommands` match decides how `git` runs, so the check reads each simple command as the
     shell runs it (`shell.commands`): also `env git init`, `GIT init` and a `git init` in `$( … )`.
     A `cd` that a child runs leaves the directory as it was (`head_of`); one that is no sure move
-    (`shell.sure_move`) leaves either directory. A command that does not read passes."""
+    (`shell.flow`) leaves either directory, and a sure one only up to the end of its scope. A
+    command that does not read passes."""
     command = call.command
     read = readings(command) if "git" in joined(command).lower() else None
     if read is None:
@@ -491,8 +528,7 @@ def work_tree_check(call: Call) -> Verdict:
         for tokens in read:
             simples = builtin_commands(tokens)
             heads: list[Head] = [(head_of(simple), simple.words[1:]) for simple in simples]
-            either = frozenset(index for index in range(len(simples)) if not sure_move(simples, index))
-            landed = in_work_tree(heads, cwd, either)
+            landed = in_work_tree(heads, cwd, flow(simples))
             if landed:
                 return Verdict(
                     "deny", WORK_TREE_MESSAGE.format(found=landed[0], cwd=landed[2], root=landed[1])

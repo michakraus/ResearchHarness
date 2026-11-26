@@ -1,13 +1,14 @@
 """Refuse a recursive `rm` outside the scratch zones; ask for a `git rm` or `git merge` outside a worktree.
 
 The check follows the working directory through each `cd` of the command and resolves every
-operand. A `cd` that can fail, that is, one not joined by `&&` to the next command, and one that
-one shell runs as its own and another in a child, leave either directory, and the check reads
-the commands after it in both (`moved_to`). A `cd` that `|| exit` follows is sure; a `popd`
-returns to the directory before its `pushd`. Past DIRECTORIES, the check reads the first
-directory and an unknown one. A recursive `rm` of a relative operand after a `cd` to a directory
-that the check cannot know asks, and so does one whose operands need more than EXTRA further
-resolutions (TOO_MANY).
+operand. A `cd` that can fail, and one that one shell runs as its own and another in a child,
+leave either directory, and the check reads the commands after it in both (`moved_to`). A sure
+`cd` (`shell.flow`) leaves only the new one up to the end of its scope: the rest of its `&&`
+list, every command after `cd x || exit`, or the `then` of `if cd x`. A `popd` returns to the
+directory before its `pushd`, and a `pushd` alone swaps the two (`moved_by`). Past DIRECTORIES,
+the check reads the first directory and an unknown one. A recursive `rm` of a relative operand
+after a `cd` to a directory that the check cannot know asks, and so does one whose operands need
+more than EXTRA further resolutions (TOO_MANY).
 
   * **`rm`**: pass when every operand lies strictly below a worktree, `~/Research/.worktrees/<name>/`,
     or strictly below `~/Research/.scratch/`. Deny a **recursive** `rm` of any other path under the
@@ -30,7 +31,7 @@ from pathlib import Path, PurePosixPath
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place
-from .shell import Simple, Tokens, builtin_commands, cut_heredocs, joined, program, readings, sure_move
+from .shell import Simple, Tokens, builtin_commands, cut_heredocs, flow, joined, program, readings
 
 HOME = str(Path.home().resolve())
 ROOT = Path(HOME, "Research").resolve()
@@ -60,8 +61,9 @@ worktree, `~/Research/.worktrees/<name>/`, and below `~/Research/.scratch/`.
   * A worktree itself: `git worktree remove <path>` from the main checkout.
   * Build output in a checkout: remove it in a worktree, or name the files with a plain `rm`.
   * A probe environment: put it under `~/Research/.scratch/<task>/` and remove it there.
-  * After a `cd`: the check also reads the directory before it, unless `&&` joins the `cd` to the
-    next command, since the shell runs that command where it was when the `cd` fails.
+  * After a `cd`: the check also reads the directory before it, past the `&&` list that the `cd`
+    starts, since the shell runs a command there where it was when the `cd` fails. Join the
+    commands to the `cd` with `&&`, or write `cd <dir> || exit` first.
 """
 
 UNREADABLE = "rm-scope could not read a command that mentions rm or merge."
@@ -263,17 +265,41 @@ def change_directory(words: list[str], cwd: Cwd) -> Cwd:
 def moved_to(simple: Simple, cwds: list[Cwd], *, sure: bool) -> list[Cwd]:
     """The directories in which the commands after the `cd` or `pushd` `simple` can run, from the
     directories `cwds` before it, the one in which every `cd` succeeded first. A `sure` move
-    (`shell.sure_move`) leaves only the new directories; one that can fail, or that one shell runs
+    (`shell.flow`) leaves only the new directories; one that can fail, or that one shell runs
     as its own and another in a child (`shell.Runs`), leaves either; one that a child runs leaves
     the directories as they were."""
     if simple.runs == "child":
         return cwds
     moved = [change_directory(simple.words, cwd) for cwd in cwds]
+    return distinct(moved if sure else [*moved, *cwds])
+
+
+def moved_by(simple: Simple, cwds: list[Cwd], stack: list[list[Cwd]], *, sure: bool) -> list[Cwd]:
+    """The directories after the `cd`, `pushd` or `popd` `simple` from `cwds` (`moved_to`), with
+    the stack of `pushd` in `stack`. A `pushd` with no operand swaps the top two directories of the
+    stack, and a `popd` returns to the top one; with no `pushd` before it in the command, the
+    directory cannot be known. A child's `pushd` or `popd` leaves both as they were."""
+    head = program(simple.words[0])
+    if head == "cd" or simple.runs == "child":
+        return moved_to(simple, cwds, sure=sure)
+    unknown: list[Cwd] = [None]
+    if head == "popd":
+        return stack.pop() if stack else unknown
+    if len(simple.words) == 1:
+        top = stack.pop() if stack else unknown
+        stack.append(cwds)
+        return top if sure else distinct([*top, *cwds])
+    stack.append(cwds)
+    return moved_to(simple, cwds, sure=sure)
+
+
+def distinct(cwds: list[Cwd]) -> list[Cwd]:
+    """Each directory of `cwds` once, in order. Past DIRECTORIES, the first one and a directory
+    that the check cannot know stand for the others."""
     kept: list[Cwd] = []
-    for cwd in moved if sure else [*moved, *cwds]:
+    for cwd in cwds:
         if not any(same_cwd(cwd, other) for other in kept):
             kept.append(cwd)
-    # Past DIRECTORIES, a directory that the check cannot know stands for the others.
     return kept if len(kept) <= DIRECTORIES else [kept[0], None]
 
 
@@ -313,7 +339,8 @@ def decide(tokens: Tokens, cwd: Cwd) -> Verdict:
     """The verdict on one reading of the command: each simple command from its command word on
     (`shell.commands`), so also an `rm` behind `sudo`, `env` or `then`, or spelled `RM`. A `cd`
     moves the directory as `moved_to` reads it, and each command after it is read in each
-    directory where it can run; a `popd` returns to the directories before its `pushd`, or to one
+    directory where it can run: after a sure move (`shell.flow`), the directories before it come
+    back where its scope ends. A `popd` returns to the directories before its `pushd`, or to one
     that the check cannot know. A recursive `rm` of a relative operand in a directory that the
     check cannot know asks, and so does one whose operands, read in every such directory, would
     take more than EXTRA resolutions besides one per operand: it is then read only where every
@@ -322,15 +349,18 @@ def decide(tokens: Tokens, cwd: Cwd) -> Verdict:
     stack: list[list[Cwd]] = []
     unknown, extra = None, 0
     simples = builtin_commands(tokens)
+    plan = flow(simples)
+    returning: dict[int, list[list[Cwd]]] = {}
     for index, simple in enumerate(simples):
+        for before in returning.pop(index, []):
+            cwds = distinct([*cwds, *before])
         words = simple.words
         head = program(words[0])
-        if head in ("cd", "pushd"):
-            if head == "pushd" and simple.runs != "child":
-                stack.append(cwds)
-            cwds = moved_to(simple, cwds, sure=sure_move(simples, index))
-        elif head == "popd" and simple.runs != "child":
-            cwds = stack.pop() if stack else [None]
+        end = plan.ends[index]
+        if end is not None:
+            returning.setdefault(end, []).append(cwds)
+        if head in ("cd", "pushd", "popd"):
+            cwds = moved_by(simple, cwds, stack, sure=plan.sure[index])
         elif head == "rm":
             recursive, operands = rm_arguments(words)
             if not recursive:
