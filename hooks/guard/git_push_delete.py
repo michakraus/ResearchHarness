@@ -2,7 +2,9 @@
 
 A refspec `:<ref>`, also `+:<ref>`, deletes `<ref>` on the remote; a lone `:` pushes the matching
 branches. The check finds each `git` call of each part of the command, after the global options of
-`git` such as `-C`, also behind another command as in `find -exec`, and reads each refspec of a
+`git` such as `-C`, also behind another command as in `find -exec`, as `git_writes.is_git` and
+`git_writes.subcommand` find them: `GIT` and `git 2>&1 push` count, and a subcommand that the
+check cannot know, as in `git pus{h,}`, is read as a `push`. It reads each refspec of a
 `push`: each argument after the remote that is neither an option nor the value of one
 (`git_writes.positional`). A refspec whose source is empty asks. A command that holds `push` and
 that the check cannot read asks too when it can hold a `git push`, as `git_writes.unread_write`
@@ -15,12 +17,9 @@ wildcard is a `:*` that is not at the end of the rule, which Claude Code reports
 `ask` rules of the settings template keep `--delete`, `-d` and `--prune`.
 """
 
-from pathlib import PurePosixPath
-
 from .contract import PASS, Call, Verdict, strongest
-from .git_writes import positional, unread_write
-from .rm_scope import TAKES_VALUE
-from .shell import Tokens, joined, parts, readings
+from .git_writes import is_git, may_be_unknown, positional, subcommand, unread_write
+from .shell import Tokens, joined, parts, readings, unredirected
 
 REASON = (
     "The refspec `{refspec}` has an empty source, so the push deletes `{target}` on the remote. A "
@@ -36,16 +35,15 @@ UNREAD = "The check cannot read a command that may hold a `git push` with a dele
 
 
 def pushed(words: list[str]) -> list[list[str]]:
-    """The arguments after `push` of each `git push` call in the part `words`; each call's
-    arguments run to the end of the part."""
+    """The arguments after `push` of each `git push` call in the part `words`, and after the
+    subcommand of each `git` call whose subcommand the check cannot know
+    (`git_writes.subcommand`); each call's arguments run to the end of the part."""
     found: list[list[str]] = []
     for index, word in enumerate(words):
-        if PurePosixPath(word).name != "git":
+        if not is_git(word):
             continue
-        at = index + 1
-        while at < len(words) and words[at].startswith("-"):
-            at += 2 if words[at] in TAKES_VALUE else 1
-        if words[at : at + 1] == ["push"]:
+        at, unknown = subcommand(words, index)
+        if unknown or words[at : at + 1] == ["push"]:
             found.append(words[at + 1 :])
     return found
 
@@ -59,7 +57,7 @@ def deleting(arguments: list[str]) -> str | None:
 
 def verdict_of(tokens: Tokens) -> Verdict:
     """The verdict on one reading of the command."""
-    for words in parts(tokens):
+    for words in parts(unredirected(tokens)):
         for arguments in pushed(words):
             refspec = deleting(arguments)
             if refspec is not None:
@@ -77,7 +75,7 @@ def check(call: Call) -> Verdict:
     """Ask before a `git push` with a refspec whose source is empty."""
     command = call.command
     keywords = joined(command)
-    if call.action != "shell" or "push" not in keywords or ":" not in keywords:
+    if call.action != "shell" or ":" not in keywords or not ("push" in keywords or may_be_unknown(keywords)):
         return PASS
     found = readings(command, nested=True)
     if found is None:

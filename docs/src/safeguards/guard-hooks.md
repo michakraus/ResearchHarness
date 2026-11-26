@@ -393,13 +393,24 @@ check answers both ways.
   `-o`, `-vo` or `--recurse-submodules` is no refspec.
 
 The check allows only a command that is one `git` call, with no operator, no `cd` and no option
-before the subcommand. It finds the subcommand after the global options of `git`. Any other form
+before the subcommand. It finds the subcommand after the global options of `git`. It reads a
+program whose last name is `git` in any case as `git`, since macOS runs git for `GIT`. The target
+of a redirection is no word of the call, so `git 2>&1 push` is a push. When the shell expands the
+subcommand, as in `git pus{h,}` or `git ${x}push`, or when a `-c alias.*` or
+`--config-env=alias.*` option defines an alias, the check cannot know the subcommand: the call
+asks, and a lease push to a default branch is still refused. Any other form
 of these writes asks, for example `-C`, `-f` twice or a lease after the remote. A `worktree remove`
 with any option counts as forced, because `git` reads `-ff` and a prefix of `--force` as force. A
 plain `--force` push gets no decision from the check; the `deny` rules of the settings refuse it.
 The check reads the state with `git` in the working directory of the call, with `core.fsmonitor`
 off. When `git` fails or cannot run, the call asks. The own organisations are the `org` list of the
 profile, as the `gh api` check reads it.
+
+A command that the check cannot read, such as one with an open quote in a heredoc body, asks when
+it holds a word that ends in `git`, in any case, and after it a word `push`, `worktree` or
+`cherry-pick` or an alias option; when the word right after such a `git` holds `$`, a backtick or
+a brace; or when it holds a `$` before a quote or a backslash, which can open an ANSI-C quote.
+Otherwise it passes, as a Julia heredoc with `push!` or a path below `.worktrees/` does.
 
 ### The push deletion check
 
@@ -408,11 +419,12 @@ call of every frontend. A refspec `:<ref>`, also `+:<ref>`, deletes `<ref>` on t
 lone `:` pushes every matching branch. The check finds each `git` call of each part of the
 command, after the global options of `git` such as `-C`, also behind another command as in
 `find -exec` and inside the script of `sh -c`, `bash -c` or `eval`. It reads each argument after
-the remote that is neither an option nor the value of one, as the git write check does. A command
-that the check cannot read, such as one with an open quote, gets `ask` when it can hold a
-`git push`: when it holds a word that ends in `git` and after it a word `push`, `worktree` or
-`cherry-pick`, or a `$` before a quote or a backslash, which can open an ANSI-C quote. A Julia
-heredoc with `push!`, an adjoint `x'` and a range `1:n` passes.
+the remote that is neither an option nor the value of one, as the git write check does. It finds
+`git` and its subcommand as the git write check does, so it also reads `GIT push`, `git 2>&1 push`
+and a subcommand that it cannot know, such as `git pus{h,}`, as a push. A command that the check
+cannot read, such as one with an open quote, gets `ask` when it can hold a `git push`, by the
+rule of the git write check. A Julia heredoc with `push!`, an adjoint `x'` and a range `1:n`
+passes.
 
 A permission rule cannot state this in Claude Code without a warning at each start: the rule needs
 a literal `:` and then a wildcard, and Claude Code reports every `:*` that is not at the end of a

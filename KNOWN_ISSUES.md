@@ -701,8 +701,10 @@
   no other expansion. `guard --from claude` in a checkout of an own organisation answers `deny`
   to `bash -c 'git push --force-with-lease origin main'` and `pass` to each of these, which run
   the same push: `g=git; $g push --force-with-lease origin main`,
-  `git p$(printf u)sh --force-with-lease origin main`, `o=--force-with-lease; git push $o origin
-  main` and `echo 'git push --force-with-lease origin main' | sh`. The same holds for the other
+  `o=--force-with-lease; git push $o origin main` and
+  `echo 'git push --force-with-lease origin main' | sh`. A subcommand that the shell expands, as
+  in `git p$(printf u)sh`, is unknown to the git write and push-deletion checks, which then ask or
+  refuse (K197 names the limit of that rule). The same holds for the other
   writes of the checks, such as `x=rm; $x -rf ~/Research/Papers`, and for a script four levels
   deep, such as `eval eval eval eval rm -rf ~/Research/Papers`. The check of a shell write and the
   check of a `git init` or `git clone` in a working tree read no script of `sh -c` or `eval`:
@@ -1280,3 +1282,39 @@
   shell run that fails for want of a GPU.
 - kind: defect
 - found: 2026-11-24, the critic of part M5 of the sandbox plan
+
+### K195 · The guard's checks of `git` other than the git write and push-deletion checks read neither `GIT` nor a redirection between `git` and its subcommand.
+
+- location: `hooks/guard/no_blind_stage.py:111`
+- evidence: on macOS, `GIT` runs git (`command -v GIT` gives `/usr/bin/GIT`). In a package work
+  tree, `guard --from claude` answers `deny` to `git add -A` and `pass` to `GIT add -A` and to
+  `git 2>&1 add -A`, which stage the same files. The staging check and the others that find
+  `git` by its exact name or skip only its options, such as `agentbox_worktree.py` and
+  `sandbox_semantics.py`, do not use `git_writes.is_git`, `git_writes.subcommand` or
+  `shell.unredirected`.
+- kind: defect
+- found: 2026-11-26, the branch `guard/git-word-gaps`
+
+### K196 · The git write and push-deletion checks do not see an alias that a configuration file or a `GIT_CONFIG_*` variable defines.
+
+- location: `hooks/guard/git_writes.py:360`
+- evidence: `subcommand` finds an alias only in a `-c` or `--config-env` option of the call. In a
+  checkout of an own organisation, `guard --from claude` answers `pass` to
+  `git p --force-with-lease origin main` and to
+  `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p --force-with-lease origin main`.
+  The second runs a lease push to `main`; the first does so where `~/.gitconfig` or the
+  repository's config defines `alias.p = push`.
+- kind: defect
+- found: 2026-11-26, the branch `guard/git-word-gaps`
+
+### K197 · A command that the git write check cannot read passes when an option or a redirection stands between `git` and a subcommand that the shell expands.
+
+- location: `hooks/guard/git_writes.py:122`
+- evidence: `unread_write` reads an expanded subcommand only in the word right after `git`
+  (`GIT_EXPANDED`), so that a Julia heredoc with a `$` after a word `git` still passes. With an
+  open quote in a heredoc body before it, `guard --from claude` answers `pass` to
+  `git -C . pus{h,} --force-with-lease origin main` and to
+  `git 2>&1 pus{h,} --force-with-lease origin main`, where the same commands without the heredoc
+  are refused.
+- kind: defect
+- found: 2026-11-26, the branch `guard/git-word-gaps`

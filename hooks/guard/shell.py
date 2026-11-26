@@ -41,6 +41,9 @@ OPERATOR = frozenset(";&|<>()\n")
 SEPARATORS = frozenset(";|&\n")
 # The fallback split of a text whose quotes do not balance.
 SEGMENT = re.compile(r"(?:&&|\|\||;|\||\n)")
+# An operator of a redirection, whose target is the next word: `>`, `>>`, `<`, `<<`, `<<<`, `<>`,
+# `>&`, `<&`, `>|`, `&>`, `&>>`. A process substitution `<(` or `>(` is none.
+REDIRECTION = re.compile(r"&>>?|[<>]{1,3}[&|]?")
 # Escapes inside double quotes.
 DOUBLE_ESCAPES = '$`"\\\n'
 # The escapes of an ANSI-C quote that stand for one character.
@@ -375,6 +378,22 @@ def parts(tokens: Tokens) -> list[list[str]]:
     if current:
         result.append(current)
     return result
+
+
+def unredirected(tokens: Tokens) -> Tokens:
+    """`tokens` without the word after each operator of a redirection (REDIRECTION): its target,
+    such as the `1` of `2>&1` or the delimiter of a heredoc. A redirection can stand between a
+    program and its arguments, as in `git 2>&1 push`, and the shell passes its target to no
+    program. The operators stay, so `parts` splits as before."""
+    result: list[Token] = []
+    target = False
+    for kind, text in tokens:
+        if kind == "word" and target:
+            target = False
+            continue
+        target = kind == "op" and REDIRECTION.fullmatch(text) is not None
+        result.append((kind, text))
+    return tuple(result)
 
 
 def words(text: str) -> list[str] | None:
