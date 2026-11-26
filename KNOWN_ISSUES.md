@@ -733,8 +733,8 @@
 
 - location: `hooks/guard/shell.py:336`
 - evidence: `readings` returns None when a quote of bash's reading is open, and drops the `plain`
-  reading, which can be closed. `rm_scope` asks on None, and `git_writes` when the text can hold
-  one of its writes (`unread_write`); the other checks pass.
+  reading, which can be closed. `rm_scope` asks on None, and `git_writes` and `git_push_delete`
+  when the text can hold one of their writes (`unread_write`); the other checks pass.
   `guard --from claude` answers `pass` to `git add -A $'\'' $'`,
   `gh api -X DELETE repos/a/b $'\'' $'`, `git archive -o x.tar HEAD $'\'' $'`,
   `gh pr create … $'\'' $'` and

@@ -1,4 +1,4 @@
-- **The git-write check no longer asks for a command that it cannot read and that holds no `git`
+- **The git-write and push-deletion checks no longer ask for a command that it cannot read and that holds no `git`
   write.** An open quote, such as a Julia adjoint `x'` in a heredoc body, made the parser give up,
   and the check then asked for any command with `push`, `worktree` or `cherry-pick` in its text:
   each heredoc probe with `push!` and each path below `.worktrees/` stopped a sub-agent for
