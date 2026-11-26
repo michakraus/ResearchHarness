@@ -1599,7 +1599,7 @@ def instruction_cases(scratch):
                     "sandbox",
                     "config/hooks/guard",
                     "No RTK rewrite",
-                    "git worktree add",
+                    "/usr/bin/env -i HOME=<home> PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin <home>/.local/share/research-harness/python/bin/python -E -s <home>/.claude/hooks/worktree.py add <branch>",
                     "~/Research/.worktrees/",
                     "invoke_subagent",
                     "effort",

@@ -1,4 +1,4 @@
-"""`harness worktree`: ask the installed worktree hook to make or remove a worktree.
+"""`harness worktree`: ask the installed worktree hook to make, remove or sweep worktrees.
 
     harness worktree add <name> [--apply]
     harness worktree remove <path> [--apply]
@@ -6,29 +6,27 @@
 
 OpenCode and oh-my-pi have no `WorktreeCreate` event, so an agent there runs this subcommand in
 the repository instead. It runs the hook that `harness install` puts at
-`~/.claude/hooks/worktree.py`, below the home that `HOME` gives, as the hook itself reads it, with
-the payload that Claude Code sends it on stdin: `{"hook_event_name": "WorktreeCreate", "cwd": …,
-"name": …}` for `add`, `{"hook_event_name": "WorktreeRemove", "worktree_path": …}` for `remove`.
-The hook holds the whole logic of a worktree, and under `agentbox` it asks the broker outside the
-sandbox; this subcommand runs git of its own only in `sweep`, and only to read.
+`~/.claude/hooks/worktree.py`, below the home that `HOME` gives, as the hook itself reads it. For
+`add` and `remove` it sends the payload that Claude Code sends on stdin: `{"hook_event_name":
+"WorktreeCreate", "cwd": …, "name": …}` for `add`, `{"hook_event_name": "WorktreeRemove",
+"worktree_path": …}` for `remove`. For `sweep` it runs the hook's own `sweep`, with `--apply`
+where it is given. The hook holds the whole logic of a worktree and of the sweep, and under
+`agentbox` it asks the broker outside the sandbox; this subcommand runs no git.
 
-The dry run prints the request in one line and exits 1. `--apply` runs the hook with this
-interpreter, in the working directory and in a session of its own, for at most TIMEOUT seconds;
-it prints the hook's stdout, which is the worktree's path for `add`, passes the hook's stderr on,
-and exits 0. A missing hook, a hook that exits other than 0 or runs longer than TIMEOUT seconds,
+The dry run of `add` and `remove` prints the request in one line and exits 1. `--apply` runs the
+hook with this interpreter, in the working directory and in a session of its own, for at most
+TIMEOUT seconds; it prints the hook's stdout, which is the worktree's path for `add`, passes the
+hook's stderr on, and exits 0. `sweep` runs the hook in the same way also without `--apply`: the
+hook's dry run lists the worktrees and exits 1, and so does `sweep`. A missing hook, a hook that
+exits other than 0 (other than 1 for the dry run of `sweep`) or runs longer than TIMEOUT seconds,
 a NAME or a PATH that is empty or holds a line break, and a working directory that no longer
 exists are a HarnessError, so `harness` exits 2. A SIGINT, SIGTERM or SIGHUP during the hook's run,
 the stop after a timeout included, goes on to the hook's process group, and `harness` then exits
 128 + the signal's number, not 2.
 
-`sweep` lists each directory directly below `~/Research/.worktrees`: `removable` where it is clean,
-its HEAD is in `origin/HEAD` and its record shows no use for FRESH seconds; `kept` otherwise; and
-`orphan` where git holds no record of it, which the sweep never touches. With `--apply` it sends a
-`WorktreeRemove` request for each removable one and reports every failure; a signal during a
-removal ends the sweep with 128 + its number before the next removal, and names no failure of
-the removals before it. The hook refuses a
-remove that it cannot finish, so run it under `agentbox` or from a terminal, not from a sandboxed
-call: there the hook's own git runs in the sandbox.
+The hook refuses a remove that it cannot finish, so run `remove --apply` and `sweep --apply` under
+`agentbox` or from a terminal, not from a sandboxed call: there the hook's own git runs in the
+sandbox. The nightly job `worktree-sweep` runs the hook's `sweep --apply` outside any sandbox.
 """
 
 import argparse
@@ -55,8 +53,8 @@ TIMEOUT = 480
 GRACE = 5
 DRY = 1  # the exit status of a dry run
 FAILED = 2  # the exit status of a HarnessError
-# Seconds for each `git` of the sweep, and the seconds since a worktree's last use within which the
-# sweep keeps it: a new worktree is clean and at origin/HEAD while an agent starts in it.
+# Seconds for each `git` that builds the sweep's fixture, and the hook's FRESH, the seconds since a
+# worktree's last use within which its sweep keeps it.
 GIT_TIMEOUT = 30
 FRESH = 12 * 3600
 
@@ -112,9 +110,10 @@ class Ran:
     signum: int | None
 
 
-def run_hook(script: pathlib.Path, payload: dict[str, str]) -> Ran:
-    """Run the hook with `payload` on its stdin, in the working directory and in a session of its
-    own; its output is decoded with replacement characters. A SIGINT, SIGTERM or SIGHUP meanwhile
+def run_hook(script: pathlib.Path, payload: dict[str, str] | None, argv: tuple[str, ...] = ()) -> Ran:
+    """Run the hook with the arguments `argv` and `payload` on its stdin, an empty stdin for None,
+    in the working directory and in a session of its own; its output is decoded with replacement
+    characters. A SIGINT, SIGTERM or SIGHUP meanwhile
     goes on to the hook's process group: one that arrives before the hook's process starts goes
     on right after the start. A hook that runs longer than TIMEOUT seconds is stopped, and is a
     HarnessError where no signal arrived."""
@@ -134,7 +133,7 @@ def run_hook(script: pathlib.Path, payload: dict[str, str]) -> Ran:
     previous = {s: signal.signal(s, forward) for s in signals}
     try:
         proc = subprocess.Popen(  # the timeout is on `communicate`
-            [sys.executable, str(script)],
+            [sys.executable, str(script), *argv],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -148,7 +147,7 @@ def run_hook(script: pathlib.Path, payload: dict[str, str]) -> Ran:
         if missed:
             signal_group(proc, missed[0])
         try:
-            out, err = proc.communicate(json.dumps(payload), timeout=TIMEOUT)
+            out, err = proc.communicate("" if payload is None else json.dumps(payload), timeout=TIMEOUT)
             timed_out = False
         except subprocess.TimeoutExpired:
             out, err = stop(proc)
@@ -165,21 +164,29 @@ def run_hook(script: pathlib.Path, payload: dict[str, str]) -> Ran:
 
 
 def request(payload: dict[str, str], plan: str, *, apply: bool) -> int:
-    """With `apply`, send `payload` to the hook on its stdin and return 0, or 128 + n where the
-    signal n arrived while the hook ran; without it, print `plan`, the request in words, and
-    return 1. The hook's stderr goes to stderr; its last line is the reason of the HarnessError
-    when the hook exits other than 0 and no signal arrived."""
-    script = hook()
+    """With `apply`, send `payload` to the hook on its stdin (`run`); without it, print `plan`, the
+    request in words, and return 1."""
     if not apply:
-        print(f"would ask {script} {plan}")
+        print(f"would ask {hook()} {plan}")
         return DRY
+    return run(payload)
+
+
+def run(payload: dict[str, str] | None, argv: tuple[str, ...] = (), *, dry: bool = False) -> int:
+    """Run the hook with `argv` and `payload` on its stdin, and return 0, 1 where `dry` says that the
+    hook runs its dry run and it exits 1, or 128 + n where the signal n arrived while the hook ran.
+    The hook's stdout goes to stdout and its stderr to stderr; the last line of its stderr is the
+    reason of the HarnessError when it exits with another status and no signal arrived."""
+    script = hook()
     if not script.is_file():
         raise HarnessError(f"{script} does not exist; `harness install --apply` installs it")
-    ran = run_hook(script, payload)
+    ran = run_hook(script, payload, argv)
     sys.stdout.write(ran.out)
     sys.stderr.write(ran.err)
     if ran.signum is not None:
         return 128 + ran.signum
+    if dry and ran.status == DRY:
+        return DRY
     if ran.status != 0:
         lines = ran.err.strip().splitlines()
         raise HarnessError(lines[-1] if lines else f"{script} exited {ran.status}")
@@ -200,113 +207,10 @@ def cmd_remove(args: argparse.Namespace) -> int:
     return request(payload, f"to remove the worktree {path}", apply=args.apply)
 
 
-def worktrees() -> pathlib.Path:
-    """The directory of the worktrees, below the home of `HOME`, as the hook reads it."""
-    return pathlib.Path.home() / "Research" / ".worktrees"
-
-
-def git(directory: pathlib.Path, *arguments: str) -> subprocess.CompletedProcess[str]:
-    """`git -C <directory> <arguments>`, which takes no optional lock, so that the index of a worktree
-    keeps its time; for at most GIT_TIMEOUT seconds."""
-    return subprocess.run(
-        [shutil.which("git") or "git", "--no-optional-locks", "-C", str(directory), *arguments],
-        capture_output=True,
-        text=True,
-        errors="replace",
-        check=False,
-        timeout=GIT_TIMEOUT,
-    )
-
-
-@dataclasses.dataclass(frozen=True)
-class Found:
-    """One directory below the worktrees' directory: its path, its kind (`removable`, `kept` or
-    `orphan`) and why."""
-
-    path: pathlib.Path
-    kind: str
-    why: str
-
-
-def record_of(tree: pathlib.Path) -> pathlib.Path | None:
-    """The record `<repository>/.git/worktrees/<name>` that the `.git` file of `tree` names, where
-    that file holds one `gitdir:` line and the record is a directory; else None."""
-    dot = tree / ".git"
-    if dot.is_symlink() or not dot.is_file():
-        return None
-    line = dot.read_text(encoding="utf-8", errors="replace").strip()
-    record = pathlib.Path(line.removeprefix("gitdir: "))
-    if not line.startswith("gitdir: ") or "\n" in line or not record.is_absolute() or not record.is_dir():
-        return None
-    return record
-
-
-def last_use(record: pathlib.Path) -> float:
-    """The newest modification time of the record's HEAD, index and logs/HEAD, in seconds since the
-    epoch; git writes them at a checkout, a commit and a status that refreshes the index."""
-    times = [
-        path.stat().st_mtime
-        for path in (record / "HEAD", record / "index", record / "logs" / "HEAD")
-        if path.is_file()
-    ]
-    return max(times, default=record.stat().st_mtime)
-
-
-def judge(tree: pathlib.Path, now: float) -> Found:
-    """`tree`'s kind: `orphan` with no record of git, `kept` where it was used within FRESH seconds
-    before `now`, has a change or an untracked file, or a HEAD that `origin/HEAD` does not hold;
-    else `removable`."""
-    record = record_of(tree)
-    if record is None:
-        return Found(
-            tree, "orphan", "git holds no record of it; look at it, then delete it outside the sandbox"
-        )
-    if now - last_use(record) < FRESH:
-        return Found(tree, "kept", f"used within the last {FRESH // 3600} hours")
-    status = git(tree, "status", "--porcelain")
-    if status.returncode != 0:
-        return Found(tree, "kept", f"`git status` exits {status.returncode}")
-    if status.stdout.strip():
-        return Found(tree, "kept", "it holds changes or untracked files")
-    merged = git(tree, "merge-base", "--is-ancestor", "HEAD", "refs/remotes/origin/HEAD")
-    if merged.returncode != 0:
-        return Found(tree, "kept", "its HEAD is not in origin/HEAD")
-    return Found(tree, "removable", "clean, and its HEAD is in origin/HEAD")
-
-
-def survey(root: pathlib.Path, now: float) -> list[Found]:
-    """Each directory directly below `root`, judged, in the order of their names; links and hidden
-    names left out, such as the `.claude` that Claude Code's sandbox makes where a shell enters."""
-    if not root.is_dir():
-        return []
-    return [
-        judge(tree, now)
-        for tree in sorted(root.iterdir())
-        if tree.is_dir() and not tree.is_symlink() and not tree.name.startswith(".")
-    ]
-
-
 def cmd_sweep(args: argparse.Namespace) -> int:
-    found = survey(worktrees(), time.time())
-    for entry in found:
-        print(f"{entry.kind:<9}  {entry.path}  {entry.why}")
-    removable = [entry.path for entry in found if entry.kind == "removable"]
-    if not args.apply:
-        print(f"would ask {hook()} to remove {len(removable)} worktrees")
-        return DRY
-    failed: list[str] = []
-    for path in removable:
-        payload = {"hook_event_name": "WorktreeRemove", "worktree_path": str(path)}
-        try:
-            status = request(payload, "", apply=True)
-        except HarnessError as err:
-            failed.append(f"{path.name}: {err}")
-            continue
-        if status != 0:  # 128 + n: a signal ends the sweep before the next removal
-            return status
-    if failed:
-        raise HarnessError(f"{len(failed)} of {len(removable)} removals failed: " + "; ".join(failed))
-    return 0
+    if args.apply:
+        return run(None, ("sweep", "--apply"))
+    return run(None, ("sweep",), dry=True)
 
 
 def register(sub: fmt.Subcommands) -> None:
@@ -380,14 +284,6 @@ os.kill(os.getppid(), {signum})
 time.sleep(20)
 print("done")
 """
-# A stub that appends its stdin as one line to {log}, sends its caller the signal {signum}, then
-# sleeps.
-ASKED = """import os, sys, time
-with open({log!r}, "a") as f:
-    f.write(sys.stdin.read() + "\\n")
-os.kill(os.getppid(), {signum})
-time.sleep(20)
-"""
 # Runs argv[2:] in the directory argv[1], which it removes first.
 GONE = "import os, sys; os.chdir(sys.argv[1]); os.rmdir(sys.argv[1]); os.execv(sys.argv[2], sys.argv[2:])"
 HARNESS = [sys.executable, str(REPO / "bin" / "harness")]
@@ -412,9 +308,26 @@ class Fixture:
         self.stub.parent.mkdir(parents=True, exist_ok=True)
         self.stub.write_text(text)
 
+    def install_hook(self) -> None:
+        """Put the repository's worktree hook and its guard package in place of the hook."""
+        self.stub.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO / "hooks" / "worktree.py", self.stub)
+        shutil.rmtree(self.stub.parent / "guard", ignore_errors=True)
+        shutil.copytree(
+            REPO / "hooks" / "guard", self.stub.parent / "guard", ignore=shutil.ignore_patterns("__pycache__")
+        )
+
+    def raw(self) -> tuple[str, jsonio.JsonValue] | None:
+        """The stub's stdin, as text, and its arguments; None when no stub ran."""
+        if not self.log.exists():
+            return None
+        entry = jsonio.loads(self.log.read_text(), where=str(self.log))
+        return str(entry["stdin"]), entry["argv"]
+
     def run(self, *argv: str, gone: pathlib.Path | None = None) -> subprocess.CompletedProcess[str]:
         """`harness worktree <argv>` in the working directory, with HOME the fixture home and the
-        rest of the environment kept; with `gone`, in that directory, removed before the start."""
+        rest of the environment kept but its GIT_* variables, which would reach the hook's git; with
+        `gone`, in that directory, removed before the start."""
         self.log.unlink(missing_ok=True)
         command = [*HARNESS, "worktree", *argv]
         if gone is not None:
@@ -423,7 +336,7 @@ class Fixture:
         return subprocess.run(
             command,
             cwd=self.work,
-            env=dict(os.environ, HOME=str(self.home)),
+            env={**{k: v for k, v in os.environ.items() if not k.startswith("GIT_")}, "HOME": str(self.home)},
             capture_output=True,
             text=True,
             errors="replace",
@@ -809,20 +722,53 @@ def sweep_fixture(f: Fixture) -> dict[str, pathlib.Path]:
     shutil.rmtree(repo / ".git" / "worktrees" / "Repo-lost")
     trees["bare"].mkdir()
     (root / ".claude").mkdir()
-    old = time.time() - 2 * FRESH
     for name in ("old", "dirty", "ahead"):
-        record = repo / ".git" / "worktrees" / f"Repo-{name}"
-        for path in (record, record / "HEAD", record / "index", record / "logs" / "HEAD"):
-            if path.exists():
-                os.utime(path, (old, old))
+        aged(repo, trees[name])
     return trees
 
 
+def aged(repo: pathlib.Path, tree: pathlib.Path) -> None:
+    """Date the record of the worktree `tree` of `repo` two FRESH spans back."""
+    old = time.time() - 2 * FRESH
+    record = repo / ".git" / "worktrees" / tree.name
+    for path in (record, record / "HEAD", record / "index", record / "logs" / "HEAD"):
+        if path.exists():
+            os.utime(path, (old, old))
+
+
 def sweep_cases(check: Callable[[object, str], None], f: Fixture) -> None:
-    """`harness worktree sweep` on a worktree of each kind: the dry run lists each with its kind,
-    and not the hidden `.claude`, exits 1, and runs no hook; `--apply` asks the hook to remove the
-    one removable worktree alone; a hook that fails makes the sweep exit 2 and name the worktree; a
-    SIGTERM during the first of two removals ends the sweep with 143 and asks the hook once."""
+    """`harness worktree sweep` against a stub: the hook runs as `sweep` and `sweep --apply` with an
+    empty stdin, its dry run's exit 1 is the dry run's, and any other failure exits 2 with the
+    hook's last line; a SIGTERM during the run exits 143. Then through the repository's hook on a
+    worktree of each kind: the dry run lists each with its kind, and not the hidden `.claude`,
+    removes nothing and exits 1; `--apply` removes the one removable worktree alone; a removal that
+    the hook refuses makes the sweep exit 2 and name the worktree."""
+    for argv, code, want in (
+        (("sweep",), 1, DRY),
+        (("sweep", "--apply"), 0, 0),
+        (("sweep",), 2, FAILED),
+        (("sweep", "--apply"), 1, FAILED),
+    ):
+        f.install(out=b"listed", err=b"worktree hook: the last line\n" if code else b"", code=code)
+        p = f.run(*argv)
+        raw = f.raw()
+        check(
+            p.returncode == want
+            and raw == ("", list(argv))
+            and p.stdout == "listed\n"
+            and (not code or "worktree hook: the last line" in p.stderr)
+            and (want != FAILED or p.stderr.endswith("harness worktree: worktree hook: the last line\n")),
+            f"`harness worktree {' '.join(argv)}` runs the hook as `{' '.join(argv)}` with an empty "
+            f"stdin, and a hook that exits {code} gives {want}: "
+            f"{p.returncode} {raw} {p.stdout!r} {p.stderr!r}",
+        )
+    f.write(SIGNAL.format(signum=int(signal.SIGTERM)))
+    p = f.run("sweep", "--apply")
+    check(
+        p.returncode == 128 + signal.SIGTERM and "done" not in p.stdout,
+        "a SIGTERM of `harness worktree sweep --apply` stops the hook and exits 143: "
+        f"{p.returncode} {p.stdout!r}",
+    )
     trees = sweep_fixture(f)
     kinds = {
         "old": "removable",
@@ -832,53 +778,42 @@ def sweep_cases(check: Callable[[object, str], None], f: Fixture) -> None:
         "lost": "orphan",
         "bare": "orphan",
     }
-    f.install()
+    f.install_hook()
     p = f.run("sweep")
     listed = {words[1]: words[0] for words in (line.split() for line in p.stdout.splitlines()[:-1])}
     check(
         p.returncode == DRY
         and listed == {str(trees[name]): kind for name, kind in kinds.items()}
-        and p.stdout.endswith(f"would ask {f.stub} to remove 1 worktrees\n")
-        and f.logged() is None,
-        f"the dry run of sweep lists each worktree with its kind, exits 1 and runs no hook: "
-        f"{p.returncode} {p.stdout!r}",
+        and p.stdout.endswith("would remove 1 worktrees\n")
+        and trees["old"].is_dir(),
+        f"the dry run of sweep lists each worktree with its kind, removes none and exits 1: "
+        f"{p.returncode} {p.stdout!r} {p.stderr!r}",
     )
     p = f.run("sweep", "--apply")
-    logged = f.logged()
     check(
         p.returncode == 0
-        and logged is not None
-        and logged[0] == {"hook_event_name": "WorktreeRemove", "worktree_path": str(trees["old"])},
-        f"sweep --apply asks the hook to remove the removable worktree alone: {p.returncode} {logged}",
-    )
-    f.install(err=b"worktree hook: cannot write\n", code=1)
-    p = f.run("sweep", "--apply")
-    check(
-        p.returncode == FAILED
-        and p.stderr.endswith(
-            "harness worktree: 1 of 1 removals failed: Repo-old: worktree hook: cannot write\n"
-        ),
-        f"a hook that fails makes sweep --apply exit 2 and name the worktree: {p.returncode} {p.stderr!r}",
+        and not trees["old"].exists()
+        and all(trees[name].is_dir() for name in kinds if name != "old"),
+        f"sweep --apply removes the removable worktree alone: {p.returncode} {p.stdout!r} {p.stderr!r}",
     )
     repo = f.home / "Research" / "Repo"
     second = trees["old"].with_name("Repo-old2")
     fixture_git(repo, "worktree", "add", "--quiet", "--detach", str(second), "origin/main")
-    record = repo / ".git" / "worktrees" / second.name
-    old = time.time() - 2 * FRESH
-    for path in (record, record / "HEAD", record / "index", record / "logs" / "HEAD"):
-        if path.exists():
-            os.utime(path, (old, old))
-    f.write(ASKED.format(log=str(f.log), signum=int(signal.SIGTERM)))
-    p = f.run("sweep", "--apply")
-    asked = f.log.read_text().splitlines() if f.log.exists() else []
+    aged(repo, second)
+    shielded = second / ".githooks"
+    shielded.mkdir()
+    shielded.chmod(0o500)
+    try:
+        p = f.run("sweep", "--apply")
+    finally:
+        shielded.chmod(0o700)
     check(
-        p.returncode == 128 + signal.SIGTERM
-        and "would ask" not in p.stdout
-        and [jsonio.loads(line, where="the payload") for line in asked]
-        == [{"hook_event_name": "WorktreeRemove", "worktree_path": str(trees["old"])}]
-        and f"removable  {second}  " in p.stdout,
-        "a SIGTERM during the first of two removals ends sweep --apply with 143 and asks the hook "
-        f"once: {p.returncode} {asked} {p.stdout!r} {p.stderr!r}",
+        p.returncode == FAILED
+        and "harness worktree: worktree hook: 1 of 1 removals failed: Repo-old2: this process cannot write"
+        in p.stderr
+        and second.is_dir(),
+        f"a removal that the hook refuses makes sweep --apply exit 2 and name the worktree: "
+        f"{p.returncode} {p.stderr!r}",
     )
 
 

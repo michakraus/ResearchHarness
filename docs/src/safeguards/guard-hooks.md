@@ -166,6 +166,32 @@ working-tree check. It follows each `cd` of the command to find the target. Unde
 in the agent's root and leaves a repository in another working tree. Each refusal gives the form
 that works, for example a separate Bash call.
 
+**Antigravity's lift check lifts one more line**, which Claude Code's rule keeps inside: the
+installed worktree hook's `add <name>` or `remove <path>`, exactly
+
+```text
+/usr/bin/env -i HOME=<home> PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin <home>/.local/share/research-harness/python/bin/python -E -s <home>/.claude/hooks/worktree.py add <name>
+/usr/bin/env -i HOME=<home> PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin <home>/.local/share/research-harness/python/bin/python -E -s <home>/.claude/hooks/worktree.py remove <path>
+```
+
+with `<home>` the guard's home directory written out, single spaces, and one argument of letters,
+digits, `.`, `_`, `-` and `/`. A `~`, a `$`, a quote, a `cd`, another assignment, a redirection, a
+pipe, a second command or a second argument keeps the line inside, and so does any other
+interpreter or hook path, another `HOME` or `PATH`, a missing `-i`, `-E` or `-s`, and `sweep`. The
+lifted call runs with the environment of the agent's process. `env -i` clears every inherited
+variable, so no `PATH`, `HOME`, `XDG_CONFIG_HOME` or `GIT_*` reaches the hook's `git`; `-E` makes
+the interpreter ignore the `PYTHON*` variables, and `-s` the user site directory. The `PATH` is
+that of the nightly sweep. The lift also needs a new shell for each call: a shell that persists
+between calls keeps a function or an alias that an earlier call defines, and a function named
+`/usr/bin/env` would run in place of the program, outside the sandbox. Antigravity, the app and
+`agy` alike, runs each `run_command` in a new shell: a probe that exports a variable and defines a
+function in one call finds neither in the next. Antigravity has no worktree hook, and the sandbox
+of its terminal denies the writes to `.git` and `.githooks` that a worktree needs. Its sandbox
+mounts only the workspace and the paths that a grant names, so it cannot write the hook or the
+interpreter. With the new shell of each call, the lifted program is the installed one. The hook
+takes its working directory from the call's
+`Cwd`, and checks the name, the path and the repository itself.
+
 ### The `gh api` check
 
 `gh_api_writes.py` asks before a `gh api` write that is not a review or a comment in an own
@@ -174,9 +200,11 @@ organisation, and refuses a remote delete, on each shell call of every frontend.
 It finds each top-level `gh api` and `glab api` call and determines the HTTP method in the same
 way as `gh`: `-X` or `--method`; otherwise POST when a body flag is present; otherwise GET. A GET,
 a HEAD and a `search/…` endpoint pass. It refuses a DELETE from `gh api` or `glab api`. Any other
-`glab api` call passes. A review, an inline comment, a reply, and a comment on a pull request, an
-issue or a commit pass in a repository of an own organisation, so the review agents can post
-there. The endpoint must be `repos/<owner>/<repo>/…` with an `<owner>` of the profile's `org` list,
+`glab api` call passes. A review, an inline comment, a reply, a comment on a pull request, an
+issue or a commit, an edit (PATCH) of an inline or an issue comment, and a new pull request or
+issue (POST `…/pulls`, `…/issues`) pass in a repository of an own organisation, so the review
+agents can post there, and an agent can open a pull request through the REST API when GraphQL,
+which `gh pr create` uses, fails. The endpoint must be `repos/<owner>/<repo>/…` with an `<owner>` of the profile's `org` list,
 compared without case, and the call must name no `--hostname`; the check does not read
 `GH_HOST`, so a host that the environment names is beyond its reach. The same write to any other
 repository asks, because an agent can post a secret in a comment on any public repository. It
@@ -185,8 +213,8 @@ a repository name with a character that GitHub does not allow in it, such as a `
 repository `.` or `..`. The check reads the endpoint as `gh` gets it, without percent-decoding. A
 GraphQL query passes when it holds no mutation, or when each mutation is a review or comment
 operation, in any repository: its node IDs name no repository that the check can read. Every
-other write gets an `ask` decision, and the user sees a prompt. An edit of an existing comment
-also asks.
+other write gets an `ask` decision, and the user sees a prompt. An edit of a comment outside an own
+organisation also asks, because the token can edit other people's comments there.
 
 The check reads a GraphQL query where `gh` reads it: the text of `-f query=…`, which `gh` sends as
 it is; the file of `-F query=@<path>`; and the string `query` of the JSON object in the file of
@@ -556,11 +584,11 @@ echo '{"session_id":"s","tool_input":{"file_path":"'"$HOME"'/Research/Harness/.g
 
 ## `worktree.py`
 
-This hook creates and removes the worktrees of Claude Code. Claude Code runs it on the events
-`WorktreeCreate` and `WorktreeRemove`. The reason is the sandbox: a `git worktree add` to a path
-below `~/Research/.worktrees/` runs sandboxed, where it cannot write `.git`. OpenCode and
-oh-my-pi have no such events; [`harness worktree`](../harness-command.md#worktree) sends the hook
-the same payloads for them.
+This hook creates and removes the worktrees of Claude Code, and sweeps the finished ones. Claude
+Code runs it on the events `WorktreeCreate` and `WorktreeRemove`. The reason is the sandbox: a
+`git worktree add` to a path below `~/Research/.worktrees/` runs sandboxed, where it cannot write
+`.git`. OpenCode and oh-my-pi have no such events; [`harness worktree`](../harness-command.md#worktree)
+sends the hook the same payloads for them.
 
 On `WorktreeCreate` it fetches `origin` in the repository that holds `cwd`, up to three times, 2
 seconds apart, while the fetch fails only on `cannot lock ref`: two creates in one repository
@@ -580,6 +608,32 @@ manifest loads old dependencies. On `WorktreeRemove` it runs `git worktree remov
 removes one file in each `.githooks` and `.claude` of the worktree, and refuses where it cannot: in
 a sandbox, git would delete the worktree's record and leave the directory. The settings template
 gives both events 480 seconds, more than a fetch (300) and the broker's answer (420) take.
+
+**Three command-line forms stand beside the payload on standard input.** `worktree.py add <name>`
+is the `WorktreeCreate` of `name` with the working directory as `cwd`. `worktree.py remove <path>`
+is the `WorktreeRemove` of `path`, placed against the working directory where it is relative.
+`worktree.py sweep [--apply]` is the sweep. Any other arguments exit 1 with the usage line. The
+guard lifts the first two, under `/usr/bin/env -i` on the harness's interpreter with `-E -s` and
+by absolute paths, out of Antigravity's terminal sandbox ([the sandbox check](#the-sandbox-check)).
+
+**The sweep removes the worktrees that are finished.** It lists each directory directly below
+`~/Research/.worktrees`, hidden names left out, one line each, `<kind>  <path>  <why>`:
+
+- `removable`: clean, its `HEAD` in `origin/HEAD`, and its record unused for 12 hours, read from
+  the times of the record's `HEAD`, `index` and `logs/HEAD`;
+- `kept`: anything else, with the reason, also a worktree whose repository the checks below
+  refuse, so that no `git` reads a config that a sandboxed program chose;
+- `orphan`: git holds no record of it. The sweep never touches an orphan.
+
+The sweep's `git status` and `git merge-base` run as every `git` of the hook does, with
+`GIT_DIR` the worktree's admin directory, `GIT_WORK_TREE` the worktree, and
+`--no-optional-locks`, so that the index keeps the time that tells the last use. The dry run ends
+with `would remove <n> worktrees` and exits 1. `--apply` removes each removable worktree as a
+`WorktreeRemove` does, in the same process, and goes on after a failure; a failure exits 1 with
+one line, `worktree hook: <k> of <n> removals failed: <name>: <reason>; …`. A `SIGINT`, `SIGTERM`
+or `SIGHUP` ends the sweep before the next removal. The launch agent and systemd timer
+`worktree-sweep` run `worktree.py sweep --apply` every night at 05:00, outside any sandbox, where
+the remove of a worktree that holds a `.githooks` or a `.claude` can finish.
 
 **The hook finds the repository by reading files, before any `git` runs.** The directory, `cwd`
 or the worktree to remove, must lie below `~/Research`. The first `.git` above it must be a

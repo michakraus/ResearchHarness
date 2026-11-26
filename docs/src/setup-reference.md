@@ -1066,19 +1066,20 @@ cache's command gives each directory that it creates mode 700. `p` holds the pro
 
 ```bash
 p=$(harness get launchd_prefix)
-mkdir -p ~/.config/research-harness/sandbox/shims ~/Library/LaunchAgents ~/Library/Logs/kaimon ~/Library/Logs/julia-update ~/Library/Logs/claude-autocommit
+mkdir -p ~/.config/research-harness/sandbox/shims ~/Library/LaunchAgents ~/Library/Logs/kaimon ~/Library/Logs/julia-update ~/Library/Logs/claude-autocommit ~/Library/Logs/worktree-sweep
 (umask 077 && mkdir -p ~/.cache/kaimon/pocl)
 install -m 755 ~/Research/Harness/sandbox/shims/ps ~/.config/research-harness/sandbox/shims/ps
 for j in kaimon julia-update; do harness render ~/Research/Harness/sandbox/"$j".sb > ~/.config/research-harness/sandbox/"$j".sb; done
-for j in kaimon julia-update claude-autocommit; do harness render ~/Research/Harness/launchagents/"$j".plist > ~/Library/LaunchAgents/"$p.$j".plist; done
+for j in kaimon julia-update claude-autocommit worktree-sweep; do harness render ~/Research/Harness/launchagents/"$j".plist > ~/Library/LaunchAgents/"$p.$j".plist; done
 plutil -lint ~/Library/LaunchAgents/"$p".*.plist
 ```
 
-`plutil -lint` prints `OK` after the path of each file. This command loads the launch agent of
-the autocommit job:
+`plutil -lint` prints `OK` after the path of each file. These commands load the launch agents of
+the autocommit job and of the nightly [worktree](concepts.md#worktree) sweep:
 
 ```bash
 launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/"$p".claude-autocommit.plist
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/"$p".worktree-sweep.plist
 ```
 
 With Kaimon in `~/.julia/bin`, these commands load the launch agents of the server and the update
@@ -1101,11 +1102,12 @@ launchd loads each launch agent of `~/Library/LaunchAgents/` again at each login
 this step only once. launchd has no equivalent of lingering: a launch agent runs only while you
 are logged in.
 
-**Check.** The command prints `LOADED` when the launch agent of the autocommit job is loaded, and
-an error when you skipped it:
+**Check.** Each command prints `LOADED` when its launch agent is loaded, and an error when you
+skipped it:
 
 ```bash
 launchctl list "$p".claude-autocommit >/dev/null && echo LOADED
+launchctl list "$p".worktree-sweep >/dev/null && echo LOADED
 ```
 
 With Kaimon, each command prints `LOADED`:
@@ -1149,14 +1151,14 @@ into `~/.config/systemd/user/`:
 ```bash
 (umask 077 && mkdir -p ~/.cache/kaimon/pocl)
 mkdir -p ~/.config/systemd/user
-for u in kaimon.service julia-update.service julia-update.timer claude-autocommit.service claude-autocommit.timer; do harness render ~/Research/Harness/systemd/"$u" > ~/.config/systemd/user/"$u"; done
+for u in kaimon.service julia-update.service julia-update.timer claude-autocommit.service claude-autocommit.timer worktree-sweep.service worktree-sweep.timer; do harness render ~/Research/Harness/systemd/"$u" > ~/.config/systemd/user/"$u"; done
 systemctl --user daemon-reload
 ```
 
-This command enables the timer of the autocommit job:
+This command enables the timers of the autocommit job and of the nightly worktree sweep:
 
 ```bash
-systemctl --user enable --now claude-autocommit.timer
+systemctl --user enable --now claude-autocommit.timer worktree-sweep.timer
 ```
 
 With Kaimon in `~/.julia/bin`, this command enables the server and the timer of the update job:
@@ -1185,12 +1187,12 @@ Without lingering, the systemd user manager starts at your first login and stops
 logout, and the units stop with it. Lingering keeps the server and the timers running when no one
 is logged in.
 
-**Check.** The first command prints `Linger=yes`. The second lists the timer of the autocommit
-job when you enabled it, and prints nothing when you skipped it:
+**Check.** The first command prints `Linger=yes`. The second lists the timers of the autocommit
+job and of the worktree sweep when you enabled them, and prints nothing when you skipped them:
 
 ```bash
 loginctl show-user "$USER" -p Linger
-systemctl --user list-timers --no-pager | grep claude-autocommit
+systemctl --user list-timers --no-pager | grep -e claude-autocommit -e worktree-sweep
 ```
 
 With Kaimon, the first command prints `active`, and the second lists the timer of the update job:

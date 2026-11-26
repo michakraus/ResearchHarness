@@ -26,22 +26,27 @@ outside `.claude/worktrees/`, and the guard refuses such a call inside `~/Resear
 
 Do not use `ExitWorktree` with `remove`: the harness cannot inspect a hook-made
 worktree and asks for `discard_changes`. Leave one with `ExitWorktree` and `keep`. **An isolated
-sub-agent's worktree stays after it returns**, and the caller removes it.
+sub-agent's worktree stays after it returns.**
 
-**The user removes a worktree that holds a `.githooks/` or a `.claude/`**: one of every package,
-every experiment and the Harness, and one that a shell has entered. Claude Code applies
-`sandbox.filesystem.denyWrite` to `git` also outside the sandbox, and the list holds
-`~/Research/**/.githooks` and `~/Research/**/.claude`. A `git worktree remove` there deletes files
-up to the first protected one and fails. It still deletes the worktree's record, so the checkout
-stays as an orphan. Run `find <path> -name .githooks -o -name .claude`, which also finds one in a
-subdirectory. When it prints a path, give the user `git -C <main checkout> worktree remove <path>`
-in its own `bash` block, for their terminal. After the user removes it, delete the local branch
-yourself with `git branch -d <branch>`: git refuses to delete a branch that a worktree holds.
-When it prints nothing, run `git worktree remove <path>` yourself, as a Bash call of its own, from
-the main checkout. **Under `agentbox` every `git` is sandboxed**: run `harness worktree remove
-<path> --apply` instead, which the guard names. Never `cd` into a worktree before its removal: the
+**Leave a finished worktree in place.** The nightly job `worktree-sweep` removes each worktree
+below `~/Research/.worktrees` that is clean, whose `HEAD` is in `origin/HEAD`, and that is unused
+for 12 hours. It runs outside every sandbox, so it also removes a worktree that holds a
+`.githooks/` or a `.claude/`, which no session can remove: Claude Code applies
+`sandbox.filesystem.denyWrite` to `git` also outside the sandbox, the list holds
+`~/Research/**/.githooks` and `~/Research/**/.claude`, and a `git worktree remove` there deletes
+files up to the first protected one, fails, and still deletes the worktree's record. The sweep
+keeps the local branch: delete it yourself with `git branch -d <branch>` once the worktree is gone.
+
+**Hand the user a removal command only on request**: when the user asks for a worktree to go now,
+or for a worktree that the sweep keeps. `harness worktree sweep` lists each worktree as removable,
+kept or orphan, with the reason. Run `find <path> -name .githooks -o -name .claude`, which also
+finds one in a subdirectory. When it prints a path, give the user
+`git -C <main checkout> worktree remove <path>` in its own `bash` block, for their terminal. When
+it prints nothing, run `git worktree remove <path>` yourself, as a Bash call of its own, from the
+main checkout. **Under `agentbox` every `git` is sandboxed**: run `harness worktree remove <path>
+--apply` instead, which the guard names. Never `cd` into a worktree before its removal: the
 sandbox leaves a `.claude/.cc-writes` in every directory that a shell enters, and only the user
-can delete it. `harness worktree sweep` lists every worktree as removable, kept or orphan.
+can delete it.
 
 **A side session that works in a repository starts without a worktree when this session's folder
 is no repository**, such as `~/Research`: the hook gets that folder and has no repository to

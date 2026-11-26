@@ -56,8 +56,10 @@ not write the same files.
 - **No silent move out of the tree.** The directory check asks before the session moves out of
   the research tree, and before a worktree is removed.
 
-A worktree goes when its branch merges: `git worktree remove <path>` from the main checkout, then
-`git branch -d`. [The research tree](../research-tree.md#temporary-work) names the place.
+A worktree goes after its branch merges: the nightly job `worktree-sweep` removes it once it is
+clean, its `HEAD` is in `origin/HEAD` and it is unused for 12 hours
+([`worktree.py`](guard-hooks.md#worktree-py)). The local branch stays until `git branch -d`.
+[The research tree](../research-tree.md#temporary-work) names the place.
 
 ## Writes that depend on the state
 

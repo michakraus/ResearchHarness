@@ -20,9 +20,29 @@ reading of a comment can differ from a shell's; a part that `exposed` or `path_s
 an assignment or a path in front of a program, unless the part is a `cd` to the working directory;
 and a git option before the subcommand that takes a value, `-C` aside, or `--config-env`, which
 can name a program to run or another repository.
+
+One more line is lifted, which Claude Code's rule keeps inside: the installed worktree hook's
+`add <name>` or `remove <path>` (`worktree_call`), so that Antigravity can make and remove a
+worktree, whose git writes `.git` and `.githooks`, which its sandbox denies. The line is exactly
+
+    /usr/bin/env -i HOME=<home> PATH=<WORKTREE_PATH> <python> -E -s <hook> add|remove <word>
+
+single spaces, with `<home>` the home of this process, `<python>` the interpreter of the harness's
+Python environment and `<hook>` the installed hook, each by its absolute path below that home, and
+`<word>` of WORKTREE_WORD: no `cd`, other assignment, redirection, pipe, quote, `~` or second
+argument. The lifted call runs with the environment of the agent's process: `env -i` clears every
+inherited variable, so no PATH, HOME, XDG_CONFIG_HOME or GIT_* reaches the hook's git; `-E`
+ignores the PYTHON* variables and `-s` the user site directory. Antigravity's sandbox cannot write
+the interpreter, the hook or a directory of WORKTREE_PATH. Antigravity, the app and `agy` alike,
+runs each `run_command` in a new shell, which keeps no variable, function or alias of an earlier
+call, so no earlier call can define a function or an alias `/usr/bin/env`. Both together make the
+lifted program the installed one; the hook itself checks the name, the path and the repository. A
+frontend whose terminal keeps its shell between calls breaks this: there an earlier call can
+define such a function, and the lift must not apply.
 """
 
 import re
+from pathlib import Path
 
 from .contract import PASS, Call, Verdict
 from .paths import Place, place
@@ -41,6 +61,31 @@ PLAIN = re.compile(rf"[ \t]*{COMMAND}(?:[ \t]*(?:&&|\|\||;|\|)[ \t]*{COMMAND})*[
 # `-C`, and `--config-env`.
 VALUED = (TAKES_VALUE - {"-C"}) | {"--config-env"}
 LIFT = Verdict("pass", sandbox="lift")
+# The one argument of a lifted worktree hook call: a branch name or a path of plain characters,
+# which no shell expands.
+WORKTREE_WORD = r"[A-Za-z0-9._/-]+"
+# The PATH of a lifted worktree hook call, that of launchagents/worktree-sweep.plist: directories
+# that no session can write.
+WORKTREE_PATH = "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+
+def worktree_call(command: str) -> bool:
+    """Whether `command` is exactly `/usr/bin/env -i HOME=<home> PATH=<WORKTREE_PATH> <python> -E
+    -s <hook> add <name>` or `... remove <path>`, with `<home>` the home of this process, with one
+    leading `/`, and `<python>` and `<hook>` the interpreter of the harness's Python environment and
+    the installed worktree hook, each by its absolute path below that home."""
+    home = Path.home()
+    if not home.is_absolute():
+        return False
+    home = Path("/" + str(home).lstrip("/"))
+    python = home / ".local" / "share" / "research-harness" / "python" / "bin" / "python"
+    hook = home / ".claude" / "hooks" / "worktree.py"
+    env = f"/usr/bin/env -i HOME={home} PATH={WORKTREE_PATH}"
+    line = (
+        rf"{re.escape(env)} {re.escape(str(python))} -E -s {re.escape(str(hook))} "
+        rf"(?:add|remove) {WORKTREE_WORD}"
+    )
+    return re.fullmatch(line, command) is not None
 
 
 def lifted(command: str, tokens: Tokens, cwd: Place | None) -> bool:
@@ -67,8 +112,10 @@ def lifted(command: str, tokens: Tokens, cwd: Place | None) -> bool:
 
 def check(call: Call) -> Verdict:
     """`pass` with `sandbox: lift` for a shell call that the rule lifts and no screen keeps inside,
-    else `pass` with `keep`."""
+    or that is a worktree hook call (`worktree_call`), else `pass` with `keep`."""
     command = call.command
+    if call.action == "shell" and worktree_call(command):
+        return LIFT
     if call.action != "shell" or PLAIN.fullmatch(command) is None or "#" in command:
         return PASS
     read = readings(command)

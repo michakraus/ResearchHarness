@@ -9,7 +9,9 @@ The check finds each top-level `gh api` and `glab api` call and works out the HT
   * **`glab api`, any method but DELETE**: pass. The `glab api` globs decide.
   * **A review or a comment in an own organisation**: pass, so `Bash(gh api *)` in `allow` lets it
     run: a review, an inline comment or a reply on a pull request, a comment on a pull request or
-    an issue, and a commit comment, to `repos/<owner>/<repo>/…` whose `<owner>` is one of the own
+    an issue, a commit comment, an edit (PATCH) of an inline or an issue comment, and a new pull
+    request or issue (POST `…/pulls`, `…/issues`), which `gh pr create` and `gh issue create` also
+    make, to `repos/<owner>/<repo>/…` whose `<owner>` is one of the own
     organisations (below), with no `--hostname`. The same write anywhere else asks, and so does
     one whose owner or repository holds a character that GitHub allows in no such name, such as
     the placeholder `{owner}` or a `%`, or whose repository is `.` or `..`: the check cannot read
@@ -33,8 +35,8 @@ The check finds each top-level `gh api` and `glab api` call and works out the HT
     before `gh` reads it, standard input (`-`), a path that names no regular file, a file that is
     not UTF-8, an `--input` that is no JSON object with a string `query`, and a call with more than
     one query.
-  * **Any other write**: ask, so the user sees a prompt. That includes an edit of an existing
-    comment, because the token can edit other people's.
+  * **Any other write**: ask, so the user sees a prompt. That includes an edit of a comment outside
+    an own organisation, because the token can edit other people's comments there.
 
 No `permissions` glob can state this: `ask` outranks `allow`, so an `ask` rule on `-f` or `--input`
 also catches a review post. The decision needs the method and the endpoint together.
@@ -84,7 +86,8 @@ MOVES = frozenset({"cd", "pushd", "popd"})
 
 REPO = r"repos/[^/]+/[^/]+"
 
-# The writes a review needs, as (methods, endpoint); each passes only in an own organisation
+# The writes a review needs, with a comment edit and a new pull request or issue, as (methods,
+# endpoint); each passes only in an own organisation
 # (`own_review_write`). Everything else asks.
 REVIEW_WRITES = (
     (frozenset({"POST"}), re.compile(rf"^{REPO}/pulls/[^/]+/reviews$")),
@@ -93,6 +96,8 @@ REVIEW_WRITES = (
     (frozenset({"POST"}), re.compile(rf"^{REPO}/pulls/[^/]+/comments/[^/]+/replies$")),
     (frozenset({"POST"}), re.compile(rf"^{REPO}/issues/[^/]+/comments$")),
     (frozenset({"POST"}), re.compile(rf"^{REPO}/commits/[^/]+/comments$")),
+    (frozenset({"PATCH"}), re.compile(rf"^{REPO}/(?:pulls|issues)/comments/[^/]+$")),
+    (frozenset({"POST"}), re.compile(rf"^{REPO}/(?:pulls|issues)$")),
 )
 
 # The Git Data writes that build a new branch, POST only, with the owner as group 1. An owner and a

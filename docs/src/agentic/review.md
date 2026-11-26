@@ -95,8 +95,8 @@ you have said so in that session. In most cases you merge yourself, on GitHub.
 
 ## After the merge
 
-The worktree of the part goes, with `git worktree remove` from the main checkout, and the local
-branch with `git branch -d`. The task file records the merge, and the part's state becomes
+The nightly job `worktree-sweep` removes the worktree of the part, and the local branch goes with
+`git branch -d` once the worktree is gone. The task file records the merge, and the part's state becomes
 `merged`. A part that waits on this one starts only now, in a worktree from the new `main`. Parts
 that only add lines to a shared `CHANGELOG.md` rebase
 ([The builder-critic loop](loop.md#several-parts-at-once)).

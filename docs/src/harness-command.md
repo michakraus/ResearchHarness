@@ -761,26 +761,29 @@ the hook asks its broker outside the sandbox. `~` is the home that `HOME` gives.
   detached for a name `agent-<hex>`, and the subcommand prints its path.
 - `remove` sends `WorktreeRemove` with `<path>`, made absolute: the hook removes the worktree,
   without `--force`, and keeps its branch.
-- `sweep` lists each directory below `~/Research/.worktrees`, hidden names left out, as
-  `removable` (clean, its HEAD in `origin/HEAD`, its record unused for 12 hours), `kept`, with the
-  reason, or `orphan` (git holds no record of it). With `--apply` it sends `WorktreeRemove` for
-  each removable worktree and names every one that fails; a signal during a removal ends the
-  sweep with 128 + n before the next one, and names no failure before it. It never touches an
-  orphan.
+- `sweep` runs the hook's own sweep, `worktree.py sweep`, with `--apply` where it is given. The
+  hook lists each directory below `~/Research/.worktrees`, hidden names left out, as `removable`
+  (clean, its HEAD in `origin/HEAD`, its record unused for 12 hours), `kept`, with the reason, or
+  `orphan` (git holds no record of it). With `--apply` it removes each removable worktree as a
+  `WorktreeRemove` does and names every one that fails; a signal during a removal ends the sweep
+  with 128 + n before the next one. It never touches an orphan. The nightly job `worktree-sweep`
+  runs the same sweep.
 
 Outside `agentbox`, run `remove --apply` and `sweep --apply` from your own terminal: from a
 sandboxed call, the hook's own git runs in the sandbox, and the hook refuses a remove where it
 cannot write in a `.githooks` or `.claude` of the worktree.
 
-Without `--apply`, the subcommand prints the request in one line and runs nothing. With
-`--apply`, it runs the hook with the interpreter of `harness`, in the working directory and in a
-process group of its own, for at most 480 seconds, and passes the hook's standard error on. A
-hook that runs longer is stopped with the programs that it started: SIGTERM, then SIGKILL 5
-seconds later. A SIGINT, SIGTERM or SIGHUP of the subcommand goes on to the same group.
+Without `--apply`, `add` and `remove` print the request in one line and run nothing; `sweep` runs
+the hook's dry run, which lists the worktrees and removes none. Otherwise the subcommand runs the
+hook with the interpreter of `harness`, in the working directory and in a process group of its
+own, for at most 480 seconds, and passes the hook's standard error on. A hook that runs longer is
+stopped with the programs that it started: SIGTERM, then SIGKILL 5 seconds later. A SIGINT,
+SIGTERM or SIGHUP of the subcommand goes on to the same group.
 
 **Exit status:** 0 after `--apply`; 1 for the dry run; 2 when `<name>` or `<path>` is empty or
 holds a line break, when the working directory no longer exists, when the hook is not installed,
-when it exits with another status than 0, with the hook's last line of standard error, or when
+when it exits with another status than 0 (than 1 for the dry run of `sweep`), with the hook's
+last line of standard error, or when
 it runs longer than 480 seconds; 128 plus the number of a SIGINT, SIGTERM or SIGHUP that arrives
 while the hook runs, the stop after a timeout included, also where the hook fails or runs too
 long.
@@ -1620,23 +1623,26 @@ no `selftest`, and the sweep does not run it, because it runs Julia over the tre
 ### `worktree.py`
 
 The subcommand `harness worktree add <name>`, `harness worktree remove <path>` and `harness
-worktree sweep`, each with `--apply`. The sweep reads each worktree with `git --no-optional-locks`,
-so that its status leaves the index's time, which tells the last use, as it is. It runs the
-installed hook `~/.claude/hooks/worktree.py`, below the home of `HOME`, with `sys.executable`, and
-writes the JSON payload of a `WorktreeCreate` or `WorktreeRemove` event to its standard input;
-only the sweep runs git itself, and only to read. The hook runs in a session of its own, so
+worktree sweep`, each with `--apply`. It runs the installed hook `~/.claude/hooks/worktree.py`,
+below the home of `HOME`, with `sys.executable`: for `add` and `remove` it writes the JSON payload
+of a `WorktreeCreate` or `WorktreeRemove` event to its standard input, and for `sweep` it runs the
+hook as `worktree.py sweep [--apply]` with an empty standard input. It runs no git itself; the
+sweep's logic is the hook's. The hook runs in a session of its own, so
 that a timeout or a forwarded signal reaches the programs that it started, and its output is
 decoded with replacement characters. A signal while the hook runs, the stop after a timeout
-included, makes `request` return 128 + n, which `harness` exits with. Without a signal, a missing
-hook, a hook that exits with another status than 0 or runs too long, an empty `<name>` or `<path>`
-or one with a line break, and a working directory that no longer exists raise `HarnessError`; a
-failing hook's reason is its last line of standard error. Its cases run `harness worktree` in a
+included, makes `run` return 128 + n, which `harness` exits with. Without a signal, a missing
+hook, a hook that exits with another status than 0 (1 is the dry run of `sweep`) or runs too
+long, an empty `<name>` or `<path>` or one with a line break, and a working directory that no
+longer exists raise `HarnessError`; a failing hook's reason is its last line of standard error.
+Its cases run `harness worktree` in a
 fixture home whose hook is a stub that records its input, its working directory and its
 arguments, or that signals its caller. They run a stub that hangs through `request` in their own
 process, with a timeout of 1 s, and run `request` with `subprocess.Popen` or `stop` patched to
 deliver a signal through the installed handler before the hook's start or during the stop; they
 read the two deltas of OpenCode and oh-my-pi for the section that sends an agent to the
-subcommand. The sweep's cases run on a fixture repository with a worktree of each kind.
+subcommand. The sweep's cases put the repository's hook in the fixture home and run it on a
+fixture repository with a worktree of each kind; the hook's own sweep cases run in the probe's
+payload group.
 
 ### `changelog.py`
 
@@ -1796,7 +1802,9 @@ session-writable directory on the `PATH`. Last, they check that `render` gives
 `autocommit_branch` its default when the profile has no such key: `main`, and
 `memory/<short host name>` on a host that is not the template host. One case checks that the
 plist and the unit of `claude-autocommit` start the interpreter that `bin/harness` names by
-default for the profile's home, with the installed copy of the script as its argument.
+default for the profile's home, with the installed copy of the script as its argument; another,
+that those of `worktree-sweep` start the same interpreter on the installed worktree hook with
+`sweep --apply`, and that the job is no job of `jobsandbox.py`.
 [Jobs and configuration](components/other.md) describes the units.
 
 ### `autocommit.py`

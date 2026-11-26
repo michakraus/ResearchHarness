@@ -112,9 +112,31 @@ OpenCode, oh-my-pi and Antigravity connect to this server at `http://127.0.0.1:2
 job `julia-update.plist` restarts it when its Julia release is deleted. Render the plist with
 `harness render launchagents/kaimon.plist`.
 
-## `kaimon.service`, `julia-update.service`, `julia-update.timer`, `claude-autocommit.service` and `claude-autocommit.timer`
+## `worktree-sweep.plist`
 
-The `systemd --user` units in `systemd/` run the three jobs of the plists on Linux. Like the
+A launch agent that removes the finished worktrees below `~/Research/.worktrees`. It runs daily at
+05:00, after `julia-update`, and not at login. The job runs the installed worktree hook,
+`~/.claude/hooks/worktree.py sweep --apply`, with the interpreter of the harness's Python
+environment, `~/.local/share/research-harness/python/bin/python`. The hook removes each worktree
+that is clean, whose `HEAD` is in `origin/HEAD` and that is unused for 12 hours, and keeps every
+other one ([`worktree.py`](../safeguards/guard-hooks.md#worktree-py)).
+
+The job runs the installed hook and not `harness`, because a session can write `~/Research/Harness`
+and the job runs outside every sandbox; no session can write the hook or the interpreter. It runs
+without a Seatbelt profile, as `claude-autocommit.plist` does, and is no job of `jobsandbox.py`: a
+removal deletes the `.githooks` and `.claude` directories of a worktree, which the session
+sandboxes and the daemon profile deny, and a `git worktree remove` that cannot delete them leaves
+the worktree without its record. Its output goes to `~/Library/Logs/worktree-sweep/`. On Linux,
+the hook runs as the `systemd --user` unit `worktree-sweep.service`, whose output goes to the
+journal: `journalctl --user -u worktree-sweep.service`.
+
+The label is `<launchd_prefix>.worktree-sweep`. Render the plist with
+`harness render launchagents/worktree-sweep.plist`. `harness leaks` renders it with the example
+profile.
+
+## `kaimon.service`, `julia-update.service`, `julia-update.timer`, `claude-autocommit.service`, `claude-autocommit.timer`, `worktree-sweep.service` and `worktree-sweep.timer`
+
+The `systemd --user` units in `systemd/` run the jobs of the plists on Linux. Like the
 plists, they are templates of the profile: `harness render systemd/<name>` prints a rendered unit,
 and `harness setup` installs them with what they need. `kaimon.service` and
 `julia-update.service` start their program through `~/.local/bin/jobbox` under `bwrap`, with the
@@ -124,11 +146,11 @@ with mode 755, write `harness render sandbox/<job>.bwrap` for `kaimon` and `juli
 `~/.config/research-harness/sandbox/`, create each write deny and each pin of the two files,
 `~/.julia/juliaup/.juliaup-lock` and `~/.cache/julia-update`, copy each rendered unit into
 `~/.config/systemd/user/`, run `systemctl --user daemon-reload`, create the server's PoCL cache,
-and enable the server and the two timers:
+and enable the server and the three timers:
 
 ```
 (umask 077 && mkdir -p ~/.cache/kaimon/pocl)
-systemctl --user enable --now kaimon.service julia-update.timer claude-autocommit.timer
+systemctl --user enable --now kaimon.service julia-update.timer claude-autocommit.timer worktree-sweep.timer
 ```
 
 Each unit describes the same job as its plist:
@@ -138,13 +160,14 @@ Each unit describes the same job as its plist:
 | `kaimon.service` | `kaimon.plist` | at login (`WantedBy=default.target`), restarted on exit after 60 s (`Restart=always`, `RestartSec=60`), in `~/Research` |
 | `julia-update.service`, `julia-update.timer` | `julia-update.plist` | daily at 04:30 (`OnCalendar`), not at login |
 | `claude-autocommit.service`, `claude-autocommit.timer` | `claude-autocommit.plist` | when the timer starts (`OnActiveSec=0`), then 15 minutes after each run (`OnUnitActiveSec`) |
+| `worktree-sweep.service`, `worktree-sweep.timer` | `worktree-sweep.plist` | daily at 05:00 (`OnCalendar`), not at login |
 
 The program and its arguments, the environment and the `PATH` are those of the plist, with
 `jobbox <job>` in place of `sandbox-exec -f <profile>`, and without the shim directory of
 `kaimon.plist`, which is for macOS only. `julia-update.service` runs
 `~/.local/bin/julia-update-server` outside `bwrap` as its `ExecStopPost`: the server check, the
-restart and the alerts of [the script](scripts.md). Both timers
-set `Persistent=true`, so a calendar start that the machine missed while it slept runs when the
+restart and the alerts of [the script](scripts.md). Every timer
+sets `Persistent=true`, so a calendar start that the machine missed while it slept runs when the
 timer starts again. The units are `--user` units only. Their output goes to the journal:
 `journalctl --user -u <name>`. `julia-update-server` restarts the server as `kaimon.service`.
 
