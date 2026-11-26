@@ -509,6 +509,25 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   verifier's read of the field's other readers found it, after the PASS. Before round 1, list every
   reader of a field or a return value whose range the part widens, and probe each one at the new
   ends of the range (SN finish, the solver package)
+- **a homotopy or a blended residual whose two terms scale differently:** the fixed-point form
+  `λ F(x) + (1 − λ)(x − x₀)` mixes a term that scales with `F` and one that does not, so `F → s F`
+  moves the path, and at `s = 4√floatmax` its corrector stalled. A normalisation by
+  `σ = ‖F(x₀)‖∞` made it invariant under `F → s F` but not near a root, where `σ` goes to zero and
+  every start a few ulps from the root stalled; `σ = max|J(x₀)|` passed both. At a subnormal scale
+  `s` the homotopy still missed a root that the plain Newton solve reached. Decide the
+  normalisation in the spec against the scale row, a subnormal scale and a start within a few ulps
+  of the root, and test all three (CO round 1, verify 2 and verify 3, the solver package)
+- **a start at a fold of the path's parameter:** a continuation from `x₀` where `H_x(x₀, 0)` is
+  singular has a singular bordered system along `e_λ`, so "λ increasing" picks no orientation; the
+  cubic `x³ − 3x − 5/2` from `x₀ = 1` returned `STALLED` with no step, a case that no clause
+  decided, and the verifier found it after the PASS. Decide in the spec what a start at a fold
+  returns, and test a start exactly at one (CO finish, the solver package)
+- **a member solver whose default stop is relative to the first residual alone, run from a start
+  already at round-off:** with `f_abstol = 0` and `f_reltol = √eps`, `Newton()` returned
+  `STALLED` from all 289 starts within 8 ulps of a linear root, because `‖F(x₀)‖` is itself
+  round-off and no step reduces it by `√eps`; a composite method that runs it as its last
+  corrector inherits the stall. Test the member and the composite from a start within a few ulps
+  of the root (CO verify 2, the solver package)
 
 ## A type or an interface
 
