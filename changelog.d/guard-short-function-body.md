@@ -5,10 +5,9 @@
   as are `function f; (true; true) && cd …`, `function f; g() true && cd …` and
   `f() repeat 1 true && cd …`. After a name and `()` without `function`, the body is one command,
   so zsh runs the `cd` of `f() X=1; cd .scratch/x && rm -rf build`; it was refused, and now
-  passes. A body that holds a `{ … }` group, an `if` or a `do … done` ends after its closing
-  word, so `f() { true; }; cd .scratch/x && rm -rf build` still passes; a body that holds
-  another compound command or a backtick is read to the end of its parenthesis. No `cd` in a
-  group or an `if` of a body is sure either: zsh closes
+  passes. A body that holds a compound command or a backtick is read to the end of its
+  parenthesis, so `f() { true; }; cd .scratch/x && rm -rf build` passed, and is now refused
+  (K218). No `cd` in a group or an `if` of a body is sure either: zsh closes
   `f() { cd .scratch/x && true } && rm -rf Papers` without a `;` and runs the `rm` in
   `~/Research`, which passed; it is refused now, and so is `f() { cd x && rm -rf y; }`. zsh's
   short `repeat` runs the whole list after its count as its body, also never, so

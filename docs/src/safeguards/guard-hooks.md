@@ -367,13 +367,12 @@ runs no `cd`, and runs `rm` where the shell was; an anonymous `() cd x` runs at 
 sure. After a name and `()`, the body is the next command, so the `cd` of `f() X=1; cd x` runs;
 after `function` and a name, it is the whole next `&&` or `||` list, so no `cd` of
 `function f; true && cd x || exit` or `function f; (true; true) && cd x || exit` runs. A body
-that holds a `{ … }` group, an `if` or a `do … done` ends after the `}`, `fi` or `done` that
-closes it at the start of a part, so the `cd` of `f() { true; }; cd x` runs and can be sure.
-zsh also closes a group with a `}` after a word, as in `f() { cd x && true } && rm -rf y`; the
-check does not read that `}` as the end, so it reads the rest as the body. A body that holds
-another compound command or a backtick, as in `f() while true; do true; done`, is read up to
-the end of the parenthesis around it, which can only refuse more. No `cd` in a body is sure,
-also not in a group or an `if` of it. zsh's short `repeat` runs the whole list after
+that holds a compound command or a backtick, as in `f() { true; }` or
+`f() if true; then true; fi`, is read up to the end of the parenthesis around it, which can
+only refuse more: zsh also closes a group with a `}` after a word, as in
+`f() { cd x && true } && rm -rf y`, and the check cannot tell a quoted `"}"` from a closing
+one. So `f() { true; }; cd x && rm -rf y` is refused (K218). No `cd` in a body is sure, also not
+in a group or an `if` of it. zsh's short `repeat` runs the whole list after
 its count as its body, also never, so no `cd` of `repeat 0 true && cd x || exit` is sure either,
 nor of `repeat 0 >/dev/null && cd x || exit`, whose body starts with the redirection.
 After `;` and newlines, the next list is that body, as in `repeat 0;` and a newline before
