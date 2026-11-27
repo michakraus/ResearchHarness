@@ -538,14 +538,28 @@ def unredirected(tokens: Tokens) -> Tokens:
     such as the `1` of `2>&1` or the delimiter of a heredoc. A redirection can stand between a
     program and its arguments, as in `git 2>&1 push`, and the shell passes its target to no
     program. The operators stay, so `parts` splits as before."""
-    result: list[Token] = []
-    target = False
+    return tuple((kind, text) for kind, text, _ in closings(tokens))
+
+
+def closings(tokens: Tokens) -> tuple[tuple[Kind, str, bool], ...]:
+    """The tokens of `unredirected`, each with whether zsh may close a group right after it
+    (`Simple.shut`): a word that ends in `}`, or the operator of a redirection whose target ends
+    in `}`, as in `{ true >/dev/null}`, once a word that starts with `{` has come."""
+    result: list[tuple[Kind, str, bool]] = []
+    braced, target = False, False
     for kind, text in tokens:
-        if kind == "word" and target:
-            target = False
+        if kind == "word":
+            braced = braced or text.startswith("{")
+            shut = braced and text.endswith("}")
+            if target:
+                operator = result[-1]
+                result[-1] = (operator[0], operator[1], shut)
+                target = False
+                continue
+            result.append((kind, text, shut))
             continue
-        target = kind == "op" and REDIRECTION.fullmatch(text) is not None
-        result.append((kind, text))
+        target = REDIRECTION.fullmatch(text) is not None
+        result.append((kind, text, False))
     return tuple(result)
 
 
@@ -576,13 +590,18 @@ class Simple:
     runs its command word if that is a builtin (`Runs`), the operators after it (`then`): `&&`,
     `;`, `|`, a parenthesis, a newline, a backtick, or empty at the end, with those of a part that
     runs nothing after it, as in `x; } && y`; the reserved words before it (`lead`), with those of
-    such a part before it, as in `fi; y`; and the number of parentheses open before it (`depth`)."""
+    such a part before it, as in `fi; y`; the number of parentheses open before it (`depth`); and
+    whether zsh may close a group right after its words (`shut`): a word of it or of such a part
+    after it, or the target of a redirection there, ends in `}`, after a word that starts with `{`,
+    as in `{ true; cd x }`, `{ true >/dev/null}` or `{ cd x && X=1}`. `closings` takes a
+    quoted `}` or `{` as a bare one, so it reads every such `}` as one that may close a group."""
 
     words: list[str]
     runs: Runs
     then: str
     lead: tuple[str, ...] = ()
     depth: int = 0
+    shut: bool = False
 
 
 def after_wrapper(words: list[str], at: int, wrapper: Wrapper) -> int | None:
@@ -716,7 +735,9 @@ def outermost(simples: list[Simple]) -> list[bool]:
     `if`, loop, `case` or function body holds it, so that an `exit` after it ends the shell for
     every command after it. A `cd x || exit` in a body that may not run, as in `if false; then cd x
     || exit; fi; y`, leaves `y` where the shell was. A `{` that is a word of a command opens a body
-    too, as in `function f {`, `coproc {` or zsh's `repeat 0 {`. Inside a `case`, a closing word
+    too, as in `function f {`, `coproc {` or zsh's `repeat 0 {`, and so does every word that
+    starts with `{`, since zsh opens a group at the `{` of `{true; cd x || exit; }`; one that
+    opens none, as `{a,b}`, only makes more commands read as nested. Inside a `case`, a closing word
     can be a pattern, as in `(fi)`, so there only an opening word counts. An `esac` or `end`
     closes only a `case` or `foreach` that is open, and only outside a pattern or a zsh glob group
     (`in_group`), as in `echo (end)`; bash runs `end` as a program."""
@@ -725,7 +746,7 @@ def outermost(simples: list[Simple]) -> list[bool]:
     for at, simple in enumerate(simples):
         level += sum(step for word in simple.lead if (step := NESTING.get(word, 0)) > 0 or not cases)
         found.append(level == 0)
-        level += simple.words[1:].count("{")
+        level += sum(word.startswith("{") for word in simple.words)
         head = simple.words[0]
         closing = at == 0 or not in_group(simples[at - 1].then, simple.then)
         if head == "case":
@@ -759,10 +780,12 @@ def sure_kind(simples: list[Simple], index: int, outer: list[bool]) -> Sure | No
     (`outer`, of `outermost`); `if`: it is the condition of an `if`, as in `if cd x; then y; fi`.
     A move in the body of zsh's short function definition, as in `f() cd x && y`, never runs
     there (`DEFINED`), so it is not sure; so neither is one in a group or an `if` of such a body,
-    as in `f() { cd x && true } && y`, where zsh closes the group without a `;`."""
+    as in `f() { cd x && true } && y`, where zsh closes the group without a `;`. Nor is a move
+    after which zsh may close a group (`Simple.shut`), as in `repeat 0 { true; cd x } && y`,
+    where the group may never run, and bash's `cd` fails."""
     simple = simples[index]
     moves = program(simple.words[0]) in ("cd", "pushd") and DEFINED not in simple.lead
-    if simple.runs != "shell" or "!" in simple.lead or not moves:
+    if simple.runs != "shell" or "!" in simple.lead or not moves or simple.shut:
         return None
     if index > 0:
         before = simples[index - 1].then
@@ -831,15 +854,17 @@ def scope_end(
     """The index of the first command after the sure move `simples[index]` of `kind` (`sure_kind`)
     that can run where the shell was before it, or None. Every kind ends where a parenthesis
     closes that was open before it (`closes`). A `list` ends after the `&&` list that it starts:
-    after an operator other than `&&` or a pipe, such as `;`, `||` or `&`, or after a backtick. A
-    move reads the commands after it only up to the next one of its kind in as many parentheses,
-    whose index and end are `known`: from there on, both end alike, so a chain of `cd x &&` costs
-    one pass (`flow`). An `if` move ends as `if_ends` gives."""
+    after an operator other than `&&` or a pipe, such as `;`, `||` or `&`, or after a backtick;
+    also after a command where zsh may close a group (`Simple.shut`), as in
+    `repeat 0 { true; cd x && true } && y`. A move reads the commands after it only up to the
+    next one of its kind in as many parentheses, whose index and end are `known`: from there on,
+    both end alike, so a chain of `cd x &&` costs one pass (`flow`). An `if` move ends as
+    `if_ends` gives."""
     depth = simples[index].depth
     for at in range(index + 1, len(simples)):
         if closes(simples[at - 1], depth):
             return at
-        if kind == "list" and ends_list(simples[at - 1], depth):
+        if kind == "list" and (ends_list(simples[at - 1], depth) or simples[at - 1].shut):
             return at
         if known is not None and at == known[0]:
             return known[1]
@@ -979,7 +1004,7 @@ def builtin_commands(tokens: Tokens) -> list[Simple]:
     reserved words before it and the parentheses open before it. Several checks read the same
     tokens, so the commands are made once (`cached_commands`); each caller gets lists of its own."""
     return [
-        Simple(list(simple.words), simple.runs, simple.then, simple.lead, simple.depth)
+        Simple(list(simple.words), simple.runs, simple.then, simple.lead, simple.depth, simple.shut)
         for simple in cached_commands(tokens)
     ]
 
@@ -1013,12 +1038,12 @@ def commands_of(tokens: Tokens, _quoted: tuple[bool, ...]) -> tuple[Simple, ...]
     found: list[Simple] = []
     current: list[str] = []
     lead: list[str] = []
-    depth = 0
-    before = ""
+    # `shut`: whether zsh may close a group after the current part (`closings`).
+    depth, before, shut = 0, "", False
     body = Defined()
 
     def close(then: str) -> None:
-        nonlocal current, lead, depth, before, body
+        nonlocal current, lead, depth, before, body, shut
         body, (current, cut), short = unwaited(body, current), unrepeated(current), repeats(current, then)
         if (at := command_word(current)) is not None:
             # The body of a function that zsh's short form defines, or of a `repeat`, may run
@@ -1028,7 +1053,9 @@ def commands_of(tokens: Tokens, _quoted: tuple[bool, ...]) -> tuple[Simple, ...]
                 + reserved_lead(current[:at])
                 + (kept_opens(current[at:]) if cut else [])
             )
-            found.append(Simple(current[at:], runs_of(current[:at], current[at]), then, tuple(lead), depth))
+            found.append(
+                Simple(current[at:], runs_of(current[:at], current[at]), then, tuple(lead), depth, shut)
+            )
             lead = []
         else:
             # A part that runs nothing, such as `}`, `fi` or an assignment, passes its reserved
@@ -1044,14 +1071,17 @@ def commands_of(tokens: Tokens, _quoted: tuple[bool, ...]) -> tuple[Simple, ...]
             if found:
                 last = found[-1]
                 joined_then = last.then + (PART if current else "") + then
-                found[-1] = Simple(last.words, last.runs, joined_then, last.lead, last.depth)
+                found[-1] = Simple(
+                    last.words, last.runs, joined_then, last.lead, last.depth, last.shut or shut
+                )
         body = carried(body, current, then, depth, short=short)
         depth += then.count("(") - then.count(")")
-        current, before = [], then
+        current, before, shut = [], then, False
 
     # A pattern of a `case` runs nothing, and its `(` and `)` open and close no parenthesis.
     pattern: Pattern = None
-    for kind, text in map(unreserved, unredirected(tokens)):
+    for kind, text, closing in closings(tuple(map(unreserved, tokens))):
+        shut = shut or closing
         if pattern is not None:
             pattern, inside = in_pattern(pattern, kind, text)
             if inside:

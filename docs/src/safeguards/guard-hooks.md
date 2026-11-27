@@ -376,7 +376,16 @@ that holds a compound command or a backtick, as in `f() { true; }` or
 only refuse more: zsh also closes a group with a `}` after a word, as in
 `f() { cd x && true } && rm -rf y`, where bash reads the `}` as an argument. So
 `f() { true; }; cd x && rm -rf y` is refused (K218). No `cd` in a body is sure, also not
-in a group or an `if` of it. zsh's short `repeat` runs the whole list after
+in a group or an `if` of it. Outside a body too, zsh closes a group at a `}` that ends a word or
+the target of a redirection, as in `repeat 0 { true; cd x } && rm -rf y`, `{ true; cd x}` or
+`{ true >/dev/null}`, and the group may never run. So once a word that starts with `{` has come,
+no `cd` right before such a `}` is sure, and the `&&` list of a `cd` ends at it. zsh also opens a
+group at a word that starts with `{`, as in `false && {true; cd x || exit; }`, so such a word
+reads as an opening for `|| exit`. These two readings take a quoted brace as a bare one, and the
+check matches no `{` with a `}`, so `cd x && { true } && rm -rf y`,
+`cd x && echo {a,b} && rm -rf y` and `cd x && awk '{print $1}' f && rm -rf y` are refused too.
+A `cd` in a command word that starts with `{`, as in `{cd ..`, goes unseen (K221). zsh's short
+`repeat` runs the whole list after
 its count as its body, also never, so no `cd` of `repeat 0 true && cd x || exit` is sure either,
 nor of `repeat 0 >/dev/null && cd x || exit`, whose body starts with the redirection.
 After `;` and newlines, the next list is that body, as in `repeat 0;` and a newline before

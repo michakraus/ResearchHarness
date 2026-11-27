@@ -7,6 +7,5 @@
   a reserved word. A backslash-newline quotes nothing, so `{ true; \` and a newline before `}`
   still closes the group. A quoted word reads as the same text everywhere else, as a path or the
   name of a program: `"cd" .scratch/x && rm -rf build` still passes and `'rm' -rf Papers` is still
-  refused. `"{" true; cd .scratch/x || exit; rm -rf build` and `"time" fi; cd .scratch/x || exit;
-  rm -rf build`, where both shells run the `cd` and the `rm` in `.scratch/x`, were refused and now
-  pass.
+  refused. `"time" fi; cd .scratch/x || exit; rm -rf build`, where both shells run the `cd` and
+  the `rm` in `.scratch/x`, was refused and now passes.

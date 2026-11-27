@@ -1260,19 +1260,6 @@
 - kind: defect
 - found: 2026-11-27, the branch `guard/short-function-body`
 
-### K217 · The rm and work-tree checks read zsh's `}` after a word as an argument, though zsh closes a group there, so a `cd` in a group that may never run reads as sure past the group.
-
-- location: `hooks/guard/shell.py`, `sure_kind`
-- evidence: with the call's working directory `~/Research`, `guard --from claude` passes
-  `repeat 0 { true; cd .scratch/x } && rm -rf Papers`,
-  `if false; then { cd .scratch/x } fi && rm -rf Papers` and `repeat 0;`, a newline and
-  `{ cd .scratch/x } && rm -rf Papers`. zsh closes each group at the `}` after `x`, runs no `cd`,
-  and runs the `rm` in `~/Research` (`zsh -fc 'repeat 0 { echo CD } && echo RM'` prints `RM`).
-  The checks read the `}` as an argument of `cd`, so the `&&` list of the `cd` goes on to the
-  `rm`. bash passes the `}` to `cd`, which then fails. The same holds on `origin/main`.
-- kind: defect
-- found: 2026-11-27, a differential fuzz of the branch `guard/short-function-body`
-
 ### K218 · The rm and work-tree checks read the body of a function that holds a compound command up to the end of the parenthesis around it, so they refuse a removal after the body.
 
 - location: `hooks/guard/shell.py`, `carried`
@@ -1302,7 +1289,20 @@
 - kind: defect
 - found: 2026-11-27, the verifier of the branch `guard/short-function-body`
 
-### K221 · The rm and work-tree checks read a `}` after a redirection as the end of a group, though bash runs it as a command.
+### K221 · The rm and work-tree checks read a command word that starts with `{` as the name of a program, though zsh opens a group there and bash expands braces, so a `cd` in it goes unseen.
+
+- location: `hooks/guard/shell.py:1002`
+- evidence: with the call's working directory `~/Research`, `guard --from claude` passes
+  `cd .scratch/x && {cd ../.. && rm -rf Papers}` and
+  `cd .scratch/x || exit; {cd ../..; rm -rf Papers; }`: zsh opens a group at the `{` of `{cd`,
+  runs `cd ../..`, and runs the `rm` in `~/Research`. It also passes
+  `cd .scratch/x || exit; {cd,../..}; rm -rf Papers`: bash expands `{cd,../..}` to `cd ../..`.
+  The checks read the programs `{cd` and `{cd,../..}`, which move nothing, so they read the `rm`
+  only in `.scratch/x`. The same holds on `origin/main`.
+- kind: defect
+- found: 2026-11-27, the verifier of the branch `guard/zsh-close-brace`
+
+### K222 · The rm and work-tree checks read a `}` after a redirection as the end of a group, though bash runs it as a command.
 
 - location: `hooks/guard/shell.py`, `cached_commands`
 - evidence: with the call's working directory `~/Research`, `guard --from claude` passes
