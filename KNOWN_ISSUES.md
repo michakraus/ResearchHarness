@@ -1231,9 +1231,9 @@
   reads `build` as `~/Research/build`. `cd .scratch/x && true && rm -rf build` passes. The
   same holds for a `;` of an `if`, a loop or a `case` after the `cd`, and for a backtick:
   `cd .scratch/x && if true; then rm -rf build; fi`, `cd .scratch/x && for f in b; do rm -rf
-  build; done`, `cd .scratch/x && case a in a) rm -rf build;; esac` and ``cd .scratch/x && echo
-  `pwd` && rm -rf build`` are refused; on `origin/main` each passes. The decision errs only
-  toward a refusal.
+  build; done`, `cd .scratch/x && case a in a) true; rm -rf build;; esac` and
+  ``cd .scratch/x && echo `pwd` && rm -rf build`` are refused. The decision errs only toward a
+  refusal.
 - kind: defect
 - found: 2026-11-26, the branch `guard/cd-and-alias-limits`, a limit of the form of the fix of
   K206 and K210

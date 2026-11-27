@@ -613,11 +613,10 @@ def runs_of(prefix: list[str], word: str) -> Runs:
 # The builtins that end the shell, so that the commands after `cd x || exit` run only where the
 # `cd` succeeded (`flow`). Not `return`: bash goes on after a `return` outside a function.
 STOPS = frozenset({"exit"})
-# The `then` of the name of a function that the command right after it defines (`sure_kind`): in
-# zsh, `f() cd x && y` and `function f() cd x` define `f` with the body `cd x`, which does not run
-# there, and `y` runs where the shell was; bash refuses the form. An anonymous `() cd x`, which
-# zsh runs at once, follows an operator, and its `()` joins the `then` of the command before it.
-DEFINES = re.compile(r"\(\)\s*")
+# The mark that `cached_commands` puts last in the reserved words of the body of a function that
+# zsh's short form defines (`defines`), as the `cd x` of `f() cd x && y`, which does not run there,
+# so that `y` runs where the shell was (`sure_kind`).
+DEFINED = "()"
 # The operators of a `then` (`operators`): a newline is read as `;`.
 OPERATORS = re.compile(r"&&|\|\||\|&|[|;&()`]")
 # The newlines right after an operator, which only go on with the line (`operators`): bash and
@@ -726,14 +725,14 @@ def sure_kind(simples: list[Simple], index: int, outer: list[bool]) -> Sure | No
     `cd x || exit 1; y` and unlike `cd x || (exit 1)` or `exit &`, in no compound command or body
     (`outer`, of `outermost`); `if`: it is the condition of an `if`, as in `if cd x; then y; fi`.
     A move that is the body of zsh's short function definition, as in `f() cd x && y`, never runs
-    there (`DEFINES`), so it is not sure."""
+    there (`DEFINED`), so it is not sure."""
     simple = simples[index]
-    if simple.runs != "shell" or "!" in simple.lead or program(simple.words[0]) not in ("cd", "pushd"):
+    moves = program(simple.words[0]) in ("cd", "pushd") and simple.lead[-1:] != (DEFINED,)
+    if simple.runs != "shell" or "!" in simple.lead or not moves:
         return None
     if index > 0:
         before = simples[index - 1].then
-        defines = not simple.lead and DEFINES.fullmatch(before) is not None
-        if defines or "`" in before or last_operator(before) in ("||", "|", "|&"):
+        if "`" in before or last_operator(before) in ("||", "|", "|&"):
             return None
     own = operators(simple.then)
     following = simples[index + 1] if index + 1 < len(simples) else None
@@ -985,6 +984,8 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
                 joined_then = last.then + (PART if current else "") + then
                 found[-1] = Simple(last.words, last.runs, joined_then, last.lead, last.depth)
         depth += then.count("(") - then.count(")")
+        # The body of a function that zsh's short form defines runs nothing here (`DEFINED`).
+        lead.extend([DEFINED] if defines(current, then) else [])
         current = []
         before = then
 
@@ -1001,8 +1002,9 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
             pattern = "start"
             continue
         if kind == "op":
-            redirection = REDIRECTION.fullmatch(text) is not None
-            if not redirection and (not SEPARATORS.isdisjoint(text) or "(" in text or ")" in text):
+            if REDIRECTION.fullmatch(text) is None and (
+                not SEPARATORS.isdisjoint(text) or "(" in text or ")" in text
+            ):
                 close(text)
             if text.strip() in TERMINATORS:
                 pattern = "start"
@@ -1019,11 +1021,23 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
     return tuple(found)
 
 
+def defines(current: list[str], text: str) -> bool:
+    """True when the operator `text` after the words `current` ends the head of a function that
+    zsh defines with the next command as its body: `()` after a name, as in `f() cd x`,
+    `f g () ; cd x` or `env() cd x`, or `;`, a newline or `()` after `function` and a name, as in
+    `function f; cd x`. An anonymous `() cd x` has no name, and zsh runs it at once."""
+    head = list(itertools.dropwhile(lambda word: word in RESERVED, current))
+    bare = text.strip()
+    if bare == "()":
+        return bool(head)
+    return head[:1] == ["function"] and bool(head[1:]) and "{" not in head and bare in ("", ";")
+
+
 # Where the reader of `cached_commands` stands in a pattern of a `case` (`in_pattern`): before its
 # first word, or after it.
 type Pattern = Literal["start", "inside"] | None
-# The operators that end a branch of a `case`, after which a pattern or `esac` follows; bash and
-# zsh refuse each of them outside a `case`.
+# The operators that end a branch of a `case`, after which a pattern, `esac` or zsh's `}` follows;
+# bash and zsh refuse each of them outside a `case`.
 TERMINATORS = frozenset({";;", ";&", ";|", ";;&"})
 
 
@@ -1039,8 +1053,9 @@ def in_pattern(pattern: Pattern, kind: str, text: str) -> tuple[Pattern, bool]:
     the reader stands after it, and whether the token belongs to the pattern, which runs nothing
     and opens and closes no parenthesis. A newline or `(` before the first word, a word, and `|`
     belong to it, and `)` ends it, each with the blanks and newlines around it, as the `\n(` of
-    `case a in\n(b)`. An `esac` as its first word, any other operator, and a word with a backtick
-    end the pattern before the token, which the reader then reads as before."""
+    `case a in\n(b)`. An `esac` or a `}` as its first word, any other operator, and a word with a
+    backtick end the pattern before the token, which the reader then reads as before: zsh's
+    `case a { … }` ends with `}` where the other form ends with `esac`."""
     if kind == "op":
         bare = text.strip()
         if pattern == "start" and bare in ("(", ""):
@@ -1048,7 +1063,7 @@ def in_pattern(pattern: Pattern, kind: str, text: str) -> tuple[Pattern, bool]:
         if bare in ("|", ")"):
             return ("inside" if bare == "|" else None), True
         return None, False
-    if "`" in text or (pattern == "start" and text == "esac"):
+    if "`" in text or (pattern == "start" and text in ("esac", "}")):
         return None, False
     return "inside", True
 

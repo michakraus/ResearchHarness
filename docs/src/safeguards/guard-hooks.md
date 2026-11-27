@@ -362,10 +362,12 @@ goes on after a `return` outside a function. Nor does `|| (exit 1)`, which ends 
 A `cd` that `!`, `||` or a pipe comes before, as in `! cd x`, `true || cd x` or `echo | cd x`, is
 never sure: `!` turns its failure into success, the shell can skip it, and bash runs a pipeline's
 commands in a child. Nor is the `cd` of zsh's short function definition, as in
-`f() cd x && rm -rf y`: zsh defines `f` and runs no `cd`, and runs `rm` where the shell was;
-an anonymous `() cd x` runs at once and can be sure. A `;` inside a `{ … }` group, an `if`, a loop or a `case`, and a backtick,
-end the `&&` list early (K211). A `popd` returns to the directory before the matching `pushd`, and
-a `pushd` with no operand swaps the top two directories. The check
+`f() cd x && rm -rf y`, `f() ; cd x`, `function f; cd x` or `env() cd x`: zsh defines `f` and
+runs no `cd`, and runs `rm` where the shell was; an anonymous `() cd x` runs at once and can be
+sure. A `;` inside a `{ … }` group, an `if`, a
+loop or a `case`, and a backtick, end the `&&` list early (K211). A `popd` returns to the
+directory before the matching `pushd`, and a `pushd` with no operand swaps the top two
+directories. The check
 follows at most 4 directories; past that, it reads the commands after the last `cd` in the first
 directory and in an unknown one. In a nesting such as `cd x && (cd y && (…` whose scopes take
 more than 65,536 commands to read, the check reads the outer `cd`s as ones that can fail. A
