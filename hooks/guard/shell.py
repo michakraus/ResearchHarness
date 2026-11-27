@@ -613,9 +613,10 @@ def runs_of(prefix: list[str], word: str) -> Runs:
 # The builtins that end the shell, so that the commands after `cd x || exit` run only where the
 # `cd` succeeded (`flow`). Not `return`: bash goes on after a `return` outside a function.
 STOPS = frozenset({"exit"})
-# The mark that `cached_commands` puts last in the reserved words of the body of a function that
-# zsh's short form defines (`defines`), as the `cd x` of `f() cd x && y`, which does not run there,
-# so that `y` runs where the shell was (`sure_kind`).
+# The mark that `cached_commands` puts in the reserved words of each command of the body of a
+# function that zsh's short form defines (`carried`), before the command's own reserved words, as
+# for the `cd x` of `f() cd x && y`, which does not run there, so that `y` runs where the shell
+# was (`sure_kind`).
 DEFINED = "()"
 # The operators of a `then` (`operators`): a newline is read as `;`.
 OPERATORS = re.compile(r"&&|\|\||\|&|[|;&()`]")
@@ -960,13 +961,14 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
     lead: list[str] = []
     depth = 0
     before = ""
-    body: tuple[Body, bool] = (None, False)
+    body = Defined()
 
     def close(then: str) -> None:
         nonlocal current, lead, depth, before, body
         at = command_word(current)
         if at is not None:
-            lead.extend(reserved_lead(current[:at]))
+            # The body of a function that zsh's short form defines runs nothing here (`DEFINED`).
+            lead += ([DEFINED] if body.kind is not None else []) + reserved_lead(current[:at])
             found.append(Simple(current[at:], runs_of(current[:at], current[at]), then, tuple(lead), depth))
             lead = []
         else:
@@ -984,9 +986,8 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
                 last = found[-1]
                 joined_then = last.then + (PART if current else "") + then
                 found[-1] = Simple(last.words, last.runs, joined_then, last.lead, last.depth)
+        body = carried(body, current, then, depth)
         depth += then.count("(") - then.count(")")
-        # The body of a function that zsh's short form defines runs nothing here (`DEFINED`).
-        body, lead = carried(body, current, then, lead)
         current, before = [], then
 
     # A pattern of a `case` runs nothing, and its `(` and `)` open and close no parenthesis.
@@ -1021,16 +1022,16 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
     return tuple(found)
 
 
-# The body of a function that zsh's short form defines (`defines`): one simple command, or the
-# whole `&&` or `||` list up to the next `;`, `&` or newline.
+# The body of a function that zsh's short form defines (`defines`): one command, or the whole
+# `&&` or `||` list up to the next `;`, `&` or newline (`carried`).
 type Body = Literal["simple", "list"] | None
 
 
 def defines(current: list[str], text: str) -> Body:
     """The body of the function whose head the operator `text` after the words `current` ends, or
     None when it ends none. An operator that starts with `()` after a name, as in `f() cd x`,
-    `f();cd x`, `f()() cd x`, `f g () ; cd x` or `env() cd x`, makes the next simple command the
-    body, so that zsh runs the `cd` of `f() X=1; cd x` and of `f() X=1 && cd x`. `;`, a newline
+    `f();cd x`, `f()() cd x`, `f g () ; cd x` or `env() cd x`, makes the next command the body
+    (`simple`), so that zsh runs the `cd` of `f() X=1; cd x` and of `f() X=1 && cd x`. `;`, a newline
     or `()` after `function` and a name, as in `function f; cd x` or `function f() cd x`, makes
     the whole next list the body, so that zsh runs no `cd` in `function f; true && cd x || exit`.
     An anonymous `() cd x` has no name, nor have `function () cd x` and the `\n()` of
@@ -1039,29 +1040,60 @@ def defines(current: list[str], text: str) -> Body:
     named = head[:1] == ["function"] and bool(head[1:]) and "{" not in head
     if text.startswith("()") and head not in ([], ["function"]):
         return "list" if named else "simple"
-    return "list" if named and text.strip() in ("", ";") else None
+    # `;` and newlines, then the body: `function f;(true)` and `function f; ;true` define `f` too.
+    separators = itertools.takewhile(lambda operator: operator != "(", operators(text))
+    return "list" if named and set(separators) <= {";"} else None
 
 
-def carried(
-    body: tuple[Body, bool], current: list[str], then: str, lead: list[str]
-) -> tuple[tuple[Body, bool], list[str]]:
-    """The body that `cached_commands` reads after the part `current` and its operators `then`,
-    with whether a word of it came yet, and the reserved words `lead` for the next command, with
-    the mark DEFINED last while the next command belongs to the body. A head (`defines`) starts a
-    body. A `simple` body ends with its first part that holds a word, also one that runs nothing,
-    as the `X=1` of `f() X=1; cd x`. A `list` body ends with the first `;`, `&` or newline after
-    its first word."""
-    kind, started = body
+@dataclass(frozen=True, slots=True)
+class Defined:
+    """The body of a function that zsh's short form defines, as `cached_commands` reads it
+    (`carried`): its `Body`, or None outside a body; whether a word of it came yet (`started`);
+    the number of parentheses open before its head (`level`); and whether it holds a word of
+    OPENS or a backtick (`held`), whose `;`, `&` or newline can end no body."""
+
+    kind: Body = None
+    started: bool = False
+    level: int = 0
+    held: bool = False
+
+
+# The words that open a compound command, whose `;`, `&` or newline end no body of a function
+# (`carried`), as in `function f; if true; then true; fi && cd x`, or that take a whole list as
+# their body in zsh, as `repeat` does in `f() repeat 1 true && cd x`.
+OPENS = frozenset({"{", "if", "while", "until", "for", "foreach", "select", "case", "repeat", "coproc"})
+
+
+def carried(body: Defined, current: list[str], then: str, depth: int) -> Defined:
+    """The body that `cached_commands` reads after the part `current`, `depth` parentheses deep,
+    and its operators `then`: while it is open, the next command belongs to it and gets the mark
+    DEFINED before its own reserved words. A head (`defines`) starts a body, or
+    goes on with the body that holds it: `function f; g() true && cd x` and `function f; true &&
+    function g; cd x` run no `cd`. A `simple` body ends with the first operator after its first
+    part that holds a word, also one that runs nothing, as the `X=1` of `f() X=1; cd x`, or after
+    the `)` of a subshell, as in `f() (true) && cd x`. A `list` body ends with the first `;`, `&` or
+    newline after its first word. Each counts only in as many parentheses as the head, so the `;`
+    of `function f; (true; true) && cd x` ends nothing. A body that holds a word of OPENS before
+    its command word, or a backtick, ends only where a parenthesis open before its head closes,
+    which only makes the checks read more directories."""
     head = defines(current, then)
     if head is not None:
-        kind, started = head, False
-    elif kind == "simple":
-        kind = None if current else kind
-    elif kind == "list":
-        started = started or bool(current)
-        kind = None if started and not {";", "&"}.isdisjoint(operators(then)) else kind
-    words = [word for word in lead if word != DEFINED]
-    return (kind, started), [*words, DEFINED] if kind is not None else words
+        nested = body.kind is not None
+        kind: Body = "list" if "list" in (head, body.kind) else "simple"
+        level = min(body.level, depth) if nested else depth
+        body = Defined(kind, head == "simple" and body.kind == "list", level, body.held and nested)
+    elif body.kind is not None:
+        at = command_word(current)
+        opening = current if at is None else current[: at + 1]
+        held = body.held or not OPENS.isdisjoint(opening) or "`" in then
+        body = Defined(body.kind, body.started or bool(current), body.level, held)
+        for operator in operators(then):
+            depth += (operator == "(") - (operator == ")")
+            at_head = operator != "(" and depth == body.level and body.started and not body.held
+            if depth < body.level or (at_head and (body.kind == "simple" or operator in (";", "&"))):
+                body = Defined()
+                break
+    return body
 
 
 # Where the reader of `cached_commands` stands in a pattern of a `case` (`in_pattern`): before its

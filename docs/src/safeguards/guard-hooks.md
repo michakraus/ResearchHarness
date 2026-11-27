@@ -364,9 +364,12 @@ never sure: `!` turns its failure into success, the shell can skip it, and bash 
 commands in a child. Nor is the `cd` of zsh's short function definition, as in
 `f() cd x && rm -rf y`, `f() ; cd x`, `function f; cd x` or `env() cd x`: zsh defines `f` and
 runs no `cd`, and runs `rm` where the shell was; an anonymous `() cd x` runs at once and can be
-sure. After a name and `()`, the body is the next simple command, so the `cd` of
-`f() X=1; cd x` runs; after `function` and a name, it is the whole next `&&` or `||` list, so no
-`cd` of `function f; true && cd x || exit` runs. A `;` inside a `{ … }` group, an `if`, a
+sure. After a name and `()`, the body is the next command, so the `cd` of `f() X=1; cd x` runs;
+after `function` and a name, it is the whole next `&&` or `||` list, so no `cd` of
+`function f; true && cd x || exit` or `function f; (true; true) && cd x || exit` runs. A body
+that holds a compound command or a backtick, as in `f() if true; then true; fi`, is read up to
+the end of the command or of the parenthesis around it, which can only refuse more. A `;` inside
+a `{ … }` group, an `if`, a
 loop or a `case`, and a backtick, end the `&&` list early (K211). A `popd` returns to the
 directory before the matching `pushd`, and a `pushd` with no operand swaps the top two
 directories. The check
