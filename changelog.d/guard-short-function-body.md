@@ -17,9 +17,11 @@
   redirection. The checks read the command after a `repeat` and its count:
   `repeat 1 rm -rf Papers` from `~/Research` and `repeat 1 cd ../..; rm -rf Papers` from a
   directory two levels below it passed, and are refused now; `repeat 0 do true; done; cd x ||
-  exit; rm -rf build` was refused, and passes now. After `;` and newlines, zsh's short `repeat`
-  takes the next list as its body, unless it starts with `do` or `{`: `repeat 0;` and a newline
-  before `true && cd .scratch/x || exit; rm -rf Papers` passed, and is now refused, while
+  exit; rm -rf build` was refused, and passes now, while
+  `repeat 0 do X=1; cd .scratch/x || exit; done; rm -rf Papers` passed, and is refused now.
+  After `;` and newlines, zsh's short `repeat` takes the next list as its body, unless it
+  starts with `do` or `{`: `repeat 0;` and a newline before
+  `true && cd .scratch/x || exit; rm -rf Papers` passed, and is now refused, while
   `repeat 0; do true; done; cd x || exit; rm -rf build` still passes. The checks read the
   command after `time` and after a nested `repeat`, and a `case` after a `repeat` and its count:
   `time repeat 1 rm -rf Papers`, `repeat 1 repeat 1 rm -rf Papers` and

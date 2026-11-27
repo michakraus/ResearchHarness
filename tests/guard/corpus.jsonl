@@ -488,6 +488,10 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 if true; then ( \"fi\" ); fi && cd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 do X=1; done || cd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 { X=1; } || cd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 do X=1; cd .scratch/x || exit; done; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 do X=1; done; if false; then cd .scratch/x || exit; fi; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "time repeat 0 do (true); done\nwhile false; do cd .scratch/x || exit; done; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 do X=1; done; cd .scratch/x || exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 2 {\n  true\n}\ncd .scratch/x && rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 ! { true; } always { true; } && cd .scratch/x || exit\nrm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "function f; repeat 0 do function f() true; done && cd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}

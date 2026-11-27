@@ -977,8 +977,10 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
         if (at := command_word(current)) is not None:
             # The body of a function that zsh's short form defines, or of a `repeat`, may run
             # nothing here, and bash runs the words after `repeat` as its arguments (`DEFINED`).
-            lead += ([DEFINED] if body.kind is not None or short is not None or cut else []) + reserved_lead(
-                current[:at]
+            lead += (
+                ([DEFINED] if body.kind is not None or short is not None or cut else [])
+                + reserved_lead(current[:at])
+                + (kept_opens(current[at:]) if cut else [])
             )
             found.append(Simple(current[at:], runs_of(current[:at], current[at]), then, tuple(lead), depth))
             lead = []
@@ -1107,6 +1109,14 @@ def unrepeated(current: list[str]) -> tuple[list[str], bool]:
             dropped = [*kept, *rest]
             return (current if cut and command_word(dropped) is None else dropped), cut
         rest, cut = rest[2:], True
+
+
+def kept_opens(words: list[str]) -> list[str]:
+    """The reserved words right after the count of the `repeat` that starts the command `words`,
+    which `unrepeated` kept, as the `do` of `repeat 0 do X=1; done`, so that `outermost` counts the
+    body that they open; not a `{`, which `outermost` counts as a word of the command. Empty where
+    `words` starts with no `repeat`."""
+    return [word for word in reserved_lead(words[2:]) if word != "{"] if words[:1] == ["repeat"] else []
 
 
 # How a part opens zsh's short `repeat` (`repeats`): its body starts in that part, or it starts
