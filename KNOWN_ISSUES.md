@@ -1248,3 +1248,67 @@
   `origin/main`.
 - kind: defect
 - found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`
+
+### K216 · The rm and work-tree checks read a `cd` in the body of a loop as one move, though the shell runs it once for each pass.
+
+- location: `hooks/guard/shell.py`, `cached_commands`
+- evidence: with the call's working directory `~/Research/.scratch/a`, `guard --from claude`
+  passes `repeat 2 cd ..; rm -rf Papers` and `for i in 1 2; do cd ..; done; rm -rf Papers`.
+  zsh runs each `cd ..` twice, and the `rm` removes `~/Research/Papers`. The checks read the
+  `rm` only in `.scratch/a` and `.scratch`. `cd ../..; rm -rf Papers` is refused. The same holds
+  on `origin/main`.
+- kind: defect
+- found: 2026-11-27, the branch `guard/short-function-body`
+
+### K217 · The rm and work-tree checks read zsh's `}` after a word as an argument, though zsh closes a group there, so a `cd` in a group that may never run reads as sure past the group.
+
+- location: `hooks/guard/shell.py`, `sure_kind`
+- evidence: with the call's working directory `~/Research`, `guard --from claude` passes
+  `repeat 0 { true; cd .scratch/x } && rm -rf Papers`,
+  `if false; then { cd .scratch/x } fi && rm -rf Papers` and `repeat 0;`, a newline and
+  `{ cd .scratch/x } && rm -rf Papers`. zsh closes each group at the `}` after `x`, runs no `cd`,
+  and runs the `rm` in `~/Research` (`zsh -fc 'repeat 0 { echo CD } && echo RM'` prints `RM`).
+  The checks read the `}` as an argument of `cd`, so the `&&` list of the `cd` goes on to the
+  `rm`. bash passes the `}` to `cd`, which then fails. The same holds on `origin/main`.
+- kind: defect
+- found: 2026-11-27, a differential fuzz of the branch `guard/short-function-body`
+
+### K218 · The rm and work-tree checks read the body of a function that holds a compound command up to the end of the parenthesis around it, so they refuse a removal after the body.
+
+- location: `hooks/guard/shell.py`, `carried`
+- evidence: with the call's working directory `~/Research`, `guard --from claude` refuses
+  `f() { true; }; cd .scratch/x && rm -rf build`, `f() if true; then true; fi; cd .scratch/x &&
+  rm -rf build` and `function f; { true; }; cd .scratch/x && rm -rf build`. zsh and bash define
+  `f`, run the `cd` and run the `rm` in `.scratch/x`. The reader cannot end the body at its `}`:
+  zsh also closes a group with a `}` after a word, as in `f() { cd x && true } && rm -rf y`, and
+  `lex` drops quotes, so a quoted `"}"` reads as the closing word (K220). A count of the closing
+  words let `function f; repeat 0 do ( "}" ); done && cd .scratch/x || exit; rm -rf Papers`
+  pass, so the branch holds the body instead. The decision errs only toward a refusal.
+- kind: defect
+- found: 2026-11-27, the verifier of the branch `guard/short-function-body`; `origin/main`
+  passes these commands
+
+### K219 · The rm and work-tree checks pass the operators of a leading part that runs nothing to no command, so a `cd` after its `||` reads as sure.
+
+- location: `hooks/guard/shell.py`, `cached_commands`
+- evidence: with the call's working directory `~/Research`, `guard --from claude` passes
+  `X=1 || cd .scratch/x && rm -rf Papers`, `{ X=1; } || cd .scratch/x || exit; rm -rf Papers`
+  and `if X=1; then X=1; fi || cd .scratch/x && rm -rf Papers`. The assignment succeeds, so
+  zsh and bash skip the `cd` and run the `rm` in `~/Research`. A part that runs nothing passes
+  its operators to the command before it, and the first part has none, so the `||` before the
+  `cd` is lost. zsh's `>/dev/null || cd …` is the same, since zsh runs it as `NULLCMD`. The same
+  holds on `origin/main`.
+- kind: defect
+- found: 2026-11-27, the verifier of the branch `guard/short-function-body`
+
+### K220 · `lex` drops quotes, so the checks read a quoted or escaped reserved word as reserved.
+
+- location: `hooks/guard/shell.py`, `lex`
+- evidence: with the call's working directory `~/Research`, `guard --from claude` passes
+  `false && { true; "}"; cd .scratch/x || exit; }; rm -rf Papers` and
+  `! "}" || cd .scratch/x && rm -rf Papers`. zsh and bash run `"}"` as a command and run the
+  `rm` in `~/Research`. The checks read the `"}"` as the end of the group, so the `cd` reads as
+  outside it and sure. The same holds on `origin/main`, which also passes
+  `f() { true; "}"; cd .scratch/x || exit; }; rm -rf Papers`.
+- kind: defect
+- found: 2026-11-27, the verifier of the branch `guard/short-function-body`
