@@ -1248,3 +1248,16 @@
   `origin/main`.
 - kind: defect
 - found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`
+
+### K213 · The rm and work-tree checks read the `cd` of zsh's short function definition `f() cd x` as a move that runs.
+
+- location: `hooks/guard/shell.py`, `sure_kind`
+- evidence: `zsh -fc 'f() cd /nonexist || exit; pwd'` prints the old directory, since the line
+  defines the function `f` and runs no `cd`. With the call's working directory `~/Research`,
+  `guard --from claude` passes `f() cd .scratch/x || exit; rm -rf Papers`, because it reads
+  the `cd` as sure and `Papers` only in `.scratch/x`. In bash the line is a syntax error. The
+  same holds on `origin/main`. A case pattern without `(`, as in `case a in b) true;; esac`,
+  makes the count of open parentheses negative, which ends a scope early and errs only toward a
+  refusal.
+- kind: defect
+- found: 2026-11-27, the verifier of the branch `guard/cd-and-alias-limits`

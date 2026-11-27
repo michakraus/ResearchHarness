@@ -615,8 +615,9 @@ def runs_of(prefix: list[str], word: str) -> Runs:
 STOPS = frozenset({"exit"})
 # The operators of a `then` (`operators`): a newline is read as `;`.
 OPERATORS = re.compile(r"&&|\|\||\|&|[|;&()`]")
-# A newline right after an operator, which only goes on with the line (`operators`).
-GOES_ON = re.compile(r"(&&|\|\||\|&|\|)[ \t]*\n")
+# The newlines right after an operator, which only go on with the line (`operators`): bash and
+# zsh read every blank line after `&&`, `||` or a pipe as part of it.
+GOES_ON = re.compile(r"(&&|\|\||\|&|\|)[ \t\n]*\n")
 # What stands for a part that runs nothing, such as an assignment, between the operators of a
 # `then` (`cached_commands`).
 PART = "\x1f"
@@ -626,8 +627,8 @@ IN_LIST = frozenset({"&&", "|", "|&", ""})
 
 
 def operators(then: str) -> list[str]:
-    """The operators of the `then` of a `Simple`, a newline as `;`, but none for a newline right
-    after an operator of GOES_ON, where it only goes on with the line. A part that runs nothing
+    """The operators of the `then` of a `Simple`, a newline as `;`, but none for the newlines right
+    after an operator of GOES_ON, where they only go on with the line. A part that runs nothing
     stands between two operators as PART (`cached_commands`), so a newline after the assignment of
     `cd x && X=1` is a `;`."""
     return OPERATORS.findall(GOES_ON.sub(r"\1", then).replace("\n", ";"))
@@ -668,6 +669,9 @@ NESTING = {
     "esac": -1,
     "end": -1,
 }
+# The reserved words that close a compound command, and so can stand right before `)` or a pipe
+# (`cached_commands`).
+CLOSING = frozenset({"}", "fi", "done"})
 
 
 def outermost(simples: list[Simple]) -> list[bool]:
@@ -676,20 +680,34 @@ def outermost(simples: list[Simple]) -> list[bool]:
     every command after it. A `cd x || exit` in a body that may not run, as in `if false; then cd x
     || exit; fi; y`, leaves `y` where the shell was. A `{` that is a word of a command opens a body
     too, as in `function f {`, `coproc {` or zsh's `repeat 0 {`. Inside a `case`, a closing word
-    can be a pattern, as in `(fi)`, so there only an opening word counts."""
+    can be a pattern, as in `(fi)`, so there only an opening word counts. An `esac` or `end`
+    closes only a `case` or `foreach` that is open, and only outside a pattern or a zsh glob group
+    (`in_group`), as in `echo (end)`; bash runs `end` as a program."""
     found: list[bool] = []
-    level, cases = 0, 0
-    for simple in simples:
+    level, cases, loops = 0, 0, 0
+    for at, simple in enumerate(simples):
         level += sum(step for word in simple.lead if (step := NESTING.get(word, 0)) > 0 or not cases)
         found.append(level == 0)
         level += simple.words[1:].count("{")
-        if simple.words[0] in ("case", "esac", "foreach", "end"):
-            level += NESTING[simple.words[0]]
-        if simple.words[0] == "case":
-            cases += 1
-        elif simple.words[0] == "esac" and cases:
-            cases -= 1
+        head = simple.words[0]
+        closing = at == 0 or not in_group(simples[at - 1].then, simple.then)
+        if head == "case":
+            level, cases = level + 1, cases + 1
+        elif head == "foreach":
+            level, loops = level + 1, loops + 1
+        elif head == "esac" and cases and closing:
+            level, cases = level - 1, cases - 1
+        elif head == "end" and loops and closing:
+            level, loops = level - 1, loops - 1
     return found
+
+
+def in_group(before: str, then: str) -> bool:
+    """True when the operators `before` and `then` around a part make it a pattern of a `case` or
+    an alternative of a zsh glob group, as in `case a in (fi)`, `echo (end)` or `echo (x|if)`:
+    `before` ends in `(` or a pipe, and `then` starts with `)` or a pipe. Its words are no
+    reserved words, and a shell reads none of them as one that opens or closes a body."""
+    return before.rstrip("\n")[-1:] in ("(", "|") and then[:1] in (")", "|")
 
 
 def sure_kind(simples: list[Simple], index: int, outer: list[bool]) -> Sure | None:
@@ -699,10 +717,9 @@ def sure_kind(simples: list[Simple], index: int, outer: list[bool]) -> Sure | No
     before it lets the commands after it run when it never ran, as in `true || cd x && y` or
     `echo | cd x && y`, which bash runs in a child. Then `list`: `&&`
     joins it to the next command, as in `cd x && y`; `exit`: `||` joins it to an `exit` that the
-    shell runs as its own, outside a pipeline and not in the background, as in `cd x || exit 1; y`
-    and unlike `cd x || (exit 1)` or `exit &`, in no compound command or body (`outer`, of
-    `outermost`); `if`: it is the condition of an `if`, as in
-    `if cd x; then y; fi`."""
+    shell runs as its own, outside a pipeline and not in the background (also `flow`), as in
+    `cd x || exit 1; y` and unlike `cd x || (exit 1)` or `exit &`, in no compound command or body
+    (`outer`, of `outermost`); `if`: it is the condition of an `if`, as in `if cd x; then y; fi`."""
     simple = simples[index]
     if simple.runs != "shell" or "!" in simple.lead or program(simple.words[0]) not in ("cd", "pushd"):
         return None
@@ -836,6 +853,35 @@ def else_or_fi(simples: list[Simple]) -> list[int | None]:
     return words
 
 
+def in_background(simples: list[Simple], starts: set[int]) -> set[int]:
+    """The indexes of `starts` whose `&&` or `||` list, from the command at the index on, a `&`
+    ends, as in `cd x || exit 1 && y & z`, where a child runs the whole list, or a backtick, which
+    the check does not follow (`flow`). A list ends at the first operator other than `&&`, `||` or a
+    pipe in as many parentheses as its command, or where a parenthesis open before it closes. One
+    pass over the operators of `simples` decides every index."""
+    found: set[int] = set()
+    pending: list[tuple[int, int]] = []
+    for at, simple in enumerate(simples):
+        if at in starts:
+            pending.append((at, simple.depth))
+        level = simple.depth
+        for operator in operators(simple.then):
+            if operator == "(":
+                level += 1
+                continue
+            if operator in ("&&", "||", "|", "|&"):
+                continue
+            if operator == ")":
+                level -= 1
+            # A `)` ends the lists inside it; any other operator ends those in as many parentheses.
+            limit = level + 1 if operator == ")" else level
+            while pending and pending[-1][1] >= limit:
+                start, _ = pending.pop()
+                if operator in ("&", "`"):
+                    found.add(start)
+    return found
+
+
 # The commands that `flow` may read past the moves of a command, besides one pass over it: deeply
 # nested moves, as in `cd x && (cd y && (…`, each read to their own end, which costs time
 # quadratic in the nesting.
@@ -847,9 +893,14 @@ def flow(simples: list[Simple]) -> Flow:
     index where that ends (`scope_end`, `if_ends`), from the last command to the first, so that
     each move reuses the end of the next one of its kind in as many parentheses. Once the `list`
     and `exit` moves have read SCAN_STEPS commands besides one pass, each such move before is read
-    as one that can fail, which only makes the checks read more directories."""
+    as one that can fail, which only makes the checks read more directories. An `exit` move whose
+    list a `&` puts in the background (`in_background`) can fail too."""
     outer = outermost(simples)
     kinds: list[Sure | None] = [sure_kind(simples, index, outer) for index in range(len(simples))]
+    if "exit" in kinds:
+        # The `exit` after each `exit` move starts its list, so `background` holds only those.
+        background = in_background(simples, {index + 1 for index, kind in enumerate(kinds) if kind == "exit"})
+        kinds = [None if index + 1 in background else kind for index, kind in enumerate(kinds)]
     ends: list[int | None] = [None] * len(simples)
     conditions = if_ends(simples) if "if" in kinds else []
     nearest: dict[tuple[Sure, int], tuple[int, int | None]] = {}
@@ -901,9 +952,10 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
     current: list[str] = []
     lead: list[str] = []
     depth = 0
+    before = ""
 
     def close(then: str) -> None:
-        nonlocal current, lead, depth
+        nonlocal current, lead, depth, before
         at = command_word(current)
         if at is not None:
             lead.extend(reserved_lead(current[:at]))
@@ -913,13 +965,20 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
             # A part that runs nothing, such as `}`, `fi` or an assignment, passes its reserved
             # words to the next command and its operators to the command before it, so that the
             # `;` of `cd x && X=1; y` and the `(` of `cd x || (exit 1)` reach the `cd` (`flow`).
-            lead.extend(reserved_lead(current))
+            # Right before `)` or a pipe, only a closing word such as the `fi` of `fi)` is
+            # reserved, since the `if` of `if)` is a pattern of a `case`; and none is in a pattern
+            # or a zsh glob group such as `(fi)` (`in_group`).
+            reserved = reserved_lead(current)
+            if then[:1] in (")", "|"):
+                reserved = [] if in_group(before, then) else [word for word in reserved if word in CLOSING]
+            lead.extend(reserved)
             if found:
                 last = found[-1]
                 joined_then = last.then + (PART if current else "") + then
                 found[-1] = Simple(last.words, last.runs, joined_then, last.lead, last.depth)
         depth += then.count("(") - then.count(")")
         current = []
+        before = then
 
     for kind, text in unredirected(tokens):
         if kind == "op":
