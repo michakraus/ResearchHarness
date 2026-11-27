@@ -1302,7 +1302,7 @@
 
 ### K221 · The rm and work-tree checks read a command word that starts with `{` as the name of a program, though zsh opens a group there and bash expands braces, so a `cd` in it goes unseen.
 
-- location: `hooks/guard/shell.py`, `cached_commands`
+- location: `hooks/guard/shell.py:1002`
 - evidence: with the call's working directory `~/Research`, `guard --from claude` passes
   `cd .scratch/x && {cd ../.. && rm -rf Papers}` and
   `cd .scratch/x || exit; {cd ../..; rm -rf Papers; }`: zsh opens a group at the `{` of `{cd`,
