@@ -1248,15 +1248,3 @@
   `origin/main`.
 - kind: defect
 - found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`
-
-### K215 · The rm and work-tree checks read a `cd` in the list body of zsh's short `repeat` as a move that runs.
-
-- location: `hooks/guard/shell.py`, `sure_kind`
-- evidence: zsh's `repeat 0 true && cd d || exit` takes the whole list `true && cd d || exit` as
-  the body and runs it zero times, so `zsh -fc 'repeat 0 true && cd d || exit; pwd'` prints the
-  old directory. With the call's working directory `~/Research`, `guard --from claude` passes
-  `repeat 0 true && cd .scratch/x || exit; rm -rf Papers`, because it reads the `cd` as sure and
-  `Papers` only in `.scratch/x`. `repeat 0 cd .scratch/x || exit; rm -rf Papers` is refused. The
-  same holds on `origin/main`.
-- kind: defect
-- found: 2026-11-27, the verifier of the branch `guard/short-function-body`

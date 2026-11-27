@@ -368,7 +368,12 @@ sure. After a name and `()`, the body is the next command, so the `cd` of `f() X
 after `function` and a name, it is the whole next `&&` or `||` list, so no `cd` of
 `function f; true && cd x || exit` or `function f; (true; true) && cd x || exit` runs. A body
 that holds a compound command or a backtick, as in `f() if true; then true; fi`, is read up to
-the end of the command or of the parenthesis around it, which can only refuse more. A `;` inside
+the end of the command or of the parenthesis around it, which can only refuse more. No `cd` in
+such a body is sure, also not in a group or an `if` of it, since zsh closes a group without a
+`;`, as in `f() { cd x && true } && rm -rf y`. zsh's short `repeat` runs the whole list after
+its count as its body, also never, so no `cd` of `repeat 0 true && cd x || exit` is sure either.
+The checks read the command after a `repeat` and its count, as the `rm` of
+`repeat 1 rm -rf y`, and the `do` or `{` there as the start of its body. A `;` inside
 a `{ … }` group, an `if`, a
 loop or a `case`, and a backtick, end the `&&` list early (K211). A `popd` returns to the
 directory before the matching `pushd`, and a `pushd` with no operand swaps the top two
