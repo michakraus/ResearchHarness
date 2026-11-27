@@ -373,7 +373,9 @@ such a body is sure, also not in a group or an `if` of it, since zsh closes a gr
 `;`, as in `f() { cd x && true } && rm -rf y`. zsh's short `repeat` runs the whole list after
 its count as its body, also never, so no `cd` of `repeat 0 true && cd x || exit` is sure either.
 The checks read the command after a `repeat` and its count, as the `rm` of
-`repeat 1 rm -rf y`, and the `do` or `{` there as the start of its body. A `;` inside
+`repeat 1 rm -rf y`, and the `do` or `{` there as the start of its body. bash passes those words
+to a program `repeat`, so a `fi`, `done` or `}` there closes nothing, an `if` there takes no `fi`
+from an `if` around it, and no `cd` there is sure. A `;` inside
 a `{ … }` group, an `if`, a
 loop or a `case`, and a backtick, end the `&&` list early (K211). A `popd` returns to the
 directory before the matching `pushd`, and a `pushd` with no operand swaps the top two

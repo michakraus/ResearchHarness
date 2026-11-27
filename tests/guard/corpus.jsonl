@@ -493,6 +493,12 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 cd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 do true; done; cd .scratch/x || exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 { true }; cd .scratch/x && rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if false; then repeat 1 fi; cd .scratch/x || exit; fi; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "while false; do repeat 1 done; cd .scratch/x || exit; done; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if cd .scratch/x; then true; repeat 1 if true; fi; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if cd .scratch/x; then true; repeat 1 do if true; fi; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 if true; then true; fi && cd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 ! true && cd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "noglob cd @@R@@/Packages/Own && rm -rf build"}, "cwd": "@@WT@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "nocorrect cd @@R@@/Packages/Own && rm -rf build"}, "cwd": "@@WT@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "- cd @@R@@/Packages/Own && rm -rf build"}, "cwd": "@@WT@@"}, "decision": "deny"}
