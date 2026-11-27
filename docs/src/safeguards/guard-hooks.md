@@ -372,19 +372,21 @@ the end of the command or of the parenthesis around it, which can only refuse mo
 such a body is sure, also not in a group or an `if` of it, since zsh closes a group without a
 `;`, as in `f() { cd x && true } && rm -rf y`. zsh's short `repeat` runs the whole list after
 its count as its body, also never, so no `cd` of `repeat 0 true && cd x || exit` is sure either.
-The checks read the command after a `repeat` and its count, as the `rm` of
-`repeat 1 rm -rf y`, and the `do` or `{` there as the start of its body. bash passes those words
-to a program `repeat`, so a `fi`, `done` or `}` there closes nothing, an `if` there takes no `fi`
-from an `if` around it, and no `cd` there is sure. A `;` inside
-a `{ … }` group, an `if`, a
-loop or a `case`, and a backtick, end the `&&` list early (K211). A `popd` returns to the
-directory before the matching `pushd`, and a `pushd` with no operand swaps the top two
-directories. The check
-follows at most 4 directories; past that, it reads the commands after the last `cd` in the first
-directory and in an unknown one. In a nesting such as `cd x && (cd y && (…` whose scopes take
-more than 65,536 commands to read, the check reads the outer `cd`s as ones that can fail. A
-recursive `rm` of a
-relative operand after a `cd` to a directory that the check cannot know, such as `cd $X` or
+After `;` and newlines, the next list is that body, as in `repeat 0;` and a newline before
+`true && cd x || exit`, unless it starts with `do` or `{`, which open the long form. The checks
+read the command after each `repeat` and its count, also after `time` and in a nested `repeat`,
+as the `rm` of `repeat 1 rm -rf y`, `time repeat 1 rm -rf y` and `repeat 1 repeat 1 rm -rf y`,
+and the `do` or `{` there as the start of its body, and a `case` there opens its patterns. bash
+passes those words to a program `repeat`, so a `fi`, `done` or `}` there closes nothing, an `if`
+there takes no `fi` from an `if` around it, and no `cd` there is sure. A `cd` in the body of a
+loop is read as one move, though it runs once for each pass, as in `repeat 2 cd ..` (K216). A
+`;` inside a `{ … }` group, an `if`, a loop or a `case`, and a backtick, end the `&&` list early
+(K211). A `popd` returns to the directory before the matching `pushd`, and a `pushd` with no
+operand swaps the top two directories. The check follows at most 4 directories; past that, it
+reads the commands after the last `cd` in the first directory and in an unknown one. In a
+nesting such as `cd x && (cd y && (…` whose scopes take more than 65,536 commands to read, the
+check reads the outer `cd`s as ones that can fail. A recursive `rm` of a relative operand after
+a `cd` to a directory that the check cannot know, such as `cd $X` or
 `cd -`, asks, and so does a command whose operands need too many resolutions in all the
 directories. An `rm` is
 recursive with `-r`, `-R` or a prefix of `--recursive` such as `--r`, which GNU `rm` takes. A recursive `rm`

@@ -973,11 +973,13 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
 
     def close(then: str) -> None:
         nonlocal current, lead, depth, before, body
-        (current, cut), short = unrepeated(current), repeats(current, then)
+        body, (current, cut), short = unwaited(body, current), unrepeated(current), repeats(current, then)
         if (at := command_word(current)) is not None:
             # The body of a function that zsh's short form defines, or of a `repeat`, may run
             # nothing here, and bash runs the words after `repeat` as its arguments (`DEFINED`).
-            lead += ([DEFINED] if body.kind is not None or short or cut else []) + reserved_lead(current[:at])
+            lead += ([DEFINED] if body.kind is not None or short is not None or cut else []) + reserved_lead(
+                current[:at]
+            )
             found.append(Simple(current[at:], runs_of(current[:at], current[at]), then, tuple(lead), depth))
             lead = []
         else:
@@ -1006,7 +1008,7 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
             pattern, inside = in_pattern(pattern, kind, text)
             if inside:
                 continue
-        if kind == "word" and text == "in" and opens_case(current):
+        if kind == "word" and text == "in" and opens_case(unrepeated(current)[0]):
             current.append(text)
             close("")
             pattern = "start"
@@ -1058,13 +1060,16 @@ def defines(current: list[str], text: str) -> Body:
 class Defined:
     """The body of a function that zsh's short form defines, as `cached_commands` reads it
     (`carried`): its `Body`, or None outside a body; whether a word of it came yet (`started`);
-    the number of parentheses open before its head (`level`); and whether it holds a word of
-    OPENS or a backtick (`held`), whose `;`, `&` or newline can end no body."""
+    the number of parentheses open before its head (`level`); whether it holds a word of
+    OPENS or a backtick (`held`), whose `;`, `&` or newline can end no body; and whether it is the
+    body of a short `repeat` that starts with the next part that holds a word (`waits`, of
+    `repeats`)."""
 
     kind: Body = None
     started: bool = False
     level: int = 0
     held: bool = False
+    waits: bool = False
 
 
 # The words that open a compound command, whose `;`, `&` or newline end no body of a function
@@ -1077,31 +1082,62 @@ OPENS = frozenset({"{", "if", "while", "until", "for", "foreach", "select", "cas
 ENDS = frozenset({"}", "then", "elif", "else", "fi", "done", "esac", "end"})
 
 
+def leads(word: str) -> bool:
+    """True when `word` can stand before zsh's `repeat` and leave it reserved: a reserved word of
+    RESERVED, or `time` and its `-p`, as in `time repeat 1 rm x`."""
+    return word in RESERVED or word in ("time", "-p")
+
+
 def unrepeated(current: list[str]) -> tuple[list[str], bool]:
-    """The part `current` without the `repeat` and the count of zsh's `repeat` at its start, after
-    its reserved words, where a word other than one of ENDS follows them: the command that `repeat`
-    runs, as the `cd` of `repeat 1 cd ..`, or the `do` or `{` that opens its body, as in
-    `repeat 0 do true; done`, so that the checks read that command and that body as the shell
-    runs them; and whether it dropped them."""
-    lead = list(itertools.takewhile(lambda word: word in RESERVED, current))
-    head = current[len(lead) :]
-    cut = head[:1] == ["repeat"] and bool(head[2:]) and head[2] not in ENDS
-    return ([*lead, *head[2:]] if cut else current), cut
+    """The part `current` without each `repeat` and its count of zsh's `repeat` at its start, after
+    the words that `leads` takes, where a word other than one of ENDS follows them: the command
+    that `repeat` runs, as the `cd` of `repeat 1 cd ..`, `repeat 1 repeat 1 cd ..` or
+    `time repeat 1 cd ..`, or the `do` or `{` that opens its body, as in `repeat 0 do true; done`,
+    so that the checks read that command and that body as the shell runs them; and whether it
+    dropped one."""
+    kept: list[str] = []
+    rest, cut = current, False
+    while True:
+        lead = list(itertools.takewhile(leads, rest))
+        kept, rest = [*kept, *lead], rest[len(lead) :]
+        if rest[:1] != ["repeat"] or not rest[2:] or rest[2] in ENDS:
+            return [*kept, *rest], cut
+        rest, cut = rest[2:], True
 
 
-def repeats(current: list[str], then: str) -> bool:
-    """True when the part `current`, before the operators `then`, opens zsh's short `repeat`,
-    whose body is the whole `&&`, `||` or `|` list from its third word on, as in
-    `repeat 0 true && cd x || exit`, `repeat 0 (true) && cd x` or
-    `repeat 0 if true; then true; fi && cd x`, which run no `cd`. The long forms
-    `repeat 0 do …; done`, `repeat 0; do …` and `repeat 0 { … }` have bodies of their own."""
-    head = list(itertools.dropwhile(lambda word: word in RESERVED, current))
-    if head[:1] != ["repeat"]:
-        return False
-    return head[2] not in ("do", "{") if head[2:] else head[1:] != [] and then.lstrip().startswith("(")
+# How a part opens zsh's short `repeat` (`repeats`): its body starts in that part, or it starts
+# with the next part, after the `;` and newlines of that part.
+type Repeat = Literal["here", "next"] | None
 
 
-def carried(body: Defined, current: list[str], then: str, depth: int, *, short: bool) -> Defined:
+def repeats(current: list[str], then: str) -> Repeat:
+    """How the part `current`, before the operators `then`, opens zsh's short `repeat`, whose body
+    is the whole `&&`, `||` or `|` list after its count, or None when it opens none. `here`: the
+    body starts in the part, as in `repeat 0 true && cd x || exit`, `repeat 0 (true) && cd x`,
+    `repeat 0 if true; then true; fi && cd x` or `repeat 1 repeat 1 true`, which run no `cd`.
+    `next`: only `;` and newlines follow the count, so the body starts with the next part, as in
+    `repeat 0;` and a newline before `true && cd x`, unless that part starts with `do` or `{`
+    (`carried`). The long forms `repeat 0 do …; done` and `repeat 0 { … }` have bodies of their
+    own."""
+    head = list(itertools.dropwhile(leads, current))
+    if head[:1] != ["repeat"] or not head[1:]:
+        return None
+    if head[2:]:
+        return "here" if head[2] not in ("do", "{") else None
+    if then.lstrip().startswith("("):
+        return "here"
+    separators = list(itertools.takewhile(lambda operator: operator != "(", operators(then)))
+    return "next" if separators and set(separators) <= {";"} else None
+
+
+def unwaited(body: Defined, current: list[str]) -> Defined:
+    """The body that `cached_commands` reads the part `current` in: none where `body` waits
+    (`repeats`) and `current` starts with `do` or `{`, the long form `repeat 0; do …; done` or
+    `repeat 0; { … }`, whose body is its own; else `body`."""
+    return Defined() if body.waits and current[:1] in (["do"], ["{"]) else body
+
+
+def carried(body: Defined, current: list[str], then: str, depth: int, *, short: Repeat) -> Defined:
     """The body that `cached_commands` reads after the part `current`, `depth` parentheses deep,
     and its operators `then`: while it is open, the next command belongs to it and gets the mark
     DEFINED before its own reserved words. A head (`defines`) starts a body, or
@@ -1115,7 +1151,10 @@ def carried(body: Defined, current: list[str], then: str, depth: int, *, short: 
     which only makes the checks read more directories. zsh's short `repeat` (`short`, of
     `repeats`) runs a `list` body as many times as its count says, also never, so it opens one
     too, from the command of its own part on, which a word of OPENS there holds, as the `if` of
-    `repeat 0 if true; then true; fi && cd x`; inside a body it holds that body."""
+    `repeat 0 if true; then true; fi && cd x`; inside a body it holds that body. A `next` body
+    outside a body waits for its first part that holds a word, and starts there; a `do` or `{` as
+    the first word of that part closes it (`cached_commands`), since `repeat 0; do …; done` is the
+    long form."""
     head = defines(current, then)
     if head is not None:
         nested = body.kind is not None
@@ -1124,13 +1163,18 @@ def carried(body: Defined, current: list[str], then: str, depth: int, *, short: 
         body = Defined(kind, head == "simple" and body.kind == "list", level, body.held and nested)
     elif body.kind is not None or short:
         # A short `repeat` outside a body opens a `list` body at its own part; its own `repeat`,
-        # dropped from `current` (`unrepeated`), does not hold that body.
+        # dropped from `current` (`unrepeated`) or before a body that waits, does not hold that
+        # body.
         fresh = body.kind is None
+        waits = short == "next" if fresh else body.waits and not current
         at = command_word(current)
-        opening = current if at is None else current[: at + 1]
-        held = (not fresh and (body.held or short)) or not OPENS.isdisjoint(opening) or "`" in then
+        opening = [] if waits else current if at is None else current[: at + 1]
+        held = (
+            (not fresh and (body.held or short is not None)) or not OPENS.isdisjoint(opening) or "`" in then
+        )
         level = depth if fresh else body.level
-        body = Defined(body.kind or "list", body.started or bool(current), level, held)
+        started = (body.started or bool(current)) and not waits
+        body = Defined(body.kind or "list", started, level, held, waits)
         for operator in operators(then):
             depth += (operator == "(") - (operator == ")")
             at_head = operator != "(" and depth == body.level and body.started and not body.held

@@ -1248,3 +1248,14 @@
   `origin/main`.
 - kind: defect
 - found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`
+
+### K216 · The rm and work-tree checks read a `cd` in the body of a loop as one move, though the shell runs it once for each pass.
+
+- location: `hooks/guard/shell.py`, `cached_commands`
+- evidence: with the call's working directory `~/Research/.scratch/a`, `guard --from claude`
+  passes `repeat 2 cd ..; rm -rf Papers` and `for i in 1 2; do cd ..; done; rm -rf Papers`.
+  zsh runs each `cd ..` twice, and the `rm` removes `~/Research/Papers`. The checks read the
+  `rm` only in `.scratch/a` and `.scratch`. `cd ../..; rm -rf Papers` is refused. The same holds
+  on `origin/main`.
+- kind: defect
+- found: 2026-11-27, the branch `guard/short-function-body`
