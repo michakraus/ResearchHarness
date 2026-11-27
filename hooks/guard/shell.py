@@ -1070,6 +1070,7 @@ class Defined:
     level: int = 0
     held: bool = False
     waits: bool = False
+    nest: int = 0
 
 
 # The words that open a compound command, whose `;`, `&` or newline end no body of a function
@@ -1080,6 +1081,10 @@ OPENS = frozenset({"{", "if", "while", "until", "for", "foreach", "select", "cas
 # a `repeat` and bash passes to a program `repeat` as arguments (`unrepeated`): read as reserved,
 # the `fi` of `if false; then repeat 1 fi; cd x || exit; fi` would close the `if` for bash.
 ENDS = frozenset({"}", "then", "elif", "else", "fi", "done", "esac", "end"})
+# The reserved words that open or close a group, an `if` or the body of a loop, which a body
+# counts at the start of each of its parts (`carried`), so that the body of `f() { true; }; cd x`
+# ends at the `;` after its `}`.
+COUNTED = {"{": 1, "if": 1, "do": 1, "}": -1, "fi": -1, "done": -1}
 
 
 def leads(word: str) -> bool:
@@ -1114,7 +1119,9 @@ def repeats(current: list[str], then: str) -> Repeat:
     """How the part `current`, before the operators `then`, opens zsh's short `repeat`, whose body
     is the whole `&&`, `||` or `|` list after its count, or None when it opens none. `here`: the
     body starts in the part, as in `repeat 0 true && cd x || exit`, `repeat 0 (true) && cd x`,
-    `repeat 0 if true; then true; fi && cd x` or `repeat 1 repeat 1 true`, which run no `cd`.
+    `repeat 0 if true; then true; fi && cd x` or `repeat 1 repeat 1 true`, which run no `cd`; also
+    where a backtick, or `&&`, `||` or a pipe, follows the count, as in ``repeat 0 `true` && cd x``,
+    since a redirection that the reader drops can start the body there.
     `next`: only `;` and newlines follow the count, so the body starts with the next part, as in
     `repeat 0;` and a newline before `true && cd x`, unless that part starts with `do` or `{`
     (`carried`). The long forms `repeat 0 do …; done` and `repeat 0 { … }` have bodies of their
@@ -1124,9 +1131,13 @@ def repeats(current: list[str], then: str) -> Repeat:
         return None
     if head[2:]:
         return "here" if head[2] not in ("do", "{") else None
-    if then.lstrip().startswith("("):
+    if then.lstrip().startswith(("(", "`")):
         return "here"
     separators = list(itertools.takewhile(lambda operator: operator != "(", operators(then)))
+    # A redirection, which `unredirected` drops, can start the body, as in `repeat 0 >/dev/null &&
+    # cd x`, where zsh runs no `cd`; zsh runs the `cd` of `repeat 0 && cd x`, which is not sure either.
+    if separators[:1] in (["&&"], ["||"], ["|"], ["|&"]):
+        return "here"
     return "next" if separators and set(separators) <= {";"} else None
 
 
@@ -1142,13 +1153,17 @@ def carried(body: Defined, current: list[str], then: str, depth: int, *, short: 
     and its operators `then`: while it is open, the next command belongs to it and gets the mark
     DEFINED before its own reserved words. A head (`defines`) starts a body, or
     goes on with the body that holds it: `function f; g() true && cd x` and `function f; true &&
-    function g; cd x` run no `cd`. A `simple` body ends with the first operator after its first
+    function g; cd x` run no `cd`, nor does `repeat 0 f() true && cd x`, whose short `repeat`
+    makes the body a `list`. A `simple` body ends with the first operator after its first
     part that holds a word, also one that runs nothing, as the `X=1` of `f() X=1; cd x`, or after
     the `)` of a subshell, as in `f() (true) && cd x`. A `list` body ends with the first `;`, `&` or
     newline after its first word. Each counts only in as many parentheses as the head, so the `;`
-    of `function f; (true; true) && cd x` ends nothing. A body that holds a word of OPENS before
-    its command word, or a backtick, ends only where a parenthesis open before its head closes,
-    which only makes the checks read more directories. zsh's short `repeat` (`short`, of
+    of `function f; (true; true) && cd x` ends nothing. A body counts the words of COUNTED at the
+    start of each of its parts (`nest`), and ends only where they balance, so the `cd` of
+    `f() { true; }; cd x` runs; zsh's `}` after a word, as in `f() { true }`, is no such word, so
+    that body stays open. A body that holds another word of OPENS before its command word, or a
+    backtick, or that closes more than it opened, ends only where a parenthesis open before its
+    head closes, which only makes the checks read more directories. zsh's short `repeat` (`short`, of
     `repeats`) runs a `list` body as many times as its count says, also never, so it opens one
     too, from the command of its own part on, which a word of OPENS there holds, as the `if` of
     `repeat 0 if true; then true; fi && cd x`; inside a body it holds that body. A `next` body
@@ -1158,9 +1173,10 @@ def carried(body: Defined, current: list[str], then: str, depth: int, *, short: 
     head = defines(current, then)
     if head is not None:
         nested = body.kind is not None
-        kind: Body = "list" if "list" in (head, body.kind) else "simple"
+        kind: Body = "list" if "list" in (head, body.kind) or short is not None else "simple"
         level = min(body.level, depth) if nested else depth
-        body = Defined(kind, head == "simple" and body.kind == "list", level, body.held and nested)
+        nest = body.nest if nested else 0
+        body = Defined(kind, head == "simple" and body.kind == "list", level, body.held and nested, nest=nest)
     elif body.kind is not None or short:
         # A short `repeat` outside a body opens a `list` body at its own part; its own `repeat`,
         # dropped from `current` (`unrepeated`) or before a body that waits, does not hold that
@@ -1169,15 +1185,23 @@ def carried(body: Defined, current: list[str], then: str, depth: int, *, short: 
         waits = short == "next" if fresh else body.waits and not current
         at = command_word(current)
         opening = [] if waits else current if at is None else current[: at + 1]
+        # The reserved words at the start of the part: those of COUNTED count, every other word
+        # of OPENS in the part before its command word holds the body.
+        start = len(list(itertools.takewhile(lambda word: word in RESERVED, opening)))
+        nest = body.nest + sum(COUNTED.get(word, 0) for word in opening[:start])
+        uncounted = [word for word in opening[:start] if word not in COUNTED] + opening[start:]
         held = (
-            (not fresh and (body.held or short is not None)) or not OPENS.isdisjoint(opening) or "`" in then
+            (not fresh and (body.held or short is not None))
+            or not OPENS.isdisjoint(uncounted)
+            or "`" in then
+            or nest < 0
         )
         level = depth if fresh else body.level
         started = (body.started or bool(current)) and not waits
-        body = Defined(body.kind or "list", started, level, held, waits)
+        body = Defined(body.kind or "list", started, level, held, waits, nest)
         for operator in operators(then):
             depth += (operator == "(") - (operator == ")")
-            at_head = operator != "(" and depth == body.level and body.started and not body.held
+            at_head = operator != "(" and depth == body.level and body.started and not body.held and not nest
             if depth < body.level or (at_head and (body.kind == "simple" or operator in (";", "&"))):
                 body = Defined()
                 break
