@@ -169,8 +169,13 @@ certificate error. The check refuses four shapes:
   `git bundle create` that starts with `/`, `~` or `$`, or holds `..`.
 
 It also refuses a `git init` or `git clone` whose target is inside a git working tree: the
-working-tree check. It follows each `cd` of the command to find the target, as the rm check
-does: `CD` or `env cd` leaves the directory as it is. Under Claude Code a
+working-tree check. It follows each `cd` and `pushd` of the command to find the target, as the
+rm check does: `CD` or `env cd` leaves the directory as it is, and after a `cd` that can fail,
+past the end of a sure `cd`'s `&&` list or `if`, or after a `cd` that follows `command` or `time`,
+the check reads the target in both directories. A `pushd` with no operand swaps the top two
+directories. It follows at
+most 4 directories, the one in which each `cd` succeeds among them, and drops the others. Under
+Claude Code a
 `cd` outside the agent's working directories is reset before the next call, so such a command runs
 in the agent's root and leaves a repository in another working tree. Each refusal gives the form
 that works, for example a separate Bash call.
@@ -338,10 +343,34 @@ work to the route that works.
 `rm_scope.py` refuses a recursive `rm` outside the scratch zones, and asks before a `git rm` or a
 `git merge` outside a worktree, on each shell call of every frontend.
 
-It follows the working directory through each `cd` and resolves each operand. Only the shell's own
-`cd` moves it: `cd`, also after `command`, `builtin` or `time`, as bash reads them (K201). `CD`,
-`/usr/bin/cd`, `env cd` and `sudo cd` run the program `/usr/bin/cd` in a child, so the directory
-stays. An `rm` is
+It follows the working directory through each `cd` and `pushd` and resolves each operand. Only
+the shell's own `cd` moves it: `cd`, also after `builtin` and after zsh's `noglob`, `nocorrect`
+and `-`. `CD`, `/usr/bin/cd`, `env cd` and
+`sudo cd` run the program `/usr/bin/cd` in a child, so the directory stays. After `command`,
+bash runs its own `cd` and zsh the program; after `time`, both shells run their own `cd`, and
+after a quoted `"time"`, which the check reads as the same word, the program. So the check reads
+the commands after either wrapper in both directories. The same holds for a `cd` that can fail.
+A `cd` is sure only for the commands that run after it succeeds: the rest of its `&&` list, as in
+`cd x && rm -rf y`; every command after `cd x || exit` outside any `{ … }`, `if`, loop, `case`
+or function body, since the shell stops when it fails, unless a function of the command shadows
+`exit` or `cd` (K212); and
+the commands of `if cd x; then … fi` up to the `else`, `elif` or `fi`. For any other command, the
+check reads the directory before the `cd` too: after `cd x; rm -rf y`, after the end of the `&&`
+list in `cd x && true; rm -rf y`, `cd x && true || rm -rf y` and `cd x && true & rm -rf y`, and
+after the parenthesis of `(cd x && true); rm -rf y` closes. `|| return` makes no `cd` sure: bash
+goes on after a `return` outside a function. Nor does `|| (exit 1)`, which ends only a subshell.
+A `cd` that `!`, `||` or a pipe comes before, as in `! cd x`, `true || cd x` or `echo | cd x`, is
+never sure: `!` turns its failure into success, the shell can skip it, and bash runs a pipeline's
+commands in a child. A `;` inside a `{ … }` group, an `if`, a loop or a `case`, and a backtick,
+end the `&&` list early (K211). A `popd` returns to the directory before the matching `pushd`, and
+a `pushd` with no operand swaps the top two directories. The check
+follows at most 4 directories; past that, it reads the commands after the last `cd` in the first
+directory and in an unknown one. In a nesting such as `cd x && (cd y && (…` whose scopes take
+more than 65,536 commands to read, the check reads the outer `cd`s as ones that can fail. A
+recursive `rm` of a
+relative operand after a `cd` to a directory that the check cannot know, such as `cd $X` or
+`cd -`, asks, and so does a command whose operands need too many resolutions in all the
+directories. An `rm` is
 recursive with `-r`, `-R` or a prefix of `--recursive` such as `--r`, which GNU `rm` takes. A recursive `rm`
 passes when every operand is strictly below a worktree, `~/Research/.worktrees/<name>/`, or
 strictly below `~/Research/.scratch/`. It refuses a recursive `rm` of `/`, of the parent
@@ -418,7 +447,10 @@ of a `GIT_CONFIG_*` variable, also with `export`, and for a subcommand that is n
 that runs a shell (`!…`), or whose value holds `push`, `worktree` or `cherry-pick`, or an
 expansion, followed through at most four aliases. The check looks the alias up with `git config`
 in the repository of the call's part, after each `cd` and `-C`. An alias such as `lg = log
---oneline`, and a name that is no alias, pass. Any other form
+--oneline`, and a name that is no alias, pass. After a `cd` to a directory that the check cannot
+know, such as `cd $X`, any such name of a `git` that leads its part is unknown, so `cd $X && git
+lg` asks; a `git` among the arguments of another command, as in `grep -r git src`, is not read
+there (K204). Any other form
 of these writes asks, for example `-C`, `-f` twice or a lease after the remote. A `worktree remove`
 with any option counts as forced, because `git` reads `-ff` and a prefix of `--force` as force. A
 plain `--force` push gets no decision from the check; the `deny` rules of the settings refuse it.
@@ -434,8 +466,10 @@ asks when it holds a word that ends in `git`, in any case, and after it a word `
 or `cherry-pick`, an alias option or a lease option; when the subcommand of such a `git`, after
 its global options and redirections, holds `$`, a backtick or a brace; or when it holds a `$`
 before a quote or a backslash, which can open an ANSI-C quote. Otherwise it passes, as a Julia
-heredoc with `push!`, with `git -C $dir log` or with a path below `.worktrees/` does. It looks up
-no alias of the configuration there (K198).
+heredoc with `push!`, with `git -C $dir log` or with a path below `.worktrees/` does. It also
+asks for an assignment of a `GIT_CONFIG_*` variable, and for a `git` whose subcommand is no
+builtin and an alias that can run a write in the working directory of the call; after a `cd` or
+`pushd` that starts a line or follows an operator, for any such name.
 
 ### The push deletion check
 

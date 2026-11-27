@@ -28,7 +28,19 @@ from pathlib import Path
 
 from .contract import PASS, Call, Verdict, needs_cwd, strongest
 from .paths import Place, place, work_tree
-from .shell import SEGMENT, SEPARATORS, Tokens, builtin_commands, joined, program, readings, words
+from .shell import (
+    SEGMENT,
+    SEPARATORS,
+    Flow,
+    Simple,
+    Tokens,
+    builtin_commands,
+    flow,
+    joined,
+    program,
+    readings,
+    words,
+)
 
 # `$( … )` and `` ` … ` ``. Neither nests here: a substitution inside a substitution is read as
 # the outer one, which is enough to find the command word.
@@ -43,6 +55,8 @@ DONE = re.compile(r"\bdone\b")
 
 # The commands `sandbox.excludedCommands` lifts, and only when every part is one of them.
 EXCLUDED = frozenset({"git", "gh", "glab", "ps"})
+# The directories in which `in_work_tree` follows a command; a `cd` that can fail doubles them.
+DIRECTORIES = 4
 
 # `git` subcommands that need to write `.git` or reach the network. `$(git rev-parse HEAD)` and
 # `$(git branch --show-current)` work sandboxed, so the read-only ones are left out.
@@ -268,30 +282,88 @@ def path_screened(heads: list[Head]) -> tuple[str, str] | None:
     return None
 
 
-def in_work_tree(heads: list[Head], cwd: Place | None) -> tuple[str, str, str] | None:
+def moved(cwds: list[Place | None], target: str, *, either: bool) -> list[Place | None]:
+    """The directories after a `cd` or `pushd` to `target` from each of `cwds`; with `either`,
+    also `cwds` themselves (`distinct`)."""
+    found = [None if cwd is None else cwd.go(expanded(target), "real") for cwd in cwds]
+    return distinct([*found, *cwds] if either else found)
+
+
+def moved_by(
+    head: str,
+    arguments: list[str],
+    cwds: list[Place | None],
+    stack: list[list[Place | None]],
+    *,
+    either: bool,
+) -> list[Place | None]:
+    """The directories after the `cd`, `pushd` or `popd` `head` with `arguments` from `cwds`
+    (`moved`), with the stack of `pushd` in `stack`. A `pushd` with no operand swaps the top two
+    directories of the stack, which cannot be known with no `pushd` before it in the command; a
+    `popd` returns to the top one, or leaves the directories as they are. A `cd` with no operand
+    leaves them as they are too."""
+    if head == "popd":
+        return stack.pop() if stack else cwds
+    if head == "pushd" and not arguments:
+        unknown: list[Place | None] = [None]
+        top = stack.pop() if stack else unknown
+        stack.append(cwds)
+        return distinct([*top, *cwds]) if either else top
+    if not arguments:
+        return cwds
+    if head == "pushd":
+        stack.append(cwds)
+    return moved(cwds, arguments[0], either=either)
+
+
+def distinct(cwds: list[Place | None]) -> list[Place | None]:
+    """Each directory of `cwds` once, at most DIRECTORIES, the first ones kept; a moved directory
+    comes first, so the directory in which each `cd` succeeded is always kept."""
+    kept: list[Place | None] = []
+    for cwd in cwds:
+        if not any(cwd is other or (cwd and other and cwd.same(other)) for other in kept):
+            kept.append(cwd)
+    return kept[:DIRECTORIES]
+
+
+def in_work_tree(
+    heads: list[Head], cwd: Place | None, plan: Flow | None = None
+) -> tuple[str, str, str] | None:
     """(command, root, directory) for a `git init` or `git clone` that lands in a work tree, or
     None. The target is the last argument that is not a flag, resolved against the working
-    directory after each `cd` before it; without one it is that working directory. A clone's URL,
+    directory after each `cd` or `pushd` before it; without one it is that working directory. With
+    a `plan` (`shell.flow`), a `cd` that is not sure there can leave the directory as it was, so
+    the target is read in both, and after a sure one the directories before it come back where its
+    scope ends; without one, each `cd` is sure. A `popd` returns to the directories before its
+    `pushd`; one with no `pushd` before it in the command leaves them as they are. A clone's URL,
     read as the target, lies below the working directory too, so the verdict is the working
     directory's."""
-    for head, arguments in heads:
-        if head == "cd" and arguments:
-            if cwd is not None:
-                cwd = cwd.go(expanded(arguments[0]), "real")
+    cwds: list[Place | None] = [cwd]
+    stack: list[list[Place | None]] = []
+    returning: dict[int, list[list[Place | None]]] = {}
+    for index, (head, arguments) in enumerate(heads):
+        for before in returning.pop(index, []):
+            cwds = distinct([*cwds, *before])
+        end = None if plan is None else plan.ends[index]
+        if end is not None:
+            returning.setdefault(end, []).append(cwds)
+        if head in ("cd", "pushd", "popd"):
+            cwds = moved_by(head, arguments, cwds, stack, either=plan is not None and not plan.sure[index])
             continue
         if head != "git":
             continue
         sub = git_subcommand(arguments)
         if sub not in ("init", "clone"):
             continue
-        if cwd is None:
-            raise NeedsCwdError
         rest = arguments[arguments.index(sub) + 1 :]
         operands = [token for token in rest if not token.startswith("-")]
         target = expanded(operands[-1]) if operands else "."
-        root = work_tree(cwd.go(target, "real"), "link")
-        if root is not None:
-            return "git " + sub, root.text(), cwd.text()
+        for here in cwds:
+            if here is None:
+                raise NeedsCwdError
+            root = work_tree(here.go(target, "real"), "link")
+            if root is not None:
+                return "git " + sub, root.text(), here.text()
     return None
 
 
@@ -431,12 +503,12 @@ def decide(command: str, tokens: Tokens | None, cwd: Place | None) -> Verdict:
     return PASS
 
 
-def head_of(words: list[str], *, builtin: bool) -> str:
-    """The program of the simple command `words` (`shell.program`), with `/usr/bin/cd` for a `cd`
-    that the shell does not run as its own (`shell.builtin_commands`), such as `CD` or `env cd`: it
-    runs in a child and leaves the shell's directory as it was."""
-    head = program(words[0])
-    return "/usr/bin/cd" if head == "cd" and not (builtin and words[0] == "cd") else head
+def head_of(simple: Simple) -> str:
+    """The program of the simple command `simple` (`shell.program`), with `/usr/bin/cd` for a `cd`
+    or `pushd` that a child runs (`shell.Runs`), such as `CD` or `env cd`: it leaves the shell's
+    directory as it was."""
+    head = program(simple.words[0])
+    return "/usr/bin/cd" if head in ("cd", "pushd", "popd") and simple.runs == "child" else head
 
 
 def work_tree_check(call: Call) -> Verdict:
@@ -444,8 +516,9 @@ def work_tree_check(call: Call) -> Verdict:
     frontend whose sandbox is not Claude Code's, where the other shapes describe nothing. There no
     `excludedCommands` match decides how `git` runs, so the check reads each simple command as the
     shell runs it (`shell.commands`): also `env git init`, `GIT init` and a `git init` in `$( … )`.
-    A `cd` moves the directory only where the shell runs its own `cd` (`head_of`). A command that
-    does not read passes."""
+    A `cd` that a child runs leaves the directory as it was (`head_of`); one that is no sure move
+    (`shell.flow`) leaves either directory, and a sure one only up to the end of its scope. A
+    command that does not read passes."""
     command = call.command
     read = readings(command) if "git" in joined(command).lower() else None
     if read is None:
@@ -453,10 +526,9 @@ def work_tree_check(call: Call) -> Verdict:
     cwd = None if call.cwd is None else place(call.cwd, "real")
     try:
         for tokens in read:
-            heads: list[Head] = [
-                (head_of(words, builtin=builtin), words[1:]) for words, builtin in builtin_commands(tokens)
-            ]
-            landed = in_work_tree(heads, cwd)
+            simples = builtin_commands(tokens)
+            heads: list[Head] = [(head_of(simple), simple.words[1:]) for simple in simples]
+            landed = in_work_tree(heads, cwd, flow(simples))
             if landed:
                 return Verdict(
                     "deny", WORK_TREE_MESSAGE.format(found=landed[0], cwd=landed[2], root=landed[1])

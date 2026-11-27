@@ -1210,56 +1210,54 @@
 - kind: defect
 - found: 2026-11-24, the spec of part M5 of the sandbox plan
 
-### K198 · A git alias of the configuration passes the git write and push-deletion checks in a command that `shell.readings` cannot read, unless a lease option or a keyword follows it.
+### K204 · After a `cd` to a directory that the check cannot know, the git write and push-deletion checks read no alias of a `git` behind another command.
 
-- location: `hooks/guard/git_writes.py:774`
-- evidence: `unread_write` reads the text of such a command, and looks up no alias there. In a
-  repository whose config defines `alias.sh = !git push` and `alias.p = push`, `guard --from
-  claude` answers `ask` to `git sh` and to `git p origin :topic`, and `pass` to each of them after
-  a heredoc whose body holds an open quote (`cat <<'EOF'\nit's\nEOF\ngit sh`). With
-  `--force-with-lease` after the alias, the command asks (`LEASE_WORD`).
+- location: `hooks/guard/git_writes.py:640`
+- evidence: `subcommand` reads a name that is no builtin as unknown, where the repository cannot
+  be known, only when its `git` is the command word of the part, so that `cd $X && grep -r git
+  src` passes. `cd $D && find . -exec git p --force-with-lease origin feature \;` therefore
+  passes when the repository `$D` defines `alias.p = push`. The call's working directory and a
+  known `cd` target are read as before.
 - kind: defect
-- found: 2026-11-26, the branch `guard/command-words`
+- found: 2026-11-26, the branch `guard/cd-and-alias-limits`, a limit of the form of K199's fix
 
-### K199 · The git write check looks up an alias after a `cd` to a directory that it cannot know in the call's working directory.
+### K211 · The rm and work-tree checks end the scope of a sure `cd` at a `;` inside a compound command or at a backtick, so they refuse a removal that runs only where the `cd` moved to.
 
-- location: `hooks/guard/git_writes.py:625`
-- evidence: `subcommand` looks up an alias in the repository of the call's part, which `located`
-  moves by each `cd`; a `cd $D` moves it to an unknown directory, and `decide` reads the whole
-  command against the call's `cwd`. From a repository with no alias `p`, `cd $D && git p
-  --force-with-lease origin feature` passes when the repository `$D` defines `alias.p = push`.
-  A lease push to a default branch that the shell then runs is not refused.
+- location: `hooks/guard/shell.py`, `ends_list`
+- evidence: `shell.ends_list` reads the `;` of `{ cd x && true; } && y` as the end of the `&&`
+  list of the `cd`, since a brace group opens no parenthesis. The group succeeds only when the
+  `cd` did, so `y` runs only in `x`. With the call's working directory `~/Research`,
+  `guard --from claude` refuses `{ cd .scratch/x && true; } && rm -rf build`, because it also
+  reads `build` as `~/Research/build`. `cd .scratch/x && true && rm -rf build` passes. The
+  same holds for a `;` of an `if`, a loop or a `case` after the `cd`, and for a backtick:
+  `cd .scratch/x && if true; then rm -rf build; fi`, `cd .scratch/x && for f in b; do rm -rf
+  build; done`, `cd .scratch/x && case a in a) rm -rf build;; esac` and ``cd .scratch/x && echo
+  `pwd` && rm -rf build`` are refused; on `origin/main` each passes. The decision errs only
+  toward a refusal.
 - kind: defect
-- found: 2026-11-26, the branch `guard/command-words`
+- found: 2026-11-26, the branch `guard/cd-and-alias-limits`, a limit of the form of the fix of
+  K206 and K210
 
-### K200 · The rm check moves its directory for a `cd` that can fail, and passes a relative operand after a `cd` to a directory that it cannot know.
+### K212 · The rm and work-tree checks read `cd` and `exit` as the shell's builtins, though a function of the command can shadow either.
 
-- location: `hooks/guard/rm_scope.py:224`
-- evidence: with the call's working directory `~/Research`, `guard --from claude` answers `pass`
-  to `cd ~/Research/.scratch/missing; rm -rf Papers`, which removes `~/Research/Papers` when the
-  directory does not exist, and to `cd $X && rm -rf Papers`, where `$X` can be empty, which takes
-  `cd` home, or any other directory. The same holds on `origin/main`.
+- location: `hooks/guard/shell.py`, `sure_kind`
+- evidence: `exit() { :; }; cd nope || exit; pwd` prints the old directory in `bash -c` and
+  `zsh -fc`, since the function `exit` returns. The checks read `cd .scratch/x || exit` after
+  such a definition as a sure move, so a later `rm -rf Papers` from `~/Research` is read only in
+  `.scratch/x`. A function `cd` defeats every sure reading the same way. The same holds on
+  `origin/main`.
 - kind: defect
-- found: 2026-11-26, the branch `guard/command-words`, from its pre-PR verification
+- found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`
 
-### K201 · The rm and work-tree checks follow a `cd` after `command` or `time` as bash runs it, also where the shell runs `/usr/bin/cd` in a child.
+### K213 · The rm and work-tree checks read the `cd` of zsh's short function definition `f() cd x` as a move that runs.
 
-- location: `hooks/guard/shell.py:515`
-- evidence: `KEEPS_BUILTIN` holds `command`, `builtin` and `time`, and `builtin_commands` reads a
-  quoted or escaped wrapper by its program name. In zsh, `command cd` runs `/usr/bin/cd`:
-  `/bin/zsh -fc 'command cd sub; pwd'` prints the parent directory, where `/bin/bash -c` prints
-  `sub`. `/bin/bash -c '"time" cd sub; pwd'` prints the parent directory too, since bash runs
-  `/usr/bin/time` there. From `~/Research`, `guard --from claude` answers `pass` to
-  `command cd .scratch/x && rm -rf Papers`, which zsh runs in `~/Research`. origin/main answers
-  the same.
+- location: `hooks/guard/shell.py`, `sure_kind`
+- evidence: `zsh -fc 'f() cd /nonexist || exit; pwd'` prints the old directory, since the line
+  defines the function `f` and runs no `cd`. With the call's working directory `~/Research`,
+  `guard --from claude` passes `f() cd .scratch/x || exit; rm -rf Papers`, because it reads
+  the `cd` as sure and `Papers` only in `.scratch/x`. In bash the line is a syntax error. The
+  same holds on `origin/main`. A case pattern without `(`, as in `case a in b) true;; esac`,
+  makes the count of open parentheses negative, which ends a scope early and errs only toward a
+  refusal.
 - kind: defect
-- found: 2026-11-26, the branch `guard/command-words`, from its pre-PR verification
-
-### K202 · The work-tree check of the sandbox check follows `cd` and not `pushd`.
-
-- location: `hooks/guard/sandbox_semantics.py:271`
-- evidence: `in_work_tree` moves its directory for a head `cd` only, while the rm check moves it
-  for `cd` and `pushd`. So `pushd /tmp && git init x` in a work tree is read against the work
-  tree, and `pushd ~/Research/P && git init x` outside one against the call's directory.
-- kind: defect
-- found: 2026-11-26, the branch `guard/command-words`, from its pre-PR verification
+- found: 2026-11-27, the verifier of the branch `guard/cd-and-alias-limits`

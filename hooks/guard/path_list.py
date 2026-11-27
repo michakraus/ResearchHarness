@@ -539,13 +539,11 @@ def segment_words(segment: str) -> list[list[str]]:
     return found
 
 
-def matched(rules: tuple[BashRule, ...], command: str) -> str | None:
-    """The body of the first of `rules` that matches a word list of a segment of `command`, as
-    written or with each backslash-newline as a line break, or None; rule by rule, and word list by
-    word list. A rule meets only the word lists that hold each of its needed texts: one search of the
-    joined word lists for each distinct needed text finds the lists that hold it, by the offset of
-    each hit, so a command of many segments costs each rule one matcher call per list that holds
-    all its needed texts. A needed text holds no newline, the text between two joined lists."""
+@functools.lru_cache(maxsize=2)
+def word_lists(command: str) -> tuple[list[tuple[list[str], str]], str, list[int]]:
+    """(each word list of a segment of `command`, as written or with each backslash-newline as a
+    line break, with its words joined by WORD_BREAK; all of them joined by newlines; the offset of
+    each in the join), made once for both lists of `ruled`. No matcher changes a word list."""
     lines = dict.fromkeys((command, command.replace("\\\n", "\n")))
     split = [
         (words, WORD_BREAK.join(words))
@@ -559,6 +557,17 @@ def matched(rules: tuple[BashRule, ...], command: str) -> str | None:
     for _words, text in split:
         starts.append(offset)
         offset += len(text) + 1
+    return split, joined, starts
+
+
+def matched(rules: tuple[BashRule, ...], command: str) -> str | None:
+    """The body of the first of `rules` that matches a word list of a segment of `command`
+    (`word_lists`), or None; rule by rule, and word list by word list. A rule meets only the word
+    lists that hold each of its needed texts: one search of the joined word lists for each distinct
+    needed text finds the lists that hold it, by the offset of each hit, so a command of many
+    segments costs each rule one matcher call per list that holds all its needed texts. A needed
+    text holds no newline, the text between two joined lists."""
+    split, joined, starts = word_lists(command)
     holders: dict[str, frozenset[int]] = {}
 
     def holding(need: str) -> frozenset[int]:

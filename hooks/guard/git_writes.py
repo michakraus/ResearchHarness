@@ -46,7 +46,8 @@ case runs git for `GIT`, and it reads no redirection's target as a word of a cal
 `GIT_CONFIG_*` variable before it can make an alias, is unknown, and so is a subcommand that is no
 builtin (BUILTINS) and that the git configuration of the repository of the call's part makes an
 alias that can run a write (`alias_writes`): the call asks, and a lease push with it is read for a
-default branch as any other. An alias such as `lg = log --oneline` passes. It
+default branch as any other. An alias such as `lg = log --oneline` passes. Where a `cd` leads to
+a repository that the check cannot know, such a name of a `git` that leads its part is unknown. It
 takes a `worktree remove` with any option as forced, since `git` reads `-ff` and a prefix of
 `--force` as force, and a `push` with an option that begins with `--force-w` as a lease push, as
 well as an option that the shell expands, where the text before the expansion begins as a lease
@@ -62,8 +63,9 @@ one with an open quote in a heredoc body, asks when it holds a word that ends in
 case, and after it `push`, `worktree` or `cherry-pick` as a word of its own, an alias option or a
 lease option; when the subcommand of such a `git`, after its global options and redirections,
 holds `$`, a backtick or a brace; or when it holds a `$` before a quote or a backslash, which can
-open an ANSI-C quote that decodes into either (`unread_write`). Without them it passes, as Julia's
-`push!`, `git -C $dir log` or a path below `.worktrees/` do; it looks up no alias there.
+open an ANSI-C quote that decodes into either (`unread_write`); or when it can run an alias that
+writes (`unread_alias`). Without them it passes, as Julia's `push!`, `git -C $dir log` or a path
+below `.worktrees/` do.
 
 The own organisations are the `org` list of the profile, as `gh_api_writes.own_organisations` reads
 it. Each `git` runs with `core.fsmonitor` off, so that `git status` starts no monitor program that
@@ -86,7 +88,7 @@ from .gh_api_writes import own_organisations
 from .paths import Place, place
 from .rm_scope import TAKES_VALUE, WORKTREES, below, expand, resolve
 from .sandbox_lift import PLAIN
-from .shell import Tokens, joined, parts, program, readings, unredirected
+from .shell import Tokens, command_word, joined, parts, program, readings, unredirected
 
 # Seconds for each `git` the check runs.
 TIMEOUT = 5
@@ -145,6 +147,9 @@ GIT_NAMED = re.compile(
     r"[ \t]+([A-Za-z0-9][A-Za-z0-9-]*)(?![^\s;&|)])",
     re.IGNORECASE,
 )
+# A `cd` or `pushd` that starts a line or follows an operator, after which an alias lives in a
+# repository that the check cannot know (`unread_alias`).
+CD_WORD = re.compile(r"(?:^|[;&|(])[ \t]*(?:cd|pushd)(?![\w.-])", re.MULTILINE)
 # A lease option, which only `git push` takes (`unread_write`).
 LEASE_WORD = re.compile(r"(?<![\w-])--force-w")
 # An option that defines a git alias, `-c alias.<name>=…` or `--config-env=alias.<name>=…`; git
@@ -594,16 +599,24 @@ def configuring(words: list[str]) -> int:
 
 
 def subcommand(
-    words: list[str], index: int, directory: str | None = None, configured: int | None = None
+    words: list[str],
+    index: int,
+    directory: str | None = None,
+    configured: int | None = None,
+    *,
+    lookup: bool = False,
 ) -> tuple[int, bool]:
     """(the index of the subcommand, whether the check cannot know it) of the `git` call at
     `index` of `words`. The subcommand follows the global options, as `git` reads them. It is
     unknown when its word holds a character by which the shell expands it (EXPANSIONS), as
     `pus{h,}` or `${x}push` do; when a `-c` or `--config-env` option defines an alias; when a word
     before `index` assigns a variable of git configuration (`configuring`, which `configured`
-    gives when the caller has it); and, with a `directory`, when the subcommand is a name that is
-    no builtin and that the configuration of the repository of the call makes an alias that can
-    run a write (`alias_writes`)."""
+    gives when the caller has it); and, with `lookup`, when the subcommand is a name that is no
+    builtin and that the configuration of the repository of the call, in `directory`, makes an
+    alias that can run a write (`alias_writes`). Where that repository cannot be known, as after
+    `cd $X`, a name that git can read as an alias (ALIAS_NAME) is unknown when the `git` is the
+    command word of `words` (`shell.command_word`); a `git` among the arguments of another
+    command, as in `grep -r git src`, is none."""
     at, alias = index + 1, False
     while at < len(words) and words[at].startswith("-"):
         option, _, attached = words[at].partition("=")
@@ -620,10 +633,12 @@ def subcommand(
         return at, True
     if (configuring(words[:index]) if configured is None else configured) < index:
         return at, True
-    if directory is None or name in BUILTINS:
+    if not lookup or name in BUILTINS:
         return at, False
     repository = repository_of(words[index:at], directory)
-    return at, repository is not None and alias_writes(repository, name)
+    if repository is None:
+        return at, command_word(words) == index and ALIAS_NAME.fullmatch(name) is not None
+    return at, alias_writes(repository, name)
 
 
 def writes(
@@ -646,7 +661,7 @@ def writes(
     for index, word in enumerate(words):
         if not is_git(word):
             continue
-        at, unknown = subcommand(words, index, directory, configured)
+        at, unknown = subcommand(words, index, directory, configured, lookup=True)
         name = words[at] if at < len(words) else None
         if unknown:
             yield ("push" if last_lease > at else "cherry-pick"), index, at + 1
@@ -725,12 +740,13 @@ def push_refusal(tokens: Tokens, cwd: str | None) -> Verdict | None:
 
 def moved_write(tokens: Tokens, cwd: str | None) -> Verdict:
     """The verdict on a command in which `writes`, in `cwd`, finds no write: a write in a part
-    whose directory a `cd` moved (`located`) can only come from an alias of that directory, so it
-    is unknown; PASS without one."""
+    whose directory a `cd` moved (`located`) can only come from an alias of that directory, or of
+    a directory that the check cannot know, as after `cd $X` (`subcommand`), so it is unknown;
+    PASS without one."""
     if not any(
         next(writes(part, directory), None) is not None
         for part, directory in located(tokens, cwd)
-        if directory not in (cwd, None)
+        if directory != cwd
     ):
         return PASS
     return push_refusal(tokens, cwd) or Verdict("ask", UNKNOWN)
@@ -749,7 +765,7 @@ def decide(tokens: Tokens, cwd: str | None) -> Verdict:
     refusal = push_refusal(tokens, cwd)
     if refusal is not None:
         return refusal
-    unknown = subcommand(words, index, cwd)[1]
+    unknown = subcommand(words, index, cwd, lookup=True)[1]
     alone = len(words) == len(tokens) and index == 0 and words[0] == "git" and words[1] == write.split()[0]
     if unknown or not alone or cwd is None:
         return Verdict(
@@ -785,7 +801,7 @@ def may_be_unknown(keywords: str) -> bool:
     )
 
 
-def unread_write(command: str, keywords: str) -> bool:
+def unread_write(command: str, keywords: str, cwd: str | None) -> bool:
     """True when `command`, which `readings` cannot read, may hold a write of the check: a `$`
     before a quote or a backslash (ANSI_C_OPENER); or in its `joined` text `keywords` a word that
     ends in `git` (GIT_WORD), in any case, and after it, on any line, a keyword as a word of its
@@ -797,7 +813,7 @@ def unread_write(command: str, keywords: str) -> bool:
     them. With no ANSI-C quote, a `git` call with a write of `writes` leaves in the `joined` text a
     word that ends in `git`, also where `joined` glues it to the line before, and its keyword after
     it, so the narrowing keeps each write that the check reads whose subcommand stands right after
-    `git` or is a keyword."""
+    `git` or is a keyword. An alias is read too (`unread_alias`)."""
     if ANSI_C_OPENER.search(command) is not None or GIT_EXPANDED.search(keywords) is not None:
         return True
     first_git = GIT_WORD.search(keywords)
@@ -807,7 +823,25 @@ def unread_write(command: str, keywords: str) -> bool:
         KEYWORD_WORD.search(keywords, first_git.end()) is not None
         or ALIAS.search(keywords, first_git.end()) is not None
         or LEASE_WORD.search(keywords, first_git.end()) is not None
+        or unread_alias(keywords, cwd)
     )
+
+
+def unread_alias(keywords: str, cwd: str | None) -> bool:
+    """True when the `joined` text `keywords` of a command that `readings` cannot read can run an
+    alias that writes: it assigns a variable of git configuration (CONFIG_VARIABLE), or it holds a
+    word that ends in `git` and, as its subcommand (GIT_NAMED), a name that is no builtin and that
+    the git configuration of `cwd` makes such an alias (`alias_writes`). Where the repository
+    cannot be known, with no `cwd` or after a `cd` or `pushd` that starts a line or follows an
+    operator (CD_WORD), every such name counts."""
+    if CONFIG_VARIABLE.search(keywords) is not None:
+        return True
+    names = {found.group(1) for found in GIT_NAMED.finditer(keywords)} - BUILTINS
+    if not names:
+        return False
+    if cwd is None or CD_WORD.search(keywords) is not None:
+        return True
+    return any(alias_writes(cwd, name) for name in sorted(names))
 
 
 def check(call: Call) -> Verdict:
@@ -821,7 +855,7 @@ def check(call: Call) -> Verdict:
         return PASS
     found = readings(command, nested=True)
     if found is None:
-        if not unread_write(command, keywords):
+        if not unread_write(command, keywords, call.cwd):
             return PASS
         return Verdict("ask", "The check cannot read a command that may hold a git write.")
     verdict = strongest(decide(tokens, call.cwd) for tokens in found)

@@ -6023,7 +6023,8 @@ sys.exit(code)
 
 
 def guard_counted(data: bytes) -> tuple[str, int, int, int]:
-    """The guard's decision on the payload bytes `data`, `deny`, `pass`, `exit <n>` or `timeout`, and
+    """The guard's decision on the payload bytes `data`, `deny`, `pass`, the decision of its JSON
+    output such as `ask`, `exit <n>` or `timeout`, and
     its count of `os.stat` and `os.lstat` calls, of `git` spawns and of the steps of its walks; -1 for
     a count it did not print."""
     try:
@@ -6044,9 +6045,16 @@ def guard_counted(data: bytes) -> tuple[str, int, int, int]:
     )
     if proc.returncode == 2:
         return "deny", stats, spawns, steps
-    if proc.returncode != 0 or proc.stdout.strip():
+    if proc.returncode != 0:
         return f"exit {proc.returncode} {proc.stdout[:80]!r}", stats, spawns, steps
-    return "pass", stats, spawns, steps
+    stdout = proc.stdout.decode("utf-8", "replace")
+    if not stdout.strip():
+        return "pass", stats, spawns, steps
+    try:
+        decision = str(json_value(stdout, "the output")["hookSpecificOutput"]["permissionDecision"])
+    except ValueError, KeyError, TypeError:
+        decision = f"exit 0 {proc.stdout[:80]!r}"
+    return decision, stats, spawns, steps
 
 
 def mib_command(unit: str, tail: str, lead: str = "") -> tuple[str, str]:
@@ -6477,7 +6485,8 @@ def command_cases():
         (CWD, mib_command("cd a && git status; ", "true"), "pass"),
         (CWD, mib_command("cd a; ", "git add -A; rm x"), "deny"),
         (CWD, mib_command("cd ../a; ", "rm -rf x"), "deny"),
-        (SCRATCH, mib_command("cd a; rm -rf x; ", "true"), "pass"),
+        # Each `cd a` can fail, so the `rm` can run in more directories than the rm check follows.
+        (SCRATCH, mib_command("cd a; rm -rf x; ", "true"), "ask"),
         (SCRATCH, mib_command("cd a; echo x > f.txt; ", "true"), "pass"),
         (CWD, mib_command("cd a; git status; ", "git init x"), "deny"),
         (CWD, mib_command(f"cd {LINK}; cd ..; ", "rm -rf ."), "deny"),
@@ -6506,10 +6515,12 @@ def command_cases():
     # `cd`; and the work tree check walks each `cd` to the deep directory from a new start.
     # The first command's walks step once per name of its `cd` word in each mode, however many checks
     # and readings take them.
-    for cwd, starts, stepped, (command, shape) in (
-        (LOGS, 2, True, mib_command("d{}/../", four, "cd ")),
-        (LOGS, 2, False, mib_command("a/../", four, "cd ")),
-        (LOGS, 3, False, mib_command(f"cd d{{}}; cd {DEEP}; ", four.removeprefix("; "))),
+    # The third command's `cd`s can fail, so its `rm` can run in more directories than the rm check
+    # follows, and it asks.
+    for cwd, starts, stepped, expected, (command, shape) in (
+        (LOGS, 2, True, "pass", mib_command("d{}/../", four, "cd ")),
+        (LOGS, 2, False, "pass", mib_command("a/../", four, "cd ")),
+        (LOGS, 3, False, "ask", mib_command(f"cd d{{}}; cd {DEEP}; ", four.removeprefix("; "))),
     ):
         words = re.findall(r"(?:^|; )cd (\S+)", command)
         names = len({name for word in words for name in word.split("/") if name not in ("", "..")})
@@ -6517,10 +6528,10 @@ def command_cases():
             json.dumps({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}).encode("utf-8")
         )
         bound = f"at most {starts} x {names} + {WALK_READS} reads" + (" and steps" if stepped else "")
-        ok = got == "pass" and 0 <= stats <= starts * names + WALK_READS
+        ok = got == expected and 0 <= stats <= starts * names + WALK_READS
         report(
             ok=ok and (not stepped or 0 <= steps <= starts * names + WALK_READS),
-            line=f"exp pass, {bound} got {got}, {stats} reads, {steps} steps  [guard    ]  {shape}",
+            line=f"exp {expected}, {bound} got {got}, {stats} reads, {steps} steps  [guard    ]  {shape}",
         )
     # The commands that resolve an operand or a `git init` target many times read each (directory,
     # name) once in each mode: at most two reads for each distinct name of the command. A `git init`
