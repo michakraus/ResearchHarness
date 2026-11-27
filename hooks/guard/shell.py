@@ -613,6 +613,11 @@ def runs_of(prefix: list[str], word: str) -> Runs:
 # The builtins that end the shell, so that the commands after `cd x || exit` run only where the
 # `cd` succeeded (`flow`). Not `return`: bash goes on after a `return` outside a function.
 STOPS = frozenset({"exit"})
+# The `then` of the name of a function that the command right after it defines (`sure_kind`): in
+# zsh, `f() cd x && y` and `function f() cd x` define `f` with the body `cd x`, which does not run
+# there, and `y` runs where the shell was; bash refuses the form. An anonymous `() cd x`, which
+# zsh runs at once, follows an operator, and its `()` joins the `then` of the command before it.
+DEFINES = re.compile(r"\(\)\s*")
 # The operators of a `then` (`operators`): a newline is read as `;`.
 OPERATORS = re.compile(r"&&|\|\||\|&|[|;&()`]")
 # The newlines right after an operator, which only go on with the line (`operators`): bash and
@@ -719,13 +724,16 @@ def sure_kind(simples: list[Simple], index: int, outer: list[bool]) -> Sure | No
     joins it to the next command, as in `cd x && y`; `exit`: `||` joins it to an `exit` that the
     shell runs as its own, outside a pipeline and not in the background (also `flow`), as in
     `cd x || exit 1; y` and unlike `cd x || (exit 1)` or `exit &`, in no compound command or body
-    (`outer`, of `outermost`); `if`: it is the condition of an `if`, as in `if cd x; then y; fi`."""
+    (`outer`, of `outermost`); `if`: it is the condition of an `if`, as in `if cd x; then y; fi`.
+    A move that is the body of zsh's short function definition, as in `f() cd x && y`, never runs
+    there (`DEFINES`), so it is not sure."""
     simple = simples[index]
     if simple.runs != "shell" or "!" in simple.lead or program(simple.words[0]) not in ("cd", "pushd"):
         return None
     if index > 0:
         before = simples[index - 1].then
-        if "`" in before or last_operator(before) in ("||", "|", "|&"):
+        defines = not simple.lead and DEFINES.fullmatch(before) is not None
+        if defines or "`" in before or last_operator(before) in ("||", "|", "|&"):
             return None
     own = operators(simple.then)
     following = simples[index + 1] if index + 1 < len(simples) else None
@@ -980,11 +988,24 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
         current = []
         before = then
 
+    # A pattern of a `case` runs nothing, and its `(` and `)` open and close no parenthesis.
+    pattern: Pattern = None
     for kind, text in unredirected(tokens):
+        if pattern is not None:
+            pattern, inside = in_pattern(pattern, kind, text)
+            if inside:
+                continue
+        if kind == "word" and text == "in" and opens_case(current):
+            current.append(text)
+            close("")
+            pattern = "start"
+            continue
         if kind == "op":
             redirection = REDIRECTION.fullmatch(text) is not None
             if not redirection and (not SEPARATORS.isdisjoint(text) or "(" in text or ")" in text):
                 close(text)
+            if text.strip() in TERMINATORS:
+                pattern = "start"
             continue
         if "`" not in text:
             current.append(text)
@@ -996,6 +1017,40 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
                 current.append(piece)
     close("")
     return tuple(found)
+
+
+# Where the reader of `cached_commands` stands in a pattern of a `case` (`in_pattern`): before its
+# first word, or after it.
+type Pattern = Literal["start", "inside"] | None
+# The operators that end a branch of a `case`, after which a pattern or `esac` follows; bash and
+# zsh refuse each of them outside a `case`.
+TERMINATORS = frozenset({";;", ";&", ";|", ";;&"})
+
+
+def opens_case(current: list[str]) -> bool:
+    """True when the word `in` after `current` opens the patterns of a `case`: `current` ends in
+    `case` and its subject, after reserved words only, as in `then case $x`."""
+    head = current[:-2]
+    return current[-2:-1] == ["case"] and all(word in RESERVED or word in ("time", "-p") for word in head)
+
+
+def in_pattern(pattern: Pattern, kind: str, text: str) -> tuple[Pattern, bool]:
+    """The step of a token in a pattern of a `case`, as in `case a in (b|c) …` or `b) …`: where
+    the reader stands after it, and whether the token belongs to the pattern, which runs nothing
+    and opens and closes no parenthesis. A newline or `(` before the first word, a word, and `|`
+    belong to it, and `)` ends it, each with the blanks and newlines around it, as the `\n(` of
+    `case a in\n(b)`. An `esac` as its first word, any other operator, and a word with a backtick
+    end the pattern before the token, which the reader then reads as before."""
+    if kind == "op":
+        bare = text.strip()
+        if pattern == "start" and bare in ("(", ""):
+            return ("inside" if bare else "start"), True
+        if bare in ("|", ")"):
+            return ("inside" if bare == "|" else None), True
+        return None, False
+    if "`" in text or (pattern == "start" and text == "esac"):
+        return None, False
+    return "inside", True
 
 
 def words(text: str) -> list[str] | None:
