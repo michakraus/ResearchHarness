@@ -1023,13 +1023,15 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
 
 def defines(current: list[str], text: str) -> bool:
     """True when the operator `text` after the words `current` ends the head of a function that
-    zsh defines with the next command as its body: `()` after a name, as in `f() cd x`,
-    `f g () ; cd x` or `env() cd x`, or `;`, a newline or `()` after `function` and a name, as in
-    `function f; cd x`. An anonymous `() cd x` has no name, and zsh runs it at once."""
+    zsh defines with the next command as its body: an operator that starts with `()` after a name,
+    as in `f() cd x`, `f();cd x`, `f()() cd x`, `f g () ; cd x` or `env() cd x`, or `;`, a newline
+    or `()` after `function` and a name, as in `function f; cd x`. An anonymous `() cd x` has no
+    name, nor have `function () cd x` and the `\n()` of `true\n() cd x`, and zsh runs each at
+    once."""
     head = list(itertools.dropwhile(lambda word: word in RESERVED, current))
     bare = text.strip()
-    if bare == "()":
-        return bool(head)
+    if text.startswith("()"):
+        return head not in ([], ["function"])
     return head[:1] == ["function"] and bool(head[1:]) and "{" not in head and bare in ("", ";")
 
 
