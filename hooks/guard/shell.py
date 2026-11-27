@@ -561,8 +561,8 @@ def program(word: str) -> str:
 # (`builtin_commands`).
 KEEPS_BUILTIN = frozenset({"builtin", "noglob", "nocorrect", "-"})
 # The wrappers, spelled exactly, after which one shell runs its builtin and another a program:
-# `command cd` moves bash and not zsh, and `time cd` moves bash and not `"time" cd`, which `lex`
-# reads as the same word (`builtin_commands`).
+# `command cd` moves bash and not zsh, and `time cd` moves bash and not `"time" cd`, which
+# `runs_of` reads as the same word (`builtin_commands`).
 MAY_KEEP_BUILTIN = frozenset({"command", "time"})
 
 # Where a simple command runs (`builtin_commands`): in the shell, as its own builtin; in the shell
@@ -986,8 +986,8 @@ def builtin_commands(tokens: Tokens) -> list[Simple]:
 
 def reserved_lead(words: list[str]) -> list[str]:
     """The reserved words at the start of `words`, where the shell reads them as reserved: before
-    any word other than `time` and its `-p`, so that the `fi` of `X=1 fi` or `sudo fi` is the name
-    of a program and closes nothing (`outermost`)."""
+    any word other than an unquoted `time` and its `-p` (`leads`), so that the `fi` of `X=1 fi` or
+    `sudo fi` is the name of a program and closes nothing (`outermost`)."""
     return [word for word in itertools.takewhile(leads, words) if word in RESERVED]
 
 

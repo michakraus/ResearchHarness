@@ -374,7 +374,8 @@ after `function` and a name, it is the whole next `&&` or `||` list, so no `cd` 
 that holds a compound command or a backtick, as in `f() { true; }` or
 `f() if true; then true; fi`, is read up to the end of the parenthesis around it, which can
 only refuse more: zsh also closes a group with a `}` after a word, as in
-`f() { cd x && true } && rm -rf y`, where bash reads the `}` as an argument. So `f() { true; }; cd x && rm -rf y` is refused (K218). No `cd` in a body is sure, also not
+`f() { cd x && true } && rm -rf y`, where bash reads the `}` as an argument. So
+`f() { true; }; cd x && rm -rf y` is refused (K218). No `cd` in a body is sure, also not
 in a group or an `if` of it. zsh's short `repeat` runs the whole list after
 its count as its body, also never, so no `cd` of `repeat 0 true && cd x || exit` is sure either,
 nor of `repeat 0 >/dev/null && cd x || exit`, whose body starts with the redirection.

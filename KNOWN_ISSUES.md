@@ -1301,3 +1301,18 @@
   holds on `origin/main`.
 - kind: defect
 - found: 2026-11-27, the verifier of the branch `guard/short-function-body`
+
+### K221 · The rm and work-tree checks read a `}` after a redirection as the end of a group, though bash runs it as a command.
+
+- location: `hooks/guard/shell.py`, `cached_commands`
+- evidence: with the call's working directory `~/Research`, `guard --from claude` passes
+  `false && { true; >/dev/null }; cd .scratch/x || exit; }; rm -rf Papers` and
+  `false && { true; 2>&1 }; cd .scratch/x || exit; }; rm -rf Papers`. bash reads a reserved word
+  only where a command word can stand, so it runs the `}` after the redirection as a command,
+  skips the whole group and runs the `rm` in `~/Research`
+  (`bash -c 'false && { true; >/dev/null }; echo CD; }; echo RM'` prints only `RM`); zsh refuses
+  the command with a parse error. `unredirected` drops the target of the redirection, so the `}`
+  reads as the first word of its part and closes the group, and the `cd` reads as outside it and
+  sure. The same holds on `origin/main`.
+- kind: defect
+- found: 2026-11-27, the verifier of the branch `guard/quoted-reserved`
