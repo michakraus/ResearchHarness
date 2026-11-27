@@ -1302,7 +1302,7 @@
 - kind: defect
 - found: 2026-11-27, the verifier of the branch `guard/short-function-body`
 
-### K222 · The checks read the target of a redirection that `lex` joins to a separator or a parenthesis as the command word, so the command after it is hidden.
+### K223 · The checks read the target of a redirection that `lex` joins to a separator or a parenthesis as the command word, so the command after it is hidden.
 
 - location: `hooks/guard/shell.py`, `lex` and `unredirected`
 - evidence: with the call's working directory `~/Research`, `guard --from claude` passes
