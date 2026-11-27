@@ -101,7 +101,8 @@ reads them, and a quoted operator or a joined line is also read the other way, s
 hides a part of the command. The checks that look for a program, the staging, write, `gh api`,
 `gh pr create`, watcher, GPU, rm and archive checks, read each simple command from its command
 word on (`shell.commands`): after the reserved words `!`, `{`, `if`, `then`, `elif`, `else`,
-`while`, `until` and `do`, after the assignments, and after each wrapper with its options, such as
+`while`, `until` and `do`, each unquoted (a quoted or escaped `"!"` or `\{` is a program, as for
+the shell), after the assignments, and after each wrapper with its options, such as
 `env`, `sudo`, `time`, `timeout`, `nice`, `nohup`, `exec`, `command`, `xargs` and `rtk`. The body
 of `( … )`, of `$( … )` and of backticks is a command of its own, the target of a redirection is
 no word, the string of `env -S` is read as a script, and a program name counts in any case, since
@@ -354,7 +355,10 @@ A `cd` is sure only for the commands that run after it succeeds: the rest of its
 `cd x && rm -rf y`; every command after `cd x || exit` outside any `{ … }`, `if`, loop, `case`
 or function body, since the shell stops when it fails, unless a function of the command shadows
 `exit` or `cd` (K212); and
-the commands of `if cd x; then … fi` up to the `else`, `elif` or `fi`. For any other command, the
+the commands of `if cd x; then … fi` up to the `else`, `elif` or `fi`. A quoted or escaped
+reserved word, as `"}"`, `\fi` or `''done`, opens and closes no group, `if` or loop: the shells
+run it as a program, so `false && { true; "}"; cd x || exit; }; rm -rf y` runs the `rm` where
+the shell was, and the `cd` is not sure. For any other command, the
 check reads the directory before the `cd` too: after `cd x; rm -rf y`, after the end of the `&&`
 list in `cd x && true; rm -rf y`, `cd x && true || rm -rf y` and `cd x && true & rm -rf y`, and
 after the parenthesis of `(cd x && true); rm -rf y` closes. `|| return` makes no `cd` sure: bash
@@ -370,8 +374,7 @@ after `function` and a name, it is the whole next `&&` or `||` list, so no `cd` 
 that holds a compound command or a backtick, as in `f() { true; }` or
 `f() if true; then true; fi`, is read up to the end of the parenthesis around it, which can
 only refuse more: zsh also closes a group with a `}` after a word, as in
-`f() { cd x && true } && rm -rf y`, and the check cannot tell a quoted `"}"` from a closing
-one. So `f() { true; }; cd x && rm -rf y` is refused (K218). No `cd` in a body is sure, also not
+`f() { cd x && true } && rm -rf y`, where bash reads the `}` as an argument. So `f() { true; }; cd x && rm -rf y` is refused (K218). No `cd` in a body is sure, also not
 in a group or an `if` of it. zsh's short `repeat` runs the whole list after
 its count as its body, also never, so no `cd` of `repeat 0 true && cd x || exit` is sure either,
 nor of `repeat 0 >/dev/null && cd x || exit`, whose body starts with the redirection.

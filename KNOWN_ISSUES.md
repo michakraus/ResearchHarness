@@ -1280,10 +1280,11 @@
   `f() { true; }; cd .scratch/x && rm -rf build`, `f() if true; then true; fi; cd .scratch/x &&
   rm -rf build` and `function f; { true; }; cd .scratch/x && rm -rf build`. zsh and bash define
   `f`, run the `cd` and run the `rm` in `.scratch/x`. The reader cannot end the body at its `}`:
-  zsh also closes a group with a `}` after a word, as in `f() { cd x && true } && rm -rf y`, and
-  `lex` drops quotes, so a quoted `"}"` reads as the closing word (K220). A count of the closing
-  words let `function f; repeat 0 do ( "}" ); done && cd .scratch/x || exit; rm -rf Papers`
-  pass, so the branch holds the body instead. The decision errs only toward a refusal.
+  zsh also closes a group with a `}` after a word, as in `f() { cd x && true } && rm -rf y`
+  (K217). A count of the closing words could end the body, since the reader reads a quoted
+  `"}"` as no closing word, but zsh's `}` after a word, `always` and bash's `>/dev/null }` also
+  defeat such a count, so the reader holds the body instead. The decision errs only toward a
+  refusal.
 - kind: defect
 - found: 2026-11-27, the verifier of the branch `guard/short-function-body`; `origin/main`
   passes these commands
@@ -1298,17 +1299,5 @@
   its operators to the command before it, and the first part has none, so the `||` before the
   `cd` is lost. zsh's `>/dev/null || cd …` is the same, since zsh runs it as `NULLCMD`. The same
   holds on `origin/main`.
-- kind: defect
-- found: 2026-11-27, the verifier of the branch `guard/short-function-body`
-
-### K220 · `lex` drops quotes, so the checks read a quoted or escaped reserved word as reserved.
-
-- location: `hooks/guard/shell.py`, `lex`
-- evidence: with the call's working directory `~/Research`, `guard --from claude` passes
-  `false && { true; "}"; cd .scratch/x || exit; }; rm -rf Papers` and
-  `! "}" || cd .scratch/x && rm -rf Papers`. zsh and bash run `"}"` as a command and run the
-  `rm` in `~/Research`. The checks read the `"}"` as the end of the group, so the `cd` reads as
-  outside it and sure. The same holds on `origin/main`, which also passes
-  `f() { true; "}"; cd .scratch/x || exit; }; rm -rf Papers`.
 - kind: defect
 - found: 2026-11-27, the verifier of the branch `guard/short-function-body`

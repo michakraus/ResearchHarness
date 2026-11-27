@@ -5,7 +5,9 @@ a quoted character is never an operator, a `#` that starts a word starts a comme
 the line, a backslash-newline joins two lines, and inside double quotes a backslash escapes only
 `$`, a backtick, `"` and `\\`, and a backslash-newline is removed. An ANSI-C quote `$'…'` gives
 its text with the escapes decoded (`ansi_c`), and a locale quote `$"…"` reads as a double quote,
-each in a dialect: bash's, zsh's, or `plain`, which reads the `$` as a character. It runs no
+each in a dialect: bash's, zsh's, or `plain`, which reads the `$` as a character. A word that
+holds a quote or an escape is `Quoted`: the same text, which the reader of reserved words
+(`cached_commands`) reads as no reserved word, as the shell does. It runs no
 expansion. It is no full shell grammar: each check documents the limits of its reading.
 
 `readings` gives a check the readings that it decides on: the shell's, in each dialect where the
@@ -31,6 +33,33 @@ import re
 import sys
 from dataclasses import dataclass
 from typing import Literal
+
+
+class Quoted(str):
+    """A word of `lex` that holds a quoted or an escaped character, as `"}"`, `\\}` or `''fi`:
+    the shell reads no such word as a reserved word. A backslash-newline quotes nothing, so the
+    `fi` of `f\\` and a newline before `i` stays reserved. Everywhere else it is the same text as a
+    plain `str`, as a path or the name of a program: the shell runs `"rm"` as `rm`."""
+
+    __slots__ = ()
+
+
+class Unreserved(Quoted):
+    """A quoted word whose text is one of KEYWORDS, as the reader of `cached_commands` holds it: it
+    equals only another `Unreserved` of the same text, so no test of the reader against a reserved
+    word, a set of them or a list of words matches it, and the reader reads it as the shell does,
+    as the name of a program or an argument."""
+
+    __slots__ = ()
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Unreserved) and str.__eq__(self, other)
+
+    def __ne__(self, other: object) -> bool:
+        return not self == other
+
+    __hash__ = str.__hash__
+
 
 type Kind = Literal["word", "op"]
 type Token = tuple[Kind, str]
@@ -269,18 +298,20 @@ def lex(text: str, dialect: Dialect = "bash") -> Tokens | None:
     """The text as ("word", w) and ("op", o) tokens in `dialect`, or None when a quote is open. A
     digit word right before `<` or `>` names a file descriptor and is dropped. bash reads `$'…'`
     and `$"…"` as quotes; zsh reads `$'…'` as a quote and the `$` of `$"…"` as a character; `plain`
-    reads the `$` of both as a character. A word ends at a NUL, as `exec` reads it."""
+    reads the `$` of both as a character. A word ends at a NUL, as `exec` reads it. A word that
+    holds a quote or a backslash other than a backslash-newline is `Quoted`."""
     tokens: list[Token] = []
     word: list[str] = []
-    in_word = False
+    in_word = quotes = False
     index, length = 0, len(text)
     opens = {"bash": ("'", '"'), "zsh": ("'",), "plain": ()}[dialect]
 
     def finish() -> None:
-        nonlocal word, in_word
+        nonlocal word, in_word, quotes
         if in_word:
-            tokens.append(("word", "".join(word).split("\x00", 1)[0]))
-        word, in_word = [], False
+            found = "".join(word).split("\x00", 1)[0]
+            tokens.append(("word", Quoted(found) if quotes else found))
+        word, in_word, quotes = [], False, False
 
     while index < length:
         char = text[index]
@@ -294,12 +325,12 @@ def lex(text: str, dialect: Dialect = "bash") -> Tokens | None:
             if found is None:
                 return None
             word.append(found[0])
-            in_word, index = True, found[1]
+            in_word, quotes, index = True, True, found[1]
         elif char == "\\":
             # A backslash-newline joins the lines; any other backslash quotes the next character.
             if text[index + 1 : index + 2] not in ("", "\n"):
                 word.append(text[index + 1])
-                in_word = True
+                in_word = quotes = True
             index += 2
         elif char in " \t\r":
             finish()
@@ -957,13 +988,28 @@ def reserved_lead(words: list[str]) -> list[str]:
     """The reserved words at the start of `words`, where the shell reads them as reserved: before
     any word other than `time` and its `-p`, so that the `fi` of `X=1 fi` or `sudo fi` is the name
     of a program and closes nothing (`outermost`)."""
-    run = itertools.takewhile(lambda word: word in RESERVED or word in ("time", "-p"), words)
-    return [word for word in run if word in RESERVED]
+    return [word for word in itertools.takewhile(leads, words) if word in RESERVED]
+
+
+def unreserved(token: Token) -> Token:
+    """`token` as the reader of `cached_commands` holds it: a word is `Unreserved` when it is
+    `Quoted` and its text is one of KEYWORDS, as the `"}"` of `{ true; "}"; }`, which the shell
+    runs as a command."""
+    kind, text = token
+    return (kind, Unreserved(text)) if isinstance(text, Quoted) and text in KEYWORDS else token
+
+
+def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
+    """The simple commands of `builtin_commands`, made once for each reading. A `Quoted` word
+    equals its plain text, so the reading of `"}"` equals that of `}`; the key of the cache holds
+    which words are quoted, so that neither reading gets the commands of the other."""
+    return commands_of(tokens, tuple(isinstance(text, Quoted) for _, text in tokens))
 
 
 @functools.lru_cache(maxsize=4)
-def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
-    """The simple commands of `builtin_commands`, made once for each reading."""
+def commands_of(tokens: Tokens, _quoted: tuple[bool, ...]) -> tuple[Simple, ...]:
+    """The simple commands of `cached_commands`, for the reading `tokens` whose quoted words
+    `_quoted` marks; only the key of the cache reads it."""
     found: list[Simple] = []
     current: list[str] = []
     lead: list[str] = []
@@ -1005,7 +1051,7 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
 
     # A pattern of a `case` runs nothing, and its `(` and `)` open and close no parenthesis.
     pattern: Pattern = None
-    for kind, text in unredirected(tokens):
+    for kind, text in map(unreserved, unredirected(tokens)):
         if pattern is not None:
             pattern, inside = in_pattern(pattern, kind, text)
             if inside:
@@ -1086,10 +1132,16 @@ OPENS = frozenset({"{", "if", "while", "until", "for", "foreach", "select", "cas
 ENDS = frozenset({"}", "then", "elif", "else", "fi", "done", "esac", "end"})
 
 
+# The words that the reader of `cached_commands` reads as reserved somewhere; quoted, each is
+# `Unreserved` there.
+KEYWORDS = RESERVED | OPENS | ENDS | {"function", "in"}
+
+
 def leads(word: str) -> bool:
-    """True when `word` can stand before zsh's `repeat` and leave it reserved: a reserved word of
-    RESERVED, or `time` and its `-p`, as in `time repeat 1 rm x`."""
-    return word in RESERVED or word in ("time", "-p")
+    """True when `word` can stand before a reserved word and leave it reserved: a reserved word of
+    RESERVED, or `time` and its `-p`, unquoted, as in `time repeat 1 rm x`; the `fi` of
+    `"time" fi` is an argument of the program `time`."""
+    return word in RESERVED or (word in ("time", "-p") and not isinstance(word, Quoted))
 
 
 def unrepeated(current: list[str]) -> tuple[list[str], bool]:
@@ -1170,8 +1222,8 @@ def carried(body: Defined, current: list[str], then: str, depth: int, *, short: 
     of `function f; (true; true) && cd x` ends nothing. A body that holds a word of OPENS before
     its command word, or a backtick, ends only where a parenthesis open before its head closes,
     which only makes the checks read more directories: the reader cannot tell zsh's `}` after a
-    word, as in `f() { true }`, or a quoted `"}"` from the `}` that closes a group, so it reads
-    no closing word as the end of a body. So do the reserved words before a head in a body or
+    word, as in `f() { true }`, from the `}` that closes a group, so it reads no closing word as
+    the end of a body. So do the reserved words before a head in a body or
     after a short `repeat`, as the `do` of `function f; repeat 0 do g() true; done && cd x`.
     zsh's short `repeat` (`short`, of
     `repeats`) runs a `list` body as many times as its count says, also never, so it opens one
@@ -1225,7 +1277,7 @@ def opens_case(current: list[str]) -> bool:
     """True when the word `in` after `current` opens the patterns of a `case`: `current` ends in
     `case` and its subject, after reserved words only, as in `then case $x`."""
     head = current[:-2]
-    return current[-2:-1] == ["case"] and all(word in RESERVED or word in ("time", "-p") for word in head)
+    return current[-2:-1] == ["case"] and all(leads(word) for word in head)
 
 
 def in_pattern(pattern: Pattern, kind: str, text: str) -> tuple[Pattern, bool]:
