@@ -12,7 +12,7 @@ expansion. It is no full shell grammar: each check documents the limits of its r
 
 `readings` gives a check the readings that it decides on: the shell's, in each dialect where the
 text holds `$'` or `$"`; where a word consists of operator characters only (`';'`), the reading
-that takes such a word as the operator; and where the text holds a backslash-newline, the
+that takes such a word as its operators; and where the text holds a backslash-newline, the
 readings that take it as a line break; and where the text holds `<<`, the readings of the text
 without its heredoc bodies (`cut_heredocs`), with an open quote closed at its end
 (`script_tokens`), since `lex` reads a heredoc body as words, and a quote in it can hide the lines

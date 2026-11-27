@@ -97,7 +97,7 @@ nests deeper than 200 or holds an integer of more than 4300 digits. A check that
 directory refuses the command when the payload names none. A guard that raises refuses the call
 with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline, a quoted operator and a redirection with no
-blank after a separator, as the `>` of `true;>/dev/null rm x`, are read as the shell reads them,
+blank after a separator or a parenthesis, as the `>` of `true;>/dev/null rm x`, are read as the shell reads them,
 and a quoted operator, a joined line or a reserved word after a redirection is also
 read the other way, so that none of them hides a part of the command. The checks that look for a program, the staging, write, `gh api`,
 `gh pr create`, watcher, GPU, rm and archive checks, read each simple command from its command
