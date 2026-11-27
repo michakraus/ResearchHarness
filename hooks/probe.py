@@ -6210,6 +6210,27 @@ def guard_entry(missing: str) -> tuple[list[str], list[str], str]:
     return [str(h["command"]) for h in every["hooks"]], [str(h["command"]) for h in bash["hooks"]], guard
 
 
+def quoted_reserved_cases(report: Callable[..., None]) -> None:
+    """The reader of reserved words in this process, where its cache lives: the readings of
+    `false && { true; }; cd x || exit; }` and of the same command with `"}"` are equal tokens, since
+    a quoted word equals its text, and each gets its own commands (`shell.cached_commands`), in
+    either order. The corpus cannot hold this case: each of its records runs in a process of its
+    own."""
+    sys.path.insert(0, HOOKS)
+    try:
+        shell: Any = importlib.import_module("guard.shell")
+    finally:
+        sys.path.remove(HOOKS)
+    readings = {word: shell.lex(f"false && {{ true; {word}; cd x || exit; }}") for word in ("}", '"}"')}
+    expected = {"}": ["false", "true", "cd", "exit"], '"}"': ["false", "true", "}", "cd", "exit"]}
+    for word in ("}", '"}"', "}"):
+        got = [str(simple.words[0]) for simple in shell.builtin_commands(readings[word])]
+        report(
+            ok=got == expected[word],
+            line=f"exp {expected[word]} got {got}  [reserved ]  the programs after {word} in one process",
+        )
+
+
 def launcher_cases(report: Callable[..., None]) -> None:
     """The launcher check of Claude Code's table, run as the frontend runs the guard, and the check
     itself in this process with an explicit platform, so that its answers on macOS are tested on
@@ -6449,6 +6470,7 @@ def command_cases():
         named = f" with {profile}" if profile else ""
         report(ok=got == expected, line=f"exp {expected} got {got}  [guard    ]  {stdin[:200]!r}{named}")
     launcher_cases(report)
+    quoted_reserved_cases(report)
 
     for size, expected in ((MIB, "pass"), (MIB + 1, "deny")):
         payload = {"tool_name": "Bash", "tool_input": {"command": "echo " + "a" * (size - 5)}, "cwd": CWD}
