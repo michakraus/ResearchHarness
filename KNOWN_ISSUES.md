@@ -1299,3 +1299,16 @@
   `f() { true; "}"; cd .scratch/x || exit; }; rm -rf Papers`.
 - kind: defect
 - found: 2026-11-27, the verifier of the branch `guard/short-function-body`
+
+### K221 · The rm and work-tree checks read a command word that starts with `{` as the name of a program, though zsh opens a group there and bash expands braces, so a `cd` in it goes unseen.
+
+- location: `hooks/guard/shell.py`, `cached_commands`
+- evidence: with the call's working directory `~/Research`, `guard --from claude` passes
+  `cd .scratch/x && {cd ../.. && rm -rf Papers}` and
+  `cd .scratch/x || exit; {cd ../..; rm -rf Papers; }`: zsh opens a group at the `{` of `{cd`,
+  runs `cd ../..`, and runs the `rm` in `~/Research`. It also passes
+  `cd .scratch/x || exit; {cd,../..}; rm -rf Papers`: bash expands `{cd,../..}` to `cd ../..`.
+  The checks read the programs `{cd` and `{cd,../..}`, which move nothing, so they read the `rm`
+  only in `.scratch/x`. The same holds on `origin/main`.
+- kind: defect
+- found: 2026-11-27, the verifier of the branch `guard/zsh-close-brace`

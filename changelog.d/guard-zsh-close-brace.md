@@ -8,5 +8,5 @@
   sure, and the `&&` list of a `cd` ends at it. zsh also opens a group at a word that starts with
   `{`, so `false && {true; cd .scratch/x || exit; }; rm -rf Papers` passed, and is now refused.
   The check matches no `{` with a `}`, since it cannot tell a quoted brace from a bare one, so
-  `cd .scratch/x && { true } && rm -rf build` and `cd .scratch/x && echo {a,b} && rm -rf build`
-  passed, and are refused now.
+  `cd .scratch/x && { true } && rm -rf build`, `cd .scratch/x && echo {a,b} && rm -rf build` and
+  `cd .scratch/x && awk '{print $1}' f && rm -rf build` passed, and are refused now.

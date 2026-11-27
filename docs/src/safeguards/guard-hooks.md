@@ -378,8 +378,9 @@ the target of a redirection, as in `repeat 0 { true; cd x } && rm -rf y`, `{ tru
 no `cd` right before such a `}` is sure, and the `&&` list of a `cd` ends at it. zsh also opens a
 group at a word that starts with `{`, as in `false && {true; cd x || exit; }`, so such a word
 reads as an opening for `|| exit`. The check matches no `{` with a `}`, since it cannot tell a
-quoted brace from a bare one, so `cd x && { true } && rm -rf y` and
-`cd x && echo {a,b} && rm -rf y` are refused too. zsh's short `repeat` runs the whole list after
+quoted brace from a bare one, so `cd x && { true } && rm -rf y`,
+`cd x && echo {a,b} && rm -rf y` and `cd x && awk '{print $1}' f && rm -rf y` are refused too.
+A `cd` in a command word that starts with `{`, as in `{cd ..`, goes unseen (K221). zsh's short `repeat` runs the whole list after
 its count as its body, also never, so no `cd` of `repeat 0 true && cd x || exit` is sure either,
 nor of `repeat 0 >/dev/null && cd x || exit`, whose body starts with the redirection.
 After `;` and newlines, the next list is that body, as in `repeat 0;` and a newline before
