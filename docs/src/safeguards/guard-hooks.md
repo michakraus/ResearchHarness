@@ -365,7 +365,9 @@ commands in a child. A `;` inside a `{ … }` group, an `if`, a loop or a `case`
 end the `&&` list early (K211). A `popd` returns to the directory before the matching `pushd`, and
 a `pushd` with no operand swaps the top two directories. The check
 follows at most 4 directories; past that, it reads the commands after the last `cd` in the first
-directory and in an unknown one. A recursive `rm` of a
+directory and in an unknown one. In a nesting such as `cd x && (cd y && (…` whose scopes take
+more than 65,536 commands to read, the check reads the outer `cd`s as ones that can fail. A
+recursive `rm` of a
 relative operand after a `cd` to a directory that the check cannot know, such as `cd $X` or
 `cd -`, asks, and so does a command whose operands need too many resolutions in all the
 directories. An `rm` is

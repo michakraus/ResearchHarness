@@ -25,7 +25,10 @@
   top two directories. This closes K203 and K205 to K210; K211 records that a `;` inside a
   `{ … }` group, an `if`, a loop or a `case`, and a backtick, end the `&&` list early, which errs
   toward a refusal: `cd x && if …; then rm -rf y; fi` passed before and is now refused. K212
-  records that a function of the command can shadow `cd` or `exit`.
+  records that a function of the command can shadow `cd` or `exit`. A nesting of
+  `cd x && (cd y && (…` whose scopes take more than 65,536 commands to read is read with the
+  outer `cd`s as ones that can fail, so that its cost stays bounded; a nesting of
+  `if cd x; then` costs no time quadratic in its depth and stays exact.
 - **The guard reads a command once for all its checks.** The readings of a command and its
   simple commands are kept for the checks after the first, and the path list splits a command
   once for its two rule lists. The 1 MiB `[mib-rules]` case of `probe:antigravity` took more than

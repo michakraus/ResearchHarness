@@ -24,7 +24,9 @@ cannot hide a part of a command from it.
 into the word `rm`, so a pre-filter on the raw text would miss it.
 """
 
+import bisect
 import functools
+import itertools
 import re
 import sys
 from dataclasses import dataclass
@@ -654,23 +656,43 @@ type Sure = Literal["list", "exit", "if"]
 
 # The reserved words and command words that open or close a compound command or a body
 # (`outermost`).
-NESTING = {"{": 1, "if": 1, "do": 1, "case": 1, "}": -1, "fi": -1, "done": -1, "esac": -1}
+NESTING = {
+    "{": 1,
+    "if": 1,
+    "do": 1,
+    "case": 1,
+    "foreach": 1,
+    "}": -1,
+    "fi": -1,
+    "done": -1,
+    "esac": -1,
+    "end": -1,
+}
 
 
-def outermost(simples: list[Simple], index: int) -> bool:
-    """True when `simples[index]` stands in no compound command and no body: no `{ … }`, `if`,
-    loop, `case` or function body holds it, so that an `exit` after it ends the shell for every
-    command after it. A `cd x || exit` in a body that may not run, as in `if false; then cd x ||
-    exit; fi; y`, leaves `y` where the shell was."""
-    level = 0
-    for at, simple in enumerate(simples[: index + 1]):
-        level += sum(NESTING.get(word, 0) for word in simple.lead)
-        if at < index and simple.words[0] in ("case", "esac"):
+def outermost(simples: list[Simple]) -> list[bool]:
+    """For each of `simples`, True when it stands in no compound command and no body: no `{ … }`,
+    `if`, loop, `case` or function body holds it, so that an `exit` after it ends the shell for
+    every command after it. A `cd x || exit` in a body that may not run, as in `if false; then cd x
+    || exit; fi; y`, leaves `y` where the shell was. A `{` that is a word of a command opens a body
+    too, as in `function f {`, `coproc {` or zsh's `repeat 0 {`. Inside a `case`, a closing word
+    can be a pattern, as in `(fi)`, so there only an opening word counts."""
+    found: list[bool] = []
+    level, cases = 0, 0
+    for simple in simples:
+        level += sum(step for word in simple.lead if (step := NESTING.get(word, 0)) > 0 or not cases)
+        found.append(level == 0)
+        level += simple.words[1:].count("{")
+        if simple.words[0] in ("case", "esac", "foreach", "end"):
             level += NESTING[simple.words[0]]
-    return level == 0
+        if simple.words[0] == "case":
+            cases += 1
+        elif simple.words[0] == "esac" and cases:
+            cases -= 1
+    return found
 
 
-def sure_kind(simples: list[Simple], index: int) -> Sure | None:
+def sure_kind(simples: list[Simple], index: int, outer: list[bool]) -> Sure | None:
     """How the commands after the `cd` or `pushd` `simples[index]` run only where it moved to, or
     None when they can run where the shell was. The shell runs it as its own (`Runs`), no `!`
     before it turns its failure into success, as in `! cd x && y`, and no `||`, `|` or backtick
@@ -678,8 +700,8 @@ def sure_kind(simples: list[Simple], index: int) -> Sure | None:
     `echo | cd x && y`, which bash runs in a child. Then `list`: `&&`
     joins it to the next command, as in `cd x && y`; `exit`: `||` joins it to an `exit` that the
     shell runs as its own, outside a pipeline and not in the background, as in `cd x || exit 1; y`
-    and unlike `cd x || (exit 1)` or `exit &`, in no compound command or body (`outermost`);
-    `if`: it is the condition of an `if`, as in
+    and unlike `cd x || (exit 1)` or `exit &`, in no compound command or body (`outer`, of
+    `outermost`); `if`: it is the condition of an `if`, as in
     `if cd x; then y; fi`."""
     simple = simples[index]
     if simple.runs != "shell" or "!" in simple.lead or program(simple.words[0]) not in ("cd", "pushd"):
@@ -696,7 +718,7 @@ def sure_kind(simples: list[Simple], index: int) -> Sure | None:
         stops = following.words[0] in STOPS and following.runs == "shell" and following.depth == simple.depth
         after = [found for found in operators(following.then) if found not in "()"]
         stops = stops and "`" not in following.then and after[:1] not in (["|"], ["|&"], ["&"])
-        if stops and outermost(simples, index):
+        if stops and outer[index]:
             return "exit"
     if (
         simple.lead[-1:] == ("if",)
@@ -723,48 +745,134 @@ def ends_list(simple: Simple, depth: int) -> bool:
     return False
 
 
-def closes(simple: Simple, depth: int) -> bool:
-    """True when a parenthesis after `simple` closes one of the `depth` parentheses open before
-    a command, also where another one opens right after it, as in `(cd x && y) && (z)`."""
+def lowest(simple: Simple) -> int:
+    """The lowest count of open parentheses right after a `)` after `simple`, or sys.maxsize when
+    none follows it (`closes`)."""
     level = simple.depth
+    found = sys.maxsize
     for operator in operators(simple.then):
         if operator in "()":
             level += 1 if operator == "(" else -1
-            if level < depth:
-                return True
-    return False
+            if operator == ")":
+                found = min(found, level)
+    return found
 
 
-def scope_end(simples: list[Simple], index: int, kind: Sure) -> int | None:
+def closes(simple: Simple, depth: int) -> bool:
+    """True when a parenthesis after `simple` closes one of the `depth` parentheses open before
+    a command, also where another one opens right after it, as in `(cd x && y) && (z)`."""
+    return lowest(simple) < depth
+
+
+def scope_end(
+    simples: list[Simple],
+    index: int,
+    kind: Literal["list", "exit"],
+    known: tuple[int, int | None] | None = None,
+) -> int | None:
     """The index of the first command after the sure move `simples[index]` of `kind` (`sure_kind`)
     that can run where the shell was before it, or None. Every kind ends where a parenthesis
     closes that was open before it (`closes`). A `list` ends after the `&&` list that it starts:
-    after an operator other than `&&` or a pipe, such as `;`, `||` or `&`, or after a backtick; an
-    `if` ends at the `else`, `elif` or `fi` of its `if`."""
+    after an operator other than `&&` or a pipe, such as `;`, `||` or `&`, or after a backtick. A
+    move reads the commands after it only up to the next one of its kind in as many parentheses,
+    whose index and end are `known`: from there on, both end alike, so a chain of `cd x &&` costs
+    one pass (`flow`). An `if` move ends as `if_ends` gives."""
     depth = simples[index].depth
-    level = 1
     for at in range(index + 1, len(simples)):
-        simple = simples[at]
         if closes(simples[at - 1], depth):
             return at
         if kind == "list" and ends_list(simples[at - 1], depth):
             return at
-        if kind == "if":
-            for word in simple.lead:
-                level += {"if": 1, "fi": -1}.get(word, 0)
-                if level == 0 or (level == 1 and word in ("else", "elif")):
-                    return at
+        if known is not None and at == known[0]:
+            return known[1]
     return None
+
+
+def if_ends(simples: list[Simple]) -> list[int | None]:
+    """For each of `simples` whose reserved words end in `if`, the index of the first command
+    after it that can run where the shell was before it, else None: where a parenthesis closes
+    that was open before it (`closes`), or at the `else`, `elif` or `fi` of its `if`, whichever
+    comes first. One pass over the reserved words matches each `if`, and one pass from the last
+    command keeps the commands whose parentheses can close one open before a command, so that a
+    nesting of `if cd x; then` costs no time quadratic in its depth (`flow`)."""
+    count = len(simples)
+    ends: list[int | None] = [None] * count
+    words = else_or_fi(simples)
+    # From the last command to the first, the commands `after` whose `lowest` is below that of
+    # every command between, nearest last, so that their levels rise from the start of `after` to
+    # its end: the last of them below a depth is the nearest where it closes.
+    after: list[tuple[int, int]] = []
+    for at in reversed(range(count)):
+        if at < count - 1:
+            level = lowest(simples[at])
+            while after and after[-1][1] >= level:
+                after.pop()
+            after.append((at, level))
+        if simples[at].lead[-1:] != ("if",):
+            continue
+        depth = simples[at].depth
+        below = bisect.bisect_left(after, depth, key=lambda entry: entry[1])
+        shut = after[below - 1][0] + 1 if below > 0 else None
+        word = words[at]
+        ends[at] = shut if word is None else word if shut is None else min(shut, word)
+    return ends
+
+
+def else_or_fi(simples: list[Simple]) -> list[int | None]:
+    """For each of `simples`, the index of the first command after it whose reserved words hold
+    the `else`, `elif` or `fi` of the last `if` of its own reserved words, else None (`if_ends`)."""
+    words: list[int | None] = [None] * len(simples)
+    opened: list[int] = []
+    for at, simple in enumerate(simples):
+        for word in simple.lead:
+            if word == "if":
+                opened.append(at)
+            elif word in ("else", "elif", "fi") and opened:
+                owner = opened[-1]
+                if words[owner] is None and owner != at:
+                    words[owner] = at
+                if word == "fi":
+                    opened.pop()
+    return words
+
+
+# The commands that `flow` may read past the moves of a command, besides one pass over it: deeply
+# nested moves, as in `cd x && (cd y && (…`, each read to their own end, which costs time
+# quadratic in the nesting.
+SCAN_STEPS = 65536
 
 
 def flow(simples: list[Simple]) -> Flow:
     """The `Flow` of `simples`: for each `cd` or `pushd`, whether it is sure (`sure_kind`) and the
-    index where that ends (`scope_end`)."""
-    kinds: list[Sure | None] = [sure_kind(simples, index) for index in range(len(simples))]
-    return Flow(
-        tuple(kind is not None for kind in kinds),
-        tuple(None if kind is None else scope_end(simples, index, kind) for index, kind in enumerate(kinds)),
-    )
+    index where that ends (`scope_end`, `if_ends`), from the last command to the first, so that
+    each move reuses the end of the next one of its kind in as many parentheses. Once the `list`
+    and `exit` moves have read SCAN_STEPS commands besides one pass, each such move before is read
+    as one that can fail, which only makes the checks read more directories."""
+    outer = outermost(simples)
+    kinds: list[Sure | None] = [sure_kind(simples, index, outer) for index in range(len(simples))]
+    ends: list[int | None] = [None] * len(simples)
+    conditions = if_ends(simples) if "if" in kinds else []
+    nearest: dict[tuple[Sure, int], tuple[int, int | None]] = {}
+    budget = len(simples) + SCAN_STEPS
+    for index in reversed(range(len(simples))):
+        kind = kinds[index]
+        if kind is None:
+            continue
+        if kind == "if":
+            ends[index] = conditions[index]
+            continue
+        if budget < 0:
+            kinds[index] = None
+            continue
+        key = (kind, simples[index].depth)
+        known = nearest.get(key)
+        end = scope_end(simples, index, kind, known)
+        # The commands that the scan read: up to the reused move, or up to its end.
+        reach = known[0] if known is not None and end == known[1] else len(simples) if end is None else end
+        budget -= reach - index
+        ends[index] = end
+        nearest[key] = (index, end)
+    return Flow(tuple(kind is not None for kind in kinds), tuple(ends))
 
 
 def builtin_commands(tokens: Tokens) -> list[Simple]:
@@ -776,6 +884,14 @@ def builtin_commands(tokens: Tokens) -> list[Simple]:
         Simple(list(simple.words), simple.runs, simple.then, simple.lead, simple.depth)
         for simple in cached_commands(tokens)
     ]
+
+
+def reserved_lead(words: list[str]) -> list[str]:
+    """The reserved words at the start of `words`, where the shell reads them as reserved: before
+    any word other than `time` and its `-p`, so that the `fi` of `X=1 fi` or `sudo fi` is the name
+    of a program and closes nothing (`outermost`)."""
+    run = itertools.takewhile(lambda word: word in RESERVED or word in ("time", "-p"), words)
+    return [word for word in run if word in RESERVED]
 
 
 @functools.lru_cache(maxsize=4)
@@ -790,14 +906,14 @@ def cached_commands(tokens: Tokens) -> tuple[Simple, ...]:
         nonlocal current, lead, depth
         at = command_word(current)
         if at is not None:
-            lead.extend(word for word in current[:at] if word in RESERVED)
+            lead.extend(reserved_lead(current[:at]))
             found.append(Simple(current[at:], runs_of(current[:at], current[at]), then, tuple(lead), depth))
             lead = []
         else:
             # A part that runs nothing, such as `}`, `fi` or an assignment, passes its reserved
             # words to the next command and its operators to the command before it, so that the
             # `;` of `cd x && X=1; y` and the `(` of `cd x || (exit 1)` reach the `cd` (`flow`).
-            lead.extend(word for word in current if word in RESERVED)
+            lead.extend(reserved_lead(current))
             if found:
                 last = found[-1]
                 joined_then = last.then + (PART if current else "") + then
