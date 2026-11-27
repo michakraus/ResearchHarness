@@ -16,7 +16,9 @@ that takes such a word as the operator; and where the text holds a backslash-new
 readings that take it as a line break; and where the text holds `<<`, the readings of the text
 without its heredoc bodies (`cut_heredocs`), with an open quote closed at its end
 (`script_tokens`), since `lex` reads a heredoc body as words, and a quote in it can hide the lines
-after it. With `nested`, it
+after it; and where a reserved word follows a redirection in its part, as the `}` of
+`{ true; >/dev/null }`, the reading that takes it as no reserved word, as bash does, while zsh
+reads it as reserved (`redirected`). With `nested`, it
 also gives each reading with the script of every `sh -c`, `bash -c`, `zsh -c` (and the other
 shells of SHELLS) and `eval` spliced in as parts of their own (`scripts`). A check answers the
 strongest decision of its readings, so a quoted operator, a joined line or a script in a string
@@ -360,6 +362,30 @@ def as_operator(token: Token) -> Token:
     return ("op", text) if kind == "word" and text and set(text) <= OPERATOR else token
 
 
+def redirected(tokens: Tokens) -> Tokens | None:
+    """`tokens` with each word after a redirection in its part `Quoted` where it is one of KEYWORDS
+    or a word that `leads`, as bash reads it, or None when there is none. bash reads a reserved word
+    only where a command word can stand, so it runs the `}` of `{ true; >/dev/null }` and the `fi`
+    of `>/dev/null fi` as commands; zsh runs the redirection as a command of its own and reads the
+    word after it as reserved, as the reading of `tokens` does (`cached_readings`). A part ends at
+    each operator other than a redirection that holds a separator or a parenthesis, as in
+    `cached_commands`."""
+    result: list[Token] = []
+    after = marked = False
+    for kind, text in tokens:
+        if kind == "op":
+            if REDIRECTION.fullmatch(text) is not None:
+                after = True
+            elif not SEPARATORS.isdisjoint(text) or "(" in text or ")" in text:
+                after = False
+        elif after and not isinstance(text, Quoted) and (text in KEYWORDS or leads(text)):
+            result.append((kind, Quoted(text)))
+            marked = True
+            continue
+        result.append((kind, text))
+    return tuple(result) if marked else None
+
+
 def script_of(tokens: Tokens, index: int) -> tuple[str, int, int] | None:
     """(the script, the index of its first token, the index after its last) of the shell call or
     the `eval` whose name is the word at `index`, or None. The script of a shell of SHELLS is the
@@ -474,7 +500,9 @@ def readings(text: str, *, nested: bool = False) -> list[Tokens] | None:
     """The readings of `text` that a check decides on, in each of its `dialects`, or None when a
     quote of bash's reading is open. Where `text` holds `<<`, also the readings of the text without
     its heredoc bodies (`cut_heredocs`), each with an open quote closed (`script_tokens`). With
-    `nested`, also each reading with its scripts spliced in (`scripts`). Each check of a call reads
+    `nested`, also each reading with its scripts spliced in (`scripts`). Where a reserved word
+    follows a redirection in its part, also bash's reading of each, in which it is none
+    (`redirected`). Each check of a call reads
     the same command, so the readings are made once (`cached_readings`); each caller gets a list of
     its own."""
     found = cached_readings(text, nested=nested)
@@ -513,6 +541,8 @@ def cached_readings(text: str, *, nested: bool) -> tuple[Tokens, ...] | None:
             for extra in (spliced, tuple(as_operator(token) for token in spliced)):
                 if extra not in found:
                     found.append(extra)
+    # A `Quoted` word equals its plain text, so `in` would find each bash reading in `found`.
+    found.extend(marked for reading in list(found) if (marked := redirected(reading)) is not None)
     return tuple(found)
 
 

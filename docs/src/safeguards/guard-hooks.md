@@ -97,8 +97,8 @@ nests deeper than 200 or holds an integer of more than 4300 digits. A check that
 directory refuses the command when the payload names none. A guard that raises refuses the call
 with the error. The checks read a command without
 `shlex`: a `#` inside a word, a backslash-newline and a quoted operator are read as the shell
-reads them, and a quoted operator or a joined line is also read the other way, so that neither
-hides a part of the command. The checks that look for a program, the staging, write, `gh api`,
+reads them, and a quoted operator, a joined line or a reserved word after a redirection is also
+read the other way, so that none of them hides a part of the command. The checks that look for a program, the staging, write, `gh api`,
 `gh pr create`, watcher, GPU, rm and archive checks, read each simple command from its command
 word on (`shell.commands`): after the reserved words `!`, `{`, `if`, `then`, `elif`, `else`,
 `while`, `until` and `do`, each unquoted (a quoted or escaped `"!"` or `\{` is a program, as for
@@ -358,7 +358,12 @@ or function body, since the shell stops when it fails, unless a function of the 
 the commands of `if cd x; then … fi` up to the `else`, `elif` or `fi`. A quoted or escaped
 reserved word, as `"}"`, `\fi` or `''done`, opens and closes no group, `if` or loop: the shells
 run it as a program, so `false && { true; "}"; cd x || exit; }; rm -rf y` runs the `rm` where
-the shell was, and the `cd` is not sure. For any other command, the
+the shell was, and the `cd` is not sure. The same holds for bash for a reserved word after a
+redirection in its part, as the `}` of `{ true; >/dev/null }` or the `fi` of `2>&1 fi`: bash
+reads a reserved word only where a command word can stand and runs it as a program, while zsh
+runs the redirection as a command of its own and reads the word as reserved. The check reads such
+a command both ways and answers the stronger decision, so
+`false && { true; >/dev/null }; cd x || exit; }; rm -rf y` is refused. For any other command, the
 check reads the directory before the `cd` too: after `cd x; rm -rf y`, after the end of the `&&`
 list in `cd x && true; rm -rf y`, `cd x && true || rm -rf y` and `cd x && true & rm -rf y`, and
 after the parenthesis of `(cd x && true); rm -rf y` closes. `|| return` makes no `cd` sure: bash
