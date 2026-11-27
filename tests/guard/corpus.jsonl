@@ -445,6 +445,24 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if cd .scratch/x; then if true; then true; else true; fi; rm -rf build; fi"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if cd .scratch; then if cd x; then rm -rf b; fi; rm -rf c; fi"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if cd .scratch/x; then if cd y; then true; fi; fi; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "f() cd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "f() cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "function f() cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "f g ()\ncd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "f() ; cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "f();cd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "f()() cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "function f; cd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "function f\ncd .scratch/x || exit; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "env() cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true; env() cd .scratch/x && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if true; then () cd .scratch/x && rm -rf build; fi"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "f() true; cd .scratch/x || exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "() cd .scratch/x && rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true\n() cd .scratch/x && rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "function () cd .scratch/x && rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true; () cd .scratch/x || exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "f() { cd .scratch/x && rm -rf build; }"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "noglob cd @@R@@/Packages/Own && rm -rf build"}, "cwd": "@@WT@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "nocorrect cd @@R@@/Packages/Own && rm -rf build"}, "cwd": "@@WT@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "- cd @@R@@/Packages/Own && rm -rf build"}, "cwd": "@@WT@@"}, "decision": "deny"}
@@ -491,6 +509,13 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if false; then end; cd .scratch/x || exit; fi; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "foreach i (); echo (end); cd .scratch/x || exit; end; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "case a in (if) true;; esac; cd .scratch/x || exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x && case a in b) rm -rf c;; esac"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x && case a in\n(b|c) rm -rf c;;\nd) true;& e) true;; esac"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "case a in b) true;; esac; cd .scratch/x || exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "case a in (esac) cd .scratch/x || exit;; esac; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "case a in b) cd .scratch/x || exit;; esac; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "(case a in b) true;; esac; cd .scratch/x && true); rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "(cd .scratch/x || exit; case a { (b) true;; }) ; rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x || exit 1 && true & rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x || exit 1 && (true &); rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "pushd .scratch/x && popd && rm -rf build"}, "cwd": "@@R@@"}, "decision": "deny"}
@@ -1444,6 +1469,8 @@
 {"frontend": "omp", "tool": "bash", "input": {"command": "command cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "builtin cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "cd ..; git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "f() cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
+{"frontend": "omp", "tool": "bash", "input": {"command": "() cd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "pushd .. && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "pass"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "pushd .. && popd && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}
 {"frontend": "omp", "tool": "bash", "input": {"command": "pushd .. && pushd && git init probe"}, "cwd": "@@OMPHOME@@/Research/P", "decision": "deny"}

@@ -1231,9 +1231,9 @@
   reads `build` as `~/Research/build`. `cd .scratch/x && true && rm -rf build` passes. The
   same holds for a `;` of an `if`, a loop or a `case` after the `cd`, and for a backtick:
   `cd .scratch/x && if true; then rm -rf build; fi`, `cd .scratch/x && for f in b; do rm -rf
-  build; done`, `cd .scratch/x && case a in a) rm -rf build;; esac` and ``cd .scratch/x && echo
-  `pwd` && rm -rf build`` are refused; on `origin/main` each passes. The decision errs only
-  toward a refusal.
+  build; done`, `cd .scratch/x && case a in a) true; rm -rf build;; esac` and
+  ``cd .scratch/x && echo `pwd` && rm -rf build`` are refused. The decision errs only toward a
+  refusal.
 - kind: defect
 - found: 2026-11-26, the branch `guard/cd-and-alias-limits`, a limit of the form of the fix of
   K206 and K210
@@ -1248,16 +1248,3 @@
   `origin/main`.
 - kind: defect
 - found: 2026-11-26, the verifier of the branch `guard/cd-and-alias-limits`
-
-### K213 · The rm and work-tree checks read the `cd` of zsh's short function definition `f() cd x` as a move that runs.
-
-- location: `hooks/guard/shell.py`, `sure_kind`
-- evidence: `zsh -fc 'f() cd /nonexist || exit; pwd'` prints the old directory, since the line
-  defines the function `f` and runs no `cd`. With the call's working directory `~/Research`,
-  `guard --from claude` passes `f() cd .scratch/x || exit; rm -rf Papers`, because it reads
-  the `cd` as sure and `Papers` only in `.scratch/x`. In bash the line is a syntax error. The
-  same holds on `origin/main`. A case pattern without `(`, as in `case a in b) true;; esac`,
-  makes the count of open parentheses negative, which ends a scope early and errs only toward a
-  refusal.
-- kind: defect
-- found: 2026-11-27, the verifier of the branch `guard/cd-and-alias-limits`
