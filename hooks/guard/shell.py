@@ -139,6 +139,10 @@ WRAPPERS = {
 # An operator of a redirection, whose target is the next word: `>`, `>>`, `<`, `<<`, `<<<`, `<>`,
 # `>&`, `<&`, `>|`, `&>`, `&>>`. A process substitution `<(` or `>(` is none.
 REDIRECTION = re.compile(r"&>>?|[<>]{1,3}[&|]?")
+# One operator as the shell reads it from a run of operator characters, the longest first, so that
+# `&&>` is `&&` and `>`, `&>` one redirection, and `;&>` the `;&` of a `case` and `>`
+# (`split_operators`).
+OPERATOR_TOKEN = re.compile(r";;&|;;|;&|;\||&&|\|\||\|&|&\||<\(|>\(|" + REDIRECTION.pattern + r"|[;&|()<>\n]")
 # Escapes inside double quotes.
 DOUBLE_ESCAPES = '$`"\\\n'
 # The escapes of an ANSI-C quote that stand for one character.
@@ -301,7 +305,8 @@ def lex(text: str, dialect: Dialect = "bash") -> Tokens | None:
     digit word right before `<` or `>` names a file descriptor and is dropped. bash reads `$'…'`
     and `$"…"` as quotes; zsh reads `$'…'` as a quote and the `$` of `$"…"` as a character; `plain`
     reads the `$` of both as a character. A word ends at a NUL, as `exec` reads it. A word that
-    holds a quote or a backslash other than a backslash-newline is `Quoted`."""
+    holds a quote or a backslash other than a backslash-newline is `Quoted`. A run of operator
+    characters gives each redirection in it as an operator of its own (`split_operators`)."""
     tokens: list[Token] = []
     word: list[str] = []
     in_word = quotes = False
@@ -347,7 +352,7 @@ def lex(text: str, dialect: Dialect = "bash") -> Tokens | None:
             end = index
             while end < length and text[end] in OPERATOR:
                 end += 1
-            tokens.append(("op", text[index:end]))
+            tokens.extend(("op", piece) for piece in split_operators(text[index:end]))
             index = end
         else:
             word.append(char)
@@ -356,10 +361,37 @@ def lex(text: str, dialect: Dialect = "bash") -> Tokens | None:
     return tuple(tokens)
 
 
-def as_operator(token: Token) -> Token:
-    """A word of operator characters only, read as the operator; any other token as it is."""
-    kind, text = token
-    return ("op", text) if kind == "word" and text and set(text) <= OPERATOR else token
+def split_operators(run: str) -> list[str]:
+    """A run of operator characters as `lex` gives it: each redirection (REDIRECTION) an operator
+    of its own, and the operators between two of them together, as the `;` and the `>` of
+    `true;>/dev/null rm x`. The shell reads `/dev/null` as the target of `>` and runs `rm`; a run
+    `;>` read as one operator makes `/dev/null` the command word and hides `rm`."""
+    pieces: list[str] = []
+    plain = ""
+    for match in OPERATOR_TOKEN.finditer(run):
+        piece = match.group()
+        if REDIRECTION.fullmatch(piece) is None:
+            plain += piece
+            continue
+        if plain:
+            pieces.append(plain)
+        pieces.append(piece)
+        plain = ""
+    if plain:
+        pieces.append(plain)
+    return pieces
+
+
+def as_operators(tokens: Tokens) -> Tokens:
+    """`tokens` with each word of operator characters only read as its operators, as `lex` splits
+    them (`split_operators`); any other token as it is."""
+    result: list[Token] = []
+    for kind, text in tokens:
+        if kind == "word" and text and set(text) <= OPERATOR:
+            result.extend(("op", piece) for piece in split_operators(text))
+        else:
+            result.append((kind, text))
+    return tuple(result)
 
 
 def redirected(tokens: Tokens) -> Tokens | None:
@@ -517,7 +549,7 @@ def cached_readings(text: str, *, nested: bool) -> tuple[Tokens, ...] | None:
     found: list[Tokens] = []
 
     def add(tokens: Tokens) -> None:
-        for reading in (tokens, tuple(as_operator(token) for token in tokens)):
+        for reading in (tokens, as_operators(tokens)):
             if reading not in found:
                 found.append(reading)
 
@@ -538,7 +570,7 @@ def cached_readings(text: str, *, nested: bool) -> tuple[Tokens, ...] | None:
             if spliced is reading:
                 # No script: the reading and its operator reading are in `found` already.
                 continue
-            for extra in (spliced, tuple(as_operator(token) for token in spliced)):
+            for extra in (spliced, as_operators(spliced)):
                 if extra not in found:
                     found.append(extra)
     # A `Quoted` word equals its plain text, so `in` would find each bash reading in `found`.
