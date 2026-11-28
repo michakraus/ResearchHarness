@@ -1035,7 +1035,8 @@ than 1 MiB and one that is not UTF-8.
 The group `antigravity` runs the guard package with `--from antigravity` from a fixture home, on
 each Antigravity record of the corpus and on the cases that a record cannot hold: a broken path
 list, a payload that cannot be read, a call with no workspace, commands of many words and of 1 MiB
-with their count of matcher calls and their seconds, the count of the reads and spawns of commands of 1 MiB (`[agy-work]`), the
+with their count of matcher calls and their seconds, the count of the reads and spawns of commands
+of 1 MiB (`[agy-work]`), the
 count of the matcher calls of the Bash rules on a crafted command of 1 MiB (`[mib-rules]`), the
 rendered handler, and a check that raises. The probe
 also covers the other Python hooks of this page, the fail-closed cases of `worktree.py`, and the
