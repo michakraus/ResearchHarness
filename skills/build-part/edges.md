@@ -685,6 +685,15 @@ neighbour of the last one. Decide the design before the build, in *Decided at th
   ..Parent: name` read as the module that defines its own `name`. Name the owner
   (`parentmodule(f)` of the bound function), and test a binding that a module imports from its
   parent (J6a round 1, same task)
+- **a comprehension or a closure that captures a variable the enclosing loop reassigns:** the
+  variable becomes a `Core.Box`, and every operation on it infers `Any`, while the return type can
+  still infer, such as `Bool`, so an `@inferred` test passes. Two such sites of the first design
+  passed the critics, and the branch verifier found each after a PASS, at the cost of an
+  arbitrator ruling and a fix round each. Write the step as a broadcast or a library call, such as
+  `LinearAlgebra.diag`, and add a testset that scans the lowered code of every method of the file,
+  `!occursin("Core.Box", string(Base.uncompressed_ir(m)))`, with an anti-vacuity assert on the
+  count of methods and on named methods; it runs on Julia 1.12 and 1.13 (C verify 2 and verify 3,
+  *a stability-diagnostics plan*)
 
 ## A tool that reads files or a tree
 
