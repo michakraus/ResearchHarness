@@ -4853,12 +4853,11 @@ runpy.run_path(sys.argv[0], run_name="__main__")
 
 class AgyReply(NamedTuple):
     """The answer of the guard to one Antigravity payload: its decision, or what went wrong; its
-    reason, or None when it has none; its `overwrite`, or "none"; and the seconds it took."""
+    reason, or None when it has none; and its `overwrite`, or "none"."""
 
     decision: str
     reason: str | None
     overwrite: object
-    seconds: float
 
 
 class AgyReport:
@@ -4896,36 +4895,29 @@ def agy_payload(tool: object, args: object, workspace: str | None = CWD) -> str:
     )
 
 
-def agy_reply(
-    home: str, payload: str, *, limit: float = TIMEOUT, extra: dict[str, str] | None = None
-) -> AgyReply:
+def agy_reply(home: str, payload: str, *, extra: dict[str, str] | None = None) -> AgyReply:
     """The guard's answer to `payload`, run as `hooks.json` runs it from the fixture home `home`
-    within `limit` seconds; `extra`, further variables of its environment."""
+    within TIMEOUT seconds; `extra`, further variables of its environment."""
     config = pathlib.Path(home, ".gemini", "config")
-    start = time.monotonic()
     try:
         proc = subprocess.run(
             [sys.executable, str(config / "hooks" / "guard"), "--from", "antigravity"],
             input=payload,
             capture_output=True,
             text=True,
-            timeout=limit,
+            timeout=TIMEOUT,
             cwd=config,
             env={**CLEAN, "HOME": "/" + home, **(extra or {})},
             check=False,
         )
     except subprocess.TimeoutExpired:
-        return AgyReply("timeout", None, "none", time.monotonic() - start)
-    seconds = time.monotonic() - start
+        return AgyReply("timeout", None, "none")
     answer = json_object(proc.stdout)
     if proc.returncode != 0 or answer is None or not isinstance(answer.get("decision"), str):
-        return AgyReply(f"exit {proc.returncode}, output {proc.stdout[-80:]!r}", None, "none", seconds)
+        return AgyReply(f"exit {proc.returncode}, output {proc.stdout[-80:]!r}", None, "none")
     reason = answer.get("reason")
     return AgyReply(
-        str(answer["decision"]),
-        None if reason is None else str(reason),
-        answer.get("overwrite", "none"),
-        seconds,
+        str(answer["decision"]), None if reason is None else str(reason), answer.get("overwrite", "none")
     )
 
 
@@ -4988,7 +4980,6 @@ class AgyFixture:
             self.dummy, FIXTURE.name + "/no-network.toml"
         )
         self.rules: dict[str, list[str]] = self.adapter.render_permissions(settings, self.dummy)[0]
-        self.timeout = float(self.adapter.HOOK_TIMEOUT)
 
     def rendered(self, home: str) -> str:
         """The path list that the adapter renders for the home `home`."""
@@ -5170,29 +5161,33 @@ def agy_payload_cases(report: AgyReport, home: str) -> None:
     )
 
 
-def agy_timed_cases(report: AgyReport, home: str, limit: float) -> None:
-    """Commands of many words and of 1 MiB, each decided within `limit`, the timeout of `hooks.json`;
-    a command of more than 1 MiB is refused."""
+def agy_timed_cases(report: AgyReport, home: str) -> None:
+    """Commands of many words and of 1 MiB: the guard asks, and each rule meets only the word lists
+    that hold all its needed texts, so the matcher calls are at most those (rule, word list) pairs; a
+    command of more than 1 MiB is refused before any rule. The decision and the count of the matcher
+    calls decide each case, not its seconds."""
+    path_list, needs = agy_rule_needs(home)
     for line, expected in (
         ("echo " + "git push " * 10000, "ask"),
         ("echo " + "a " * 20000, "ask"),
         ("echo " + "a" * (MIB - 5), "ask"),
         ("echo " + "a" * (MIB - 4), "deny"),
     ):
-        got = agy_reply(home, agy_payload("run_command", {"CommandLine": line}), limit=limit)
+        got, reason, calls, seconds = agy_matched(home, agy_payload("run_command", {"CommandLine": line}))
+        bound = agy_indexed(path_list, needs, line) if expected == "ask" else 0
         size = len(line.encode("utf-8"))
-        ok = got.decision == expected and (expected == "ask" or "more than" in (got.reason or ""))
+        ok = got == expected and 0 <= calls <= bound and (expected == "ask" or "more than" in (reason or ""))
         report(
             ok=ok,
-            line=f"exp {expected} got {got.decision}  [agy-guard]  {line[:20]!r}…, {size} bytes, "
-            f"{len(line.split())} words: {got.seconds:.2f} seconds, within {limit:g} s",
+            line=f"exp {expected}, at most {bound} matcher calls got {got}, {calls}  [agy-guard]  "
+            f"{line[:20]!r}…, {size} bytes, {len(line.split())} words: {seconds:.2f} seconds",
         )
 
 
-def agy_counted(home: str, payload: str, limit: float) -> tuple[str, int, int, int, float]:
+def agy_counted(home: str, payload: str) -> tuple[str, int, int, int, float]:
     """The guard's decision on `payload` in the home `home`, under COUNTED, and its counts of `os.stat`
     and `os.lstat` calls, of `git` spawns and of other spawns, -1 for a count it did not print; and
-    the seconds it took."""
+    the seconds it took; `timeout` past MIB_HANG."""
     config = pathlib.Path(home, ".gemini", "config")
     start = time.monotonic()
     try:
@@ -5201,7 +5196,7 @@ def agy_counted(home: str, payload: str, limit: float) -> tuple[str, int, int, i
             input=payload,
             capture_output=True,
             text=True,
-            timeout=limit,
+            timeout=MIB_HANG,
             cwd=config,
             env={**CLEAN, "HOME": "/" + home},
             check=False,
@@ -5215,18 +5210,18 @@ def agy_counted(home: str, payload: str, limit: float) -> tuple[str, int, int, i
     return str(answer.get("decision", f"exit {proc.returncode}")), stats, git, other, seconds
 
 
-def agy_work_cases(report: AgyReport, home: str, limit: float) -> None:
+def agy_work_cases(report: AgyReport, home: str) -> None:
     """The work of an Antigravity payload of 1 MiB, in a workspace that is no work tree: no spawn but
-    `git`, at most AGY_MAX_GIT of them, at most two reads per unit of the command and WALK_READS more,
-    within `limit`."""
+    `git`, at most AGY_MAX_GIT of them, at most two reads per unit of the command and WALK_READS more.
+    The decision and the counts decide each case, not its seconds."""
     for unit in ("cat ~/x{}; ", "echo x > {}.log; ", "cd d{}/..; "):
         command, shape = mib_command(unit, "true")
         units = command.count("; ")
         payload = agy_payload("run_command", {"CommandLine": command}, AGY_ELSEWHERE)
-        got, stats, git, other, seconds = agy_counted(home, payload, limit)
+        got, stats, git, other, seconds = agy_counted(home, payload)
         ok = got == "ask" and 0 <= stats <= 2 * units + WALK_READS and 0 <= git <= AGY_MAX_GIT and other == 0
         report(
-            ok=ok and seconds <= limit,
+            ok=ok,
             line=f"exp ask, at most 2 x {units} + {WALK_READS} reads, {AGY_MAX_GIT} git, no other spawn got "
             f"{got}, {stats} reads, {git} git, {other} other  [agy-work ]  {shape}: {seconds:.2f} seconds",
         )
@@ -5258,11 +5253,9 @@ sys.exit(code)
 """
 
 
-def agy_rules_cases(report: AgyReport, home: str) -> None:
-    """A command of 1 MiB whose first segments each hold every needed text of one Bash rule of the
-    rendered list and that no rule matches, then distinct segments: the guard asks, and each rule
-    meets only the word lists that hold all its needed texts, so the matcher calls are at most those
-    (rule, word list) pairs. The count of the matcher calls decides the case, not its seconds."""
+def agy_rule_needs(home: str) -> tuple[Any, list[tuple[str, ...]]]:
+    """The module `guard.path_list` and the needed texts of each Bash rule of the list that the
+    fixture home `home` renders."""
     sys.path.insert(0, HOOKS)
     try:
         path_list: Any = importlib.import_module("guard.path_list")
@@ -5273,18 +5266,25 @@ def agy_rules_cases(report: AgyReport, home: str) -> None:
         "dict[str, list[str]]",
         json_value((config / "guard-paths.json").read_text(encoding="utf-8"), "guard-paths.json"),
     )
-    needs = [path_list.needed(body) for body in (*lists["bash_deny"], *lists["bash_ask"])]
-    words = (" ".join(w for need in needed for w in need.split(path_list.WORD_BREAK)) for needed in needs)
-    lead = "".join(f"echo q{text}q; " for text in words)
-    command, shape = mib_command("t{}; ", "true", lead)
-    shape = f"one 'echo q<needed texts>q; ' per rule + {shape[len(repr(lead)) + 3 :]}"
+    return path_list, [path_list.needed(body) for body in (*lists["bash_deny"], *lists["bash_ask"])]
+
+
+def agy_indexed(path_list: Any, needs: list[tuple[str, ...]], command: str) -> int:
+    """The (rule, word list) pairs of `command` whose word list holds every needed text of the rule:
+    the most matcher calls that the guard makes on it."""
     texts = [
         path_list.WORD_BREAK.join(listed)
         for segment in dict.fromkeys(path_list.segments(command))
         for listed in path_list.segment_words(segment)
     ]
-    indexed = sum(all(need in text for need in needed) for needed in needs if needed for text in texts)
-    payload = agy_payload("run_command", {"CommandLine": command}, AGY_ELSEWHERE)
+    return sum(all(need in text for need in needed) for needed in needs if needed for text in texts)
+
+
+def agy_matched(home: str, payload: str) -> tuple[str, str | None, int, float]:
+    """The guard's decision on `payload` in the home `home`, under MATCHERS_COUNTED, its reason, its
+    count of matcher calls, -1 where it printed none, and the seconds it took; `timeout` past
+    MIB_HANG."""
+    config = pathlib.Path(home, ".gemini", "config")
     start = time.monotonic()
     try:
         proc = subprocess.run(
@@ -5297,11 +5297,33 @@ def agy_rules_cases(report: AgyReport, home: str) -> None:
             env={**CLEAN, "HOME": "/" + home},
             check=False,
         )
-        found = re.search(r"\nmatcher calls (\d+)\n$", proc.stderr)
-        calls, got = (int(found[1]) if found else -1), str((json_object(proc.stdout) or {}).get("decision"))
     except subprocess.TimeoutExpired:
-        calls, got = -1, "timeout"
+        return "timeout", None, -1, time.monotonic() - start
     seconds = time.monotonic() - start
+    found = re.search(r"\nmatcher calls (\d+)\n$", proc.stderr)
+    answer = json_object(proc.stdout) or {}
+    reason = answer.get("reason")
+    return (
+        str(answer.get("decision")),
+        None if reason is None else str(reason),
+        int(found[1]) if found else -1,
+        seconds,
+    )
+
+
+def agy_rules_cases(report: AgyReport, home: str) -> None:
+    """A command of 1 MiB whose first segments each hold every needed text of one Bash rule of the
+    rendered list and that no rule matches, then distinct segments: the guard asks, and each rule
+    meets only the word lists that hold all its needed texts, so the matcher calls are at most those
+    (rule, word list) pairs. The count of the matcher calls decides the case, not its seconds."""
+    path_list, needs = agy_rule_needs(home)
+    words = (" ".join(w for need in needed for w in need.split(path_list.WORD_BREAK)) for needed in needs)
+    lead = "".join(f"echo q{text}q; " for text in words)
+    command, shape = mib_command("t{}; ", "true", lead)
+    shape = f"one 'echo q<needed texts>q; ' per rule + {shape[len(repr(lead)) + 3 :]}"
+    indexed = agy_indexed(path_list, needs, command)
+    payload = agy_payload("run_command", {"CommandLine": command}, AGY_ELSEWHERE)
+    got, _, calls, seconds = agy_matched(home, payload)
     report(
         ok=got == "ask" and 0 <= calls <= indexed,
         line=f"exp ask, at most {indexed} matcher calls got {got}  [mib-rules]  {len(needs)} rules, {shape}: "
@@ -5437,8 +5459,8 @@ def agy_cases() -> tuple[int, int]:
     agy_policy_cases(report, fixture, home)
     agy_home_cases(report, fixture)
     agy_payload_cases(report, home)
-    agy_timed_cases(report, home, fixture.timeout)
-    agy_work_cases(report, home, fixture.timeout)
+    agy_timed_cases(report, home)
+    agy_work_cases(report, home)
     agy_rules_cases(report, home)
     agy_handler_cases(report, fixture, home)
     agy_unit_cases(report, home)

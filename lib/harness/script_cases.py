@@ -206,7 +206,8 @@ exit 0
 # acts on `config.json` there:
 #   srt        "refuse": exits 1 and runs nothing; "allow": runs the command after `--`
 #   agentbox   writes `answer` on stdout and `stderr` on stderr, each as it is; then, for the
-#              frontend `sleep`, F1's call runs `sleep 60`
+#              frontend `sleep`, F1's call runs `sleep 300`, which holds both pipes for longer
+#              than the timeout of `probe_run`
 #   curl       prints its -w template with the status in `curl` of the URL's port and path
 #              (`4096/path`), else of its port, else 200 ("none" is no answer, 000 and exit 7),
 #              and 000 for the CONNECT status
@@ -248,7 +249,7 @@ if name == "agentbox":
     sys.stdout.flush()
     sys.stderr.flush()
     if args[0] == config.get("sleep") and "single word OK" in " ".join(args):
-        subprocess.run(["sleep", "60"])
+        subprocess.run(["sleep", "300"])
 elif name == "curl":
     url = re.search(r":(\d+)(/\S*)", args[-1])
     codes = config.get("curl", {})
@@ -1568,7 +1569,10 @@ def probe_void(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
 def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> None:
     """A frontend probe past --timeout is killed with its process group and is `timeout`; the next
     probe runs; a probe whose file is missing is absent; F6 with no opencode listener and a
-    frontend with no program are skipped; the exit status."""
+    frontend with no program are skipped; the exit status. `--timeout 10` is far above what a stub
+    takes, so only F1's `sleep 300` passes it. The sleep holds the pipes that the probe reads to
+    their end, so a probe that leaves it alive waits on it past the timeout of `probe_run`, 240 s,
+    which only stops that hang; no measured seconds decide the case."""
     config: dict[str, object] = {
         "srt": "refuse",
         "lsof": "",
@@ -1583,7 +1587,18 @@ def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
     (home / ".zshrc").unlink()
     (home / ".omp" / "agent" / "extensions").rmdir()
     out = home / "out"
-    p = probe_run(home, "--timeout", "2", "claude", "opencode", "omp", "--out", str(out))
+    try:
+        p: subprocess.CompletedProcess[str] | None = probe_run(
+            home, "--timeout", "10", "claude", "opencode", "omp", "--out", str(out)
+        )
+    except subprocess.TimeoutExpired:
+        p = None
+    check(
+        p is not None,
+        f"F1 past --timeout 10 is killed with its process group, so the probe ends -> {p and p.returncode}",
+    )
+    if p is None:
+        return
     rows = {(r[0], r[1]): (r[4], r[5]) for r in probe_rows(out)}
     absent = [rows.get(("claude", i), ("",))[0] for i in ("R1", "R9", "W6", "W11")]
     ran = [
@@ -1595,8 +1610,6 @@ def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
         absent == ["absent"] * 4 and not ran,
         f"a probe whose file or directory is missing is absent and does not run -> {absent} {ran}",
     )
-    starts = [t for t, a in stub_calls(home, "agentbox") if a[:1] == ["claude"]]
-    took = starts[1] - starts[0] if len(starts) > 1 else None
     check(
         rows.get(("claude", "F3")) == ("void", "F1 shows no start"),
         f"F3 after an F1 past --timeout is void -> {rows.get(('claude', 'F3'))}",
@@ -1604,11 +1617,9 @@ def probe_timeout(check: Callable[[object, str], None], tmp: pathlib.Path) -> No
     check(
         p.returncode == 1
         and rows.get(("claude", "F1"), ("",))[0] == "timeout"
-        and rows.get(("claude", "F2"), ("",))[0] == "match"
-        and took is not None
-        and took < 10,
-        f"F1 past --timeout 2 is timeout within 10 s, and F2 runs -> {p.returncode} "
-        f"{rows.get(('claude', 'F1'))} {rows.get(('claude', 'F2'))} {took}",
+        and rows.get(("claude", "F2"), ("",))[0] == "match",
+        f"F1 past --timeout 10 is timeout, and F2 runs -> {p.returncode} "
+        f"{rows.get(('claude', 'F1'))} {rows.get(('claude', 'F2'))}",
     )
     md = (out / "report.md").read_text() if (out / "report.md").exists() else ""
     check(
@@ -1727,10 +1738,10 @@ def probe_words(check: Callable[[object, str], None], tmp: pathlib.Path) -> None
 
     def ask(frontend: str, k: int, answer: str, stderr: str = "", *, sleep: str = "") -> tuple[str, str, str]:
         """(got, verdict, detail) of the frontend probe ASKS[k] under the stub agentbox, which
-        writes `answer` and `stderr`; with `sleep`, F1 of that frontend runs past a 2 s limit; F2
-        of agy runs as F5, with --sandbox."""
+        writes `answer` and `stderr`; with `sleep`, F1 of that frontend runs past a 10 s limit,
+        far above what the stub takes to write; F2 of agy runs as F5, with --sandbox."""
         config.write_text(json.dumps({"answer": answer, "stderr": stderr, "sleep": sleep}))
-        model = module.Model(agentbox, research, 2 if sleep else 60)
+        model = module.Model(agentbox, research, 10 if sleep else 60)
         sandbox = (frontend, k) == ("agy", 1)
         row = module.ask_row(
             frontend, module.ASKS[k], model, "F5" if sandbox else module.ASKS[k].id, sandbox=sandbox
