@@ -116,8 +116,8 @@ takes the walk of a word from one memo; the write check asks git once per work t
 finds no file-system read elsewhere in the package but a few named ones, which read once per
 process or one path of a directory call. The probe counts the reads of ten commands of 1 MiB
 (a long `cd` word, many `rm` operands, many `git init` outside a work tree), each at most two or
-three reads per distinct name of the command plus a constant, and the guard decides each of its
-timed commands of 1 MiB within 10 s. Test it from `hooks/`
+three reads per distinct name of the command plus a constant. Its group `commands` gives the
+seconds of each timed command of 1 MiB, and no verdict depends on them. Test it from `hooks/`
 with the environment's interpreter, which is Python 3.14; the guard exits with status 2 on a
 `deny`:
 
@@ -1019,12 +1019,12 @@ process, with a timeout, and prints one line per case: `ok` or `BAD`, the expect
 result. The last line gives the number of cases and the number of failed cases, and the exit
 status is 1 when any case fails. The group `commands` runs the guard package on each record of
 `tests/guard/corpus.jsonl` and on the cases that a line of it cannot hold: a command of 1 MiB and
-one byte more, commands of 1 MiB that the checks walk word by word, each held to 10 s with its
-seconds on its line, the count of the file-system reads, walk steps and `git` processes of such
-commands, a write target with a NUL, a `.git` that is a dangling link, a link to itself, a
-payload that is not UTF-8, the reason of the winning check, a frontend that the guard lacks, a
-guard that raises, the copy of `jsonio.py`, the file-system reads outside `paths.py`, and the
-rendered `Bash` entry with a guard that cannot start. The groups
+one byte more, commands of 1 MiB that the checks walk word by word, each with its seconds on its
+line and decided by its decision alone, the count of the file-system reads, walk steps and `git`
+processes of such commands, a write target with a NUL, a `.git` that is a dangling link, a link
+to itself, a payload that is not UTF-8, the reason of the winning check, a frontend that the guard
+lacks, a guard that raises, the copy of `jsonio.py`, the file-system reads outside `paths.py`, and
+the rendered `Bash` entry with a guard that cannot start. The groups
 `omp` and `opencode` run each oh-my-pi or OpenCode record of the corpus through the extension or
 the plugin and the guard package, and the cases of the transport that a record cannot hold: an
 interpreter that is missing, a guard that exits 3, prints `{`, is killed or answers late, a path
