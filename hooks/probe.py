@@ -6482,9 +6482,9 @@ def command_cases():
         report(ok=ok, line=f"exp {expected} got {got}  [guard    ]  a command of {size} bytes")
     # Commands of 1 MiB whose words each check walks: a chain of `cd`, through a link too, one `cd`
     # word of many names, a repeated `cd` to a deep directory, many operands of a recursive `rm`, four
-    # readings, loop words with no `do` or `done`, many distinct writes that git ignores. Its decision
-    # decides each case, and its line gives the seconds; the counted cases below bound the work of
-    # several of them.
+    # readings, loop words with no `do` or `done`, many distinct writes that git ignores. The
+    # guard's decision decides each case, and its line gives the seconds; the counted cases below
+    # bound the work of several of them.
     four = "; git status > /dev/null; rm -rf x; echo x > y.log ';' \\\n"
     # Commands of 1 MiB whose operands and `git init` targets a check resolves many times: the same or
     # distinct operands of a recursive `rm` below a directory ten names deep, operands in distinct

@@ -1283,3 +1283,17 @@
   only in `.scratch/x`. The same holds on `origin/main`.
 - kind: defect
 - found: 2026-11-27, the verifier of the branch `guard/zsh-close-brace`
+
+### K222 · The Antigravity cases `[agy-work]` and `[agy-guard]` of commands of 1 MiB pass or fail on measured wall-clock time.
+
+- location: `hooks/probe.py:5229`
+- evidence: `agy_work_cases` reports `ok=ok and seconds <= limit` for its three payloads of 1 MiB,
+  beside its bounds of the reads, the `git` spawns and the other spawns (line 5227), and
+  `agy_counted` runs the guard with `timeout=limit`. `agy_timed_cases` (line 5173) runs its
+  commands of many words and of 1 MiB through `agy_reply` with `limit=limit`, so a run past it
+  gives `timeout` and fails `got.decision == expected`. Both take `limit` from `fixture.timeout`
+  (line 5440), the `HOOK_TIMEOUT` of `adapters/antigravity/adapter.py`, 15 s. A loaded runner can
+  fail a correct guard. `[agy-work]` already bounds the guard's work; `agy_timed_cases` bounds
+  none, so a fix there needs a count of work or a fake clock in place of the seconds.
+- kind: defect
+- found: 2026-11-28, the verifier of the branch `fix/k161-mib-wall-clock`
