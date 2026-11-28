@@ -553,6 +553,23 @@
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "{ true; } 2>&1; cd .scratch/x || exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "if true; then true; fi >/dev/null; cd .scratch/x || exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x 2>/dev/null || exit; >/dev/null true; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true;>/dev/null rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true&&>/dev/null rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "false||>/dev/null rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true|>/dev/null rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true|&>/dev/null rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true&&&>/dev/null rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "(>/dev/null rm -rf Papers)"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true;>>/dev/null rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true;</dev/null rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true;<<<x rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true;>&2 rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true\n>/dev/null rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true&>/dev/null rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x||exit;>/dev/null true; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "cd .scratch/x 2>/dev/null||exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "true;>/dev/null echo ok"}, "cwd": "@@R@@"}, "decision": "pass"}
+{"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "diff <(ls) <(ls) >/dev/null"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0; do true; done; cd .scratch/x || exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0\ndo true; done; cd .scratch/x || exit; rm -rf build"}, "cwd": "@@R@@"}, "decision": "pass"}
 {"tool": "Bash", "stdin": {"tool_name": "Bash", "tool_input": {"command": "repeat 0 { true; cd .scratch/x } && rm -rf Papers"}, "cwd": "@@R@@"}, "decision": "deny"}

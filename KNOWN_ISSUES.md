@@ -1301,15 +1301,3 @@
   only in `.scratch/x`. The same holds on `origin/main`.
 - kind: defect
 - found: 2026-11-27, the verifier of the branch `guard/zsh-close-brace`
-
-### K223 · The checks read the target of a redirection that `lex` joins to a separator or a parenthesis as the command word, so the command after it is hidden.
-
-- location: `hooks/guard/shell.py`, `lex` and `unredirected`
-- evidence: with the call's working directory `~/Research`, `guard --from claude` passes
-  `true;>/dev/null rm -rf Papers`, `true&&>/dev/null rm -rf Papers` and
-  `(>/dev/null rm -rf Papers)`, and bash and zsh run the `rm` in `~/Research`. `lex` makes one
-  operator of a run of operator characters, such as `;>`, `&&>` or `(>`; REDIRECTION matches no
-  such operator, so `unredirected` keeps `/dev/null`, which reads as the command word, and `rm`
-  as its argument.
-- kind: defect
-- found: 2026-11-27, the branch `guard/redirected-reserved`
