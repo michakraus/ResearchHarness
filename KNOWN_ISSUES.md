@@ -481,9 +481,9 @@
 
 - location: `settings/settings.proposal.json:717`
 - evidence: the template gives each guard hook `"timeout": 5`. If Claude Code reads a timeout as
-  a non-blocking error, a guard that runs longer lets the call run. The probe holds the guard's
-  commands of 1 MiB to 10 s, its `MIB_LIMIT`, and no probe of Claude Code itself
-  shows the effect.
+  a non-blocking error, a guard that runs longer lets the call run. The probe gives the seconds of
+  the guard's commands of 1 MiB and holds them to no limit of the hook, and no probe of Claude Code
+  itself shows the effect.
 - kind: not verified
 - found: 2026-10-29, the critics of the guard core
 
@@ -669,8 +669,8 @@
   verification, one process per run under a load average of 40 to 44, measured a 1 MiB command
   of `eval rm …` units with one `$'x'` at 7.1 s, against 3.2 s for the same command read in one
   dialect, and the settings template gives the guard hook a `timeout` of 5 s. No case of
-  `hooks/probe.py` times a 1 MiB command that holds `$'`, and its `MIB_LIMIT` of 10 s is above
-  the hook's limit. Not measured on an idle machine.
+  `hooks/probe.py` times a 1 MiB command that holds `$'`, and no case of a 1 MiB command holds
+  the guard to the hook's limit. Not measured on an idle machine.
 - kind: not verified
 - found: 2026-11-08
 
@@ -888,24 +888,6 @@
   entries of `frontend_entries` have the closed grammar.
 - kind: defect
 - found: 2026-11-12, the planning of part E5k
-
-### K161 · The probe case `mib-rules` fails on a GitHub runner when the guard needs more than `MIB_LIMIT`, 10 s, for its 1 MiB command.
-
-- location: `hooks/probe.py:4963`
-- evidence: in one run of `test.yml` on `ubuntu-26.04`, the job *harness test with an empty HOME*
-  reports `BAD exp ask, at most 471 matcher calls got timeout  [mib-rules]  275 rules, …: matcher
-  calls -1, 10.02 seconds, within 10 s`, and the job *Python 3.14* of the same run reports
-  `matcher calls 471, 7.20 seconds`. The matcher calls stay at their bound, so the guard is right
-  and only its time is close to the limit. The case measures wall time while the other parts of
-  `harness test` run in parallel. So the verdict of the case depends on wall-clock time: the
-  bound of the matcher calls (line 4963, `0 <= calls <= indexed`) already checks the guard's work,
-  so `seconds <= MIB_LIMIT` on the same line adds only a dependence on the load of the machine,
-  and the `timeout=MIB_LIMIT` of line 4952 makes a slow run a failure. The cases of the commands
-  of 1 MiB at line 6145 depend on it the same way: `guard_run(..., limit=MIB_LIMIT)` passes the
-  limit as `timeout=` (line 5623) and returns `timeout` past it (line 5627), which fails
-  `got == expected`.
-- kind: defect
-- found: #282
 
 ### K162 · `spec-gate.py` reads the whole section for a `sections` cell such as `§J (J9)`, not the entry of that part.
 
