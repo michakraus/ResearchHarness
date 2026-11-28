@@ -906,16 +906,6 @@
 - kind: defect
 - found: 2026-11-13, a false `SPANS` of the spec gate on a part whose entry shares a section
 
-### K163 · The script case `probe_timeout` passes or fails on measured wall-clock time.
-
-- location: `lib/harness/script_cases.py:1533`
-- evidence: the case checks `took < 10`, the seconds between the stub `agentbox` starts of F1 and
-  F2 after F1 runs past `--timeout 2`, with the message `F1 past --timeout 2 is timeout within 10
-  s`. A loaded machine or a slow runner that takes 10 s or more between the two starts fails the
-  case although the probe is right.
-- kind: defect
-- found: 2026-11-14, the planning of part E5n1
-
 ### K164 · On macOS, `write_zshrc` creates an empty `~/.zshrc` in a home that holds none, against the header's "writes nothing".
 
 - location: `sandbox/probe-daemon.jl:141`
@@ -1283,17 +1273,3 @@
   only in `.scratch/x`. The same holds on `origin/main`.
 - kind: defect
 - found: 2026-11-27, the verifier of the branch `guard/zsh-close-brace`
-
-### K222 · The Antigravity cases `[agy-work]` and `[agy-guard]` of commands of 1 MiB pass or fail on measured wall-clock time.
-
-- location: `hooks/probe.py:5229`
-- evidence: `agy_work_cases` reports `ok=ok and seconds <= limit` for its three payloads of 1 MiB,
-  beside its bounds of the reads, the `git` spawns and the other spawns (line 5227), and
-  `agy_counted` runs the guard with `timeout=limit`. `agy_timed_cases` (line 5173) runs its
-  commands of many words and of 1 MiB through `agy_reply` with `limit=limit`, so a run past it
-  gives `timeout` and fails `got.decision == expected`. Both take `limit` from `fixture.timeout`
-  (line 5440), the `HOOK_TIMEOUT` of `adapters/antigravity/adapter.py`, 15 s. A loaded runner can
-  fail a correct guard. `[agy-work]` already bounds the guard's work; `agy_timed_cases` bounds
-  none, so a fix there needs a count of work or a fake clock in place of the seconds.
-- kind: defect
-- found: 2026-11-28, the verifier of the branch `fix/k161-mib-wall-clock`
